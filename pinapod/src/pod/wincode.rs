@@ -8,7 +8,7 @@
 //! values encode identically.
 
 use {
-    super::{option::PodOption, string::PodString, vec::PodVec},
+    super::{bool::PodBool, option::PodOption, string::PodString, vec::PodVec},
     crate::traits::ZcElem,
     wincode::{config::ConfigCore, TypeMeta},
 };
@@ -20,6 +20,42 @@ macro_rules! static_encoded {
             zero_copy: false,
         }
     };
+}
+
+unsafe impl<C: ConfigCore> wincode::SchemaWrite<C> for PodBool {
+    type Src = Self;
+
+    const TYPE_META: TypeMeta = static_encoded!(Self);
+
+    fn size_of(_src: &Self) -> wincode::error::WriteResult<usize> {
+        Ok(core::mem::size_of::<Self>())
+    }
+
+    fn write(
+        mut __writer: impl wincode::io::Writer,
+        src: &Self,
+    ) -> wincode::error::WriteResult<()> {
+        __writer.write(src.as_ref())?;
+        Ok(())
+    }
+}
+
+unsafe impl<'__de, C: ConfigCore> wincode::SchemaRead<'__de, C> for PodBool {
+    type Dst = Self;
+
+    const TYPE_META: TypeMeta = static_encoded!(Self);
+
+    fn read(
+        mut __reader: impl wincode::io::Reader<'__de>,
+        __dst: &mut core::mem::MaybeUninit<Self>,
+    ) -> wincode::error::ReadResult<()> {
+        let __bytes = __reader.take_scoped(core::mem::size_of::<Self>())?;
+        let __val = unsafe { core::ptr::read_unaligned(__bytes.as_ptr().cast::<Self>()) };
+        <Self as crate::ZcValidate>::validate_ref(&__val)
+            .map_err(|_| wincode::error::ReadError::InvalidValue("PodBool validation failed"))?;
+        __dst.write(__val);
+        Ok(())
+    }
 }
 
 fn write_initialized_prefix<T>(

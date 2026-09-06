@@ -6,9 +6,25 @@
 )]
 
 use pinapod::{
-    pod::{PodOption, PodString, PodU16, PodVec},
+    pod::{PodBool, PodOption, PodString, PodU16, PodVec},
     ZeroPodError,
 };
+
+#[test]
+fn pod_bool_deserialization_validates_its_stored_byte() {
+    let value = PodBool::from(true);
+    assert_eq!(wincode::serialized_size(&value).unwrap(), 1);
+    let stored = serialize::<1, _>(&value);
+    assert_eq!(stored, [1]);
+    assert!(!wincode::deserialize::<PodBool>(&[0]).unwrap().get());
+    assert!(wincode::deserialize::<PodBool>(&stored).unwrap().get());
+
+    let error = wincode::deserialize::<PodBool>(&[2]).unwrap_err();
+    assert!(matches!(
+        error,
+        wincode::ReadError::InvalidValue("PodBool validation failed")
+    ));
+}
 
 #[repr(transparent)]
 #[derive(Clone, Copy)]
@@ -51,6 +67,7 @@ where
 fn partial_string_zero_pads_capacity_and_roundtrips() {
     let mut value = PodString::<8>::default();
     assert!(value.set("hi"));
+    assert_eq!(wincode::serialized_size(&value).unwrap(), 9);
 
     let bytes = serialize::<9, _>(&value);
     assert_eq!(bytes, [2, b'h', b'i', 0, 0, 0, 0, 0, 0]);
