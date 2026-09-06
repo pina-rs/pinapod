@@ -1,5 +1,5 @@
 [workspace]
-members = ["pinapod", "pinapod-derive"]
+members = ["pinapod", "pinapod_derive"]
 resolver = "2"
 
 [workspace.package]
@@ -13,7 +13,7 @@ rust-version = "1.89.0"
 
 [workspace.dependencies]
 fixed = { version = "=1.30.0", default-features = false }
-pinapod-derive = { version = "=0.0.0", path = "pinapod-derive" }
+pinapod_derive = { version = "=0.0.0", path = "pinapod_derive" }
 
 [workspace.lints.rust]
 # Group lints
