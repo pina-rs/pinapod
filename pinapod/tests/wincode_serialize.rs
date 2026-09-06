@@ -81,6 +81,7 @@ fn partial_vec_zero_pads_capacity_and_roundtrips() {
     let mut value = PodVec::<PodU16, 4, 2>::default();
     assert!(value.push(PodU16::from(5)));
     assert!(value.push(PodU16::from(7)));
+    assert_eq!(wincode::serialized_size(&value).unwrap(), 10);
 
     let bytes = serialize::<10, _>(&value);
     assert_eq!(bytes, [2, 0, 5, 0, 7, 0, 0, 0, 0, 0]);
