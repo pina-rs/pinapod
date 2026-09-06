@@ -42,8 +42,40 @@ jobs:
         uses: $/.github/actions/devenv
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: verify security
-        run: verify:security
+      - name: audit dependencies
+        run: security:audit
+        shell: devenv shell -c -- bash -e {0}
+
+  cargo-deny:
+    timeout-minutes: 60
+    runs-on: ubuntu-24.04
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: setup
+        uses: $/.github/actions/devenv
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: check dependency policy
+        run: security:deny
+        shell: devenv shell -c -- bash -e {0}
+
+  zizmor:
+    timeout-minutes: 60
+    runs-on: ubuntu-24.04
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: setup
+        uses: $/.github/actions/devenv
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: audit GitHub Actions
+        run: security:zizmor
         shell: devenv shell -c -- bash -e {0}
 
   test:
@@ -123,5 +155,6 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: preview release
+        if: hashFiles('.changeset/*.md') != ''
         run: monochange step prepare-release --dry-run --format json
         shell: devenv shell -c -- bash -e {0}
