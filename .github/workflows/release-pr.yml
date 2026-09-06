@@ -1,0 +1,140 @@
+name: release-pr
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  create:
+    if: github.repository_owner == 'pina-rs'
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      is_release_commit: ${{ steps.release_record.outputs.is_release_commit }}
+    timeout-minutes: 20
+    runs-on: ubuntu-24.04
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: setup
+        uses: $/.github/actions/devenv
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: configure release identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        shell: bash
+      - name: refresh tags
+        run: git fetch --force --tags origin
+        shell: bash
+      - name: detect current release commit
+        id: release_record
+        run: |
+          set -euo pipefail
+          release_record_error="$(mktemp)"
+          if is_release_commit="$(monochange --log-level=debug step release-record --from HEAD --format json --jq '.resolved_commit == .record_commit' 2>"$release_record_error")"; then
+            echo "is_release_commit=${is_release_commit}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          subject="$(git log -1 --pretty=%s)"
+          body="$(git log -1 --pretty=%B)"
+          if [[ "$subject" == chore\(release\):\ prepare\ release* ]] || grep -q '<!-- monochange:release-record:start -->' <<<"$body"; then
+            cat "$release_record_error" >&2
+            exit 1
+          fi
+
+          echo "is_release_commit=false" >> "$GITHUB_OUTPUT"
+        shell: devenv shell -- bash -e {0}
+      - name: detect pending changesets
+        id: pending_changesets
+        if: steps.release_record.outputs.is_release_commit != 'true'
+        run: |
+          has_changesets=false
+          if find .changeset -type f -name '*.md' -print -quit | grep -q .; then
+            has_changesets=true
+          fi
+          echo "has_changesets=${has_changesets}" >> "$GITHUB_OUTPUT"
+        shell: bash
+      - name: configure Git authentication
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh auth setup-git
+      - name: refresh release pull request
+        if: steps.release_record.outputs.is_release_commit != 'true' && steps.pending_changesets.outputs.has_changesets == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: monochange run release
+        shell: devenv shell -- bash -e {0}
+
+  tag:
+    if: github.repository_owner == 'pina-rs' && needs.create.outputs.is_release_commit == 'true'
+    needs: create
+    timeout-minutes: 20
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - name: setup
+        uses: $/.github/actions/devenv
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: configure release identity and authentication
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          gh auth setup-git
+        shell: bash
+      - name: create release tags
+        run: monochange --log-level=debug step tag-release --from HEAD --push=true --format json
+        shell: devenv shell -- bash -e {0}
+      - name: create draft releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: monochange --log-level=debug step publish-release --from-ref=HEAD --draft --format json
+        shell: devenv shell -- bash -e {0}
+      - name: dispatch release publishing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          release_record="$RUNNER_TEMP/release-record.json"
+          monochange step release-record --from HEAD --format json > "$release_record"
+          mapfile -t release_tags < <(jq -r '.record.release_targets[] | select(.tag == true) | .tag_name' "$release_record")
+          if [ "${#release_tags[@]}" -eq 0 ]; then
+            echo "::error::The release record does not contain a publishable tag." >&2
+            exit 1
+          fi
+          for tag in "${release_tags[@]}"; do
+            [[ "$tag" == v* ]] || { echo "::error::Unexpected release tag '$tag'." >&2; exit 1; }
+            gh workflow run publish.yml --repo "$GITHUB_REPOSITORY" --ref main --field "tag=$tag"
+          done
+        shell: devenv shell -- bash -e {0}
+      - name: comment on released issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: monochange --log-level=debug step comment-released-issues --from-ref=HEAD --auto-close-issues
+        shell: devenv shell -- bash -e {0}
