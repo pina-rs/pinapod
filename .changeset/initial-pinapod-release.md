@@ -1,5 +1,5 @@
 ---
-core:
+pina:
   bump: minor
   type: feat
   version: "0.1.0"

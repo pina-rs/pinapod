@@ -81,7 +81,7 @@ type = "cargo"
 path = "pinapod-derive"
 type = "cargo"
 
-[group.core]
+[group.pina]
 packages = ["pinapod", "pinapod-derive"]
 release = true
 tag = true
