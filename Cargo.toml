@@ -3,7 +3,7 @@ members = ["pinapod", "pinapod-derive"]
 resolver = "2"
 
 [workspace.package]
-version = "0.0.0"
+version = "0.1.0"
 edition = "2021"
 homepage = "https://github.com/pina-rs/pinapod"
 keywords = ["no-std", "pod", "serialization", "zero-copy"]
@@ -13,7 +13,7 @@ rust-version = "1.89.0"
 
 [workspace.dependencies]
 fixed = { version = "=1.30.0", default-features = false }
-pinapod-derive = { version = "=0.0.0", path = "pinapod-derive" }
+pinapod-derive = { version = "0.1.0", path = "pinapod-derive" }
 
 [workspace.lints.rust]
 # Group lints
