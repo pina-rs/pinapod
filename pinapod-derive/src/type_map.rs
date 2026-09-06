@@ -59,6 +59,38 @@ pub fn classify_field(ty: &Type) -> FieldKind {
     FieldKind::Inline
 }
 
+pub fn validate_dynamic_prefix_args(ty: &Type) -> Result<(), TokenStream> {
+    let Some(segment) = last_path_segment(ty) else {
+        return Ok(());
+    };
+    let Some(args) = angle_args(&segment.arguments) else {
+        return Ok(());
+    };
+
+    let prefix_index = match segment.ident.to_string().as_str() {
+        "String" | "PodString" => Some(1),
+        "Vec" | "PodVec" => Some(2),
+        _ => None,
+    };
+    if let Some(prefix) = prefix_index.and_then(|index| args.iter().nth(index)) {
+        if parse_prefix_arg(prefix).is_none() {
+            let message = format!(
+                "{} length prefix must be u8, u16, u32, u64, or the equivalent byte width 1, 2, 4, or 8",
+                segment.ident
+            );
+            return Err(syn::Error::new_spanned(prefix, message).to_compile_error());
+        }
+    }
+
+    for argument in args {
+        if let GenericArgument::Type(inner) = argument {
+            validate_dynamic_prefix_args(inner)?;
+        }
+    }
+
+    Ok(())
+}
+
 fn classify_string(ty: &Type) -> Option<TailField> {
     let seg = last_path_segment(ty)?;
     if seg.ident != "String" && seg.ident != "PodString" {
@@ -337,7 +369,10 @@ fn parse_prefix_arg(arg: &GenericArgument) -> Option<usize> {
         }
         GenericArgument::Const(Expr::Lit(ExprLit {
             lit: Lit::Int(n), ..
-        })) => n.base10_parse::<usize>().ok(),
+        })) => match n.base10_parse::<usize>().ok()? {
+            prefix @ (1 | 2 | 4 | 8) => Some(prefix),
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -361,5 +396,49 @@ mod tests {
             mapped.to_string(),
             quote!(pinapod::pod::PodOption<pinapod::pod::PodU64>).to_string()
         );
+    }
+
+    #[test]
+    fn prefix_mapping_accepts_supported_types_and_widths() {
+        let u8_type: GenericArgument = syn::parse_quote!(u8);
+        let u16_type: GenericArgument = syn::parse_quote!(u16);
+        let u32_type: GenericArgument = syn::parse_quote!(u32);
+        let u64_type: GenericArgument = syn::parse_quote!(u64);
+        let one: GenericArgument = syn::parse_quote!(1);
+        let two: GenericArgument = syn::parse_quote!(2);
+        let four: GenericArgument = syn::parse_quote!(4);
+        let eight: GenericArgument = syn::parse_quote!(8);
+
+        assert_eq!(parse_prefix_arg(&u8_type), Some(1));
+        assert_eq!(parse_prefix_arg(&u16_type), Some(2));
+        assert_eq!(parse_prefix_arg(&u32_type), Some(4));
+        assert_eq!(parse_prefix_arg(&u64_type), Some(8));
+        assert_eq!(parse_prefix_arg(&one), Some(1));
+        assert_eq!(parse_prefix_arg(&two), Some(2));
+        assert_eq!(parse_prefix_arg(&four), Some(4));
+        assert_eq!(parse_prefix_arg(&eight), Some(8));
+    }
+
+    #[test]
+    fn dynamic_prefix_validation_rejects_unsupported_widths() {
+        let string: Type = syn::parse_quote!(pinapod::PodString<32, 3>);
+        let vector: Type = syn::parse_quote!(Option<pinapod::PodVec<u8, 16, 0>>);
+
+        let string_error = validate_dynamic_prefix_args(&string)
+            .unwrap_err()
+            .to_string();
+        let vector_error = validate_dynamic_prefix_args(&vector)
+            .unwrap_err()
+            .to_string();
+
+        assert!(string_error.contains("PodString length prefix must be"));
+        assert!(vector_error.contains("PodVec length prefix must be"));
+    }
+
+    #[test]
+    fn dynamic_prefix_validation_accepts_supported_nested_widths() {
+        let ty: Type = syn::parse_quote!(Option<pinapod::PodVec<pinapod::PodString<32, 1>, 16, 8>>);
+
+        assert!(validate_dynamic_prefix_args(&ty).is_ok());
     }
 }

@@ -8,7 +8,10 @@
 )]
 
 use {
-    crate::type_map::{classify_field, map_to_pod_type, FieldKind, TailField, TailPayload},
+    crate::type_map::{
+        classify_field, map_to_pod_type, validate_dynamic_prefix_args, FieldKind, TailField,
+        TailPayload,
+    },
     proc_macro2::TokenStream,
     quote::{format_ident, quote},
     syn::{Data, DeriveInput, Expr, Fields, Type, Variant},
@@ -54,6 +57,14 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
             };
         }
     };
+
+    if !input.generics.params.is_empty() {
+        return syn::Error::new_spanned(
+            &input.generics,
+            "compact ZeroPod enums do not support generic parameters",
+        )
+        .to_compile_error();
+    }
 
     let variants = match &input.data {
         Data::Enum(data) => &data.variants,
@@ -376,7 +387,16 @@ fn generate_mut_impl(
     }
 
     let write_tag = write_tag_fn(tag_size, native_ty);
-    let write_len = write_len_fn();
+    let write_len = if variants.iter().any(|variant| {
+        matches!(
+            &variant.payload,
+            VariantPayload::String { .. } | VariantPayload::Vec { .. }
+        )
+    }) {
+        write_len_fn()
+    } else {
+        TokenStream::new()
+    };
 
     quote! {
         enum #edit_enum<'a> {
@@ -440,6 +460,7 @@ fn parse_payload(variant: &Variant) -> Result<VariantPayload, TokenStream> {
         Fields::Unit => Ok(VariantPayload::Unit),
         Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
             let ty = fields.unnamed[0].ty.clone();
+            validate_dynamic_prefix_args(&ty)?;
             if has_compact_attr(&variant.attrs) {
                 let ref_ty = compact_ref_ident(&ty).ok_or_else(|| {
                     let msg = format!(
@@ -702,4 +723,67 @@ fn parse_enum_repr(input: &DeriveInput) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generic_compact_enums_receive_a_focused_diagnostic() {
+        let input: DeriveInput = syn::parse_quote! {
+            #[repr(u8)]
+            enum GenericEvent<T> {
+                Value(T) = 0,
+            }
+        };
+
+        let output = generate(&input).to_string();
+
+        assert!(output.contains("compact ZeroPod enums do not support generic parameters"));
+    }
+
+    #[test]
+    fn scalar_compact_enums_omit_the_length_writer() {
+        let input: DeriveInput = syn::parse_quote! {
+            #[repr(u8)]
+            enum ScalarEvent {
+                Empty = 0,
+                Value(ScalarPayload) = 1,
+            }
+        };
+
+        let output = generate(&input).to_string();
+
+        assert!(!output.contains("fn write_len"));
+    }
+
+    #[test]
+    fn dynamic_compact_enums_include_the_length_writer() {
+        let input: DeriveInput = syn::parse_quote! {
+            #[repr(u8)]
+            enum DynamicEvent {
+                Empty = 0,
+                Label(pinapod::String<8>) = 1,
+            }
+        };
+
+        let output = generate(&input).to_string();
+
+        assert!(output.contains("fn write_len"));
+    }
+
+    #[test]
+    fn compact_enum_prefixes_receive_a_focused_diagnostic() {
+        let input: DeriveInput = syn::parse_quote! {
+            #[repr(u8)]
+            enum InvalidPrefixEvent {
+                Label(pinapod::PodString<8, 3>) = 0,
+            }
+        };
+
+        let output = generate(&input).to_string();
+
+        assert!(output.contains("PodString length prefix must be"));
+    }
 }

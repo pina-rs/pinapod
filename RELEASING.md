@@ -16,7 +16,7 @@ Merging a feature pull request adds its changeset to `main`. The `release-pr.yml
 Trusted publishing cannot create a new crates.io package. Before merging the first release pull request, a registry owner must reserve both package names and configure crates.io trusted publishers for repository `pina-rs/pinapod`, workflow `publish.yml`, and environment `publisher`.
 
 ```sh
-monochange step placeholder-publish --dry-run --package pinapod_derive
+monochange step placeholder-publish --dry-run --package pinapod-derive
 monochange step placeholder-publish --dry-run --package pinapod
 ```
 

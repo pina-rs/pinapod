@@ -1,5 +1,5 @@
 use {
-    crate::type_map::{classify_field, FieldKind},
+    crate::type_map::{classify_field, validate_dynamic_prefix_args, FieldKind},
     proc_macro2::TokenStream,
     quote::quote,
     syn::{DeriveInput, Fields},
@@ -63,18 +63,19 @@ impl Schema {
             .map(|f| {
                 let name = f.ident.clone().expect("named field must have ident");
                 let ty = f.ty.clone();
+                validate_dynamic_prefix_args(&ty)?;
                 let kind = classify_field(&ty);
                 let (skip_accessor, pinapod_attrs) = parse_pinapod_field_attrs(&f.attrs);
-                SchemaField {
+                Ok(SchemaField {
                     name,
                     ty,
                     kind,
                     vis: f.vis.clone(),
                     skip_accessor,
                     pinapod_attrs,
-                }
+                })
             })
-            .collect();
+            .collect::<Result<_, TokenStream>>()?;
 
         // Enforce suffix-only rule for compact mode:
         // once a tail field appears, no inline fields may follow.
@@ -152,6 +153,23 @@ mod tests {
         let schema = Schema::parse(&input).unwrap();
         assert!(schema.fields[0].skip_accessor);
         assert_eq!(schema.fields[0].pinapod_attrs.len(), 1);
+    }
+
+    #[test]
+    fn rejects_an_invalid_dynamic_prefix_at_the_field() {
+        let input: DeriveInput = syn::parse_quote! {
+            #[pinapod(compact)]
+            struct InvalidPrefix {
+                values: pinapod::PodVec<u8, 8, 3>,
+            }
+        };
+
+        let error = Schema::parse(&input)
+            .err()
+            .expect("invalid prefix should be rejected")
+            .to_string();
+
+        assert!(error.contains("PodVec length prefix must be"));
     }
 }
 

@@ -80,6 +80,7 @@ fn generate_header(schema: &Schema, header_name: &syn::Ident) -> TokenStream {
         .map(|pod_ty| quote! { #pod_ty: pinapod::ZcElem })
         .collect();
     let where_clause_with_bounds = where_clause_with_bounds(where_clause, pod_bounds.iter());
+    let (marker_field, _) = generic_marker_tokens(&schema.generics);
 
     let align_assert = if schema.generics.params.is_empty() {
         quote! {
@@ -91,12 +92,20 @@ fn generate_header(schema: &Schema, header_name: &syn::Ident) -> TokenStream {
 
     quote! {
         #[repr(C)]
-        #[derive(Clone, Copy)]
         pub struct #header_name #generics #where_clause_with_bounds {
-            #( #fields ),*
+            #( #fields, )*
+            #marker_field
         }
 
         #align_assert
+
+        impl #impl_generics Copy for #header_name #ty_generics #where_clause_with_bounds {}
+
+        impl #impl_generics Clone for #header_name #ty_generics #where_clause_with_bounds {
+            fn clone(&self) -> Self {
+                *self
+            }
+        }
 
         impl #impl_generics pinapod::ZcValidate for #header_name #ty_generics #where_clause_with_bounds {
             fn validate_ref(value: &Self) -> Result<(), pinapod::ZeroPodError> {
@@ -283,6 +292,7 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
     let (ref_impl_generics, ref_ty_generics, _) = ref_generics.split_for_impl();
     let bounds = compact_bounds(schema);
     let where_clause_with_bounds = where_clause_with_bounds(where_clause, bounds.iter());
+    let (marker_field, marker_init) = generic_marker_tokens(&schema.generics);
     let tail_fields: Vec<_> = schema.tail_fields().collect();
     let mut accessors = Vec::new();
 
@@ -382,6 +392,7 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
     quote! {
         pub struct #ref_name #ref_generics #where_clause_with_bounds {
             data: &'a [u8],
+            #marker_field
         }
 
         impl #ref_impl_generics core::ops::Deref for #ref_name #ref_ty_generics #where_clause_with_bounds {
@@ -394,11 +405,17 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
         impl #ref_impl_generics #ref_name #ref_ty_generics #where_clause_with_bounds {
             pub fn new(data: &'a [u8]) -> Result<Self, pinapod::ZeroPodError> {
                 <#struct_name #struct_ty_generics as pinapod::ZeroPodCompact>::validate(data)?;
-                Ok(Self { data })
+                Ok(Self {
+                    data,
+                    #marker_init
+                })
             }
 
             pub unsafe fn new_unchecked(data: &'a [u8]) -> Self {
-                Self { data }
+                Self {
+                    data,
+                    #marker_init
+                }
             }
 
             fn header(&self) -> &'a #header_ty {
@@ -421,6 +438,7 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
     let (mut_impl_generics, mut_ty_generics, _) = mut_generics.split_for_impl();
     let bounds = compact_bounds(schema);
     let where_clause_with_bounds = where_clause_with_bounds(where_clause, bounds.iter());
+    let (marker_field, marker_init) = generic_marker_tokens(&schema.generics);
     let tail_fields: Vec<_> = schema.tail_fields().collect();
 
     // Edit descriptor fields.
@@ -626,7 +644,8 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
         pub struct #mut_name #mut_generics #where_clause_with_bounds {
             data: &'a mut [u8],
             total_len: usize,
-            #( #edit_fields ),*
+            #( #edit_fields, )*
+            #marker_field
         }
 
         impl #mut_impl_generics core::ops::Deref for #mut_name #mut_ty_generics #where_clause_with_bounds {
@@ -649,7 +668,8 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
                 Ok(Self {
                     data,
                     total_len,
-                    #( #edit_inits ),*
+                    #( #edit_inits, )*
+                    #marker_init
                 })
             }
 
@@ -662,7 +682,8 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
                 Self {
                     data,
                     total_len,
-                    #( #edit_inits ),*
+                    #( #edit_inits, )*
+                    #marker_init
                 }
             }
 
@@ -1120,6 +1141,37 @@ fn generics_with_lifetime(generics: &syn::Generics) -> syn::Generics {
     generics
 }
 
+fn generic_marker_tokens(generics: &syn::Generics) -> (TokenStream, TokenStream) {
+    let marker_types: Vec<TokenStream> = generics
+        .params
+        .iter()
+        .filter_map(|parameter| match parameter {
+            syn::GenericParam::Lifetime(parameter) => {
+                let lifetime = &parameter.lifetime;
+                Some(quote! { &#lifetime () })
+            }
+            syn::GenericParam::Type(parameter) => {
+                let ident = &parameter.ident;
+                Some(quote! { *const #ident })
+            }
+            syn::GenericParam::Const(_) => None,
+        })
+        .collect();
+
+    if marker_types.is_empty() {
+        return (TokenStream::new(), TokenStream::new());
+    }
+
+    (
+        quote! {
+            __pinapod_type_marker: core::marker::PhantomData<fn(#(#marker_types),*)>,
+        },
+        quote! {
+            __pinapod_type_marker: core::marker::PhantomData,
+        },
+    )
+}
+
 fn read_len_expr(len_name: &syn::Ident, pfx: usize) -> TokenStream {
     match pfx {
         1 => quote! { __hdr.#len_name[0] as usize },
@@ -1340,5 +1392,33 @@ fn compute_offset_tokens(
     quote! {
         let mut __offset = #header_size;
         #( #steps )*
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generic_markers_cover_lifetimes_and_types_without_const_layout_changes() {
+        let generics: syn::Generics = syn::parse_quote!(<'source, T, const CAPACITY: usize>);
+
+        let (field, init) = generic_marker_tokens(&generics);
+        let field = field.to_string();
+
+        assert!(field.contains("'source"));
+        assert!(field.contains("* const T"));
+        assert!(!field.contains("CAPACITY"));
+        assert!(init.to_string().contains("PhantomData"));
+    }
+
+    #[test]
+    fn concrete_compact_types_do_not_receive_a_marker() {
+        let generics = syn::Generics::default();
+
+        let (field, init) = generic_marker_tokens(&generics);
+
+        assert!(field.is_empty());
+        assert!(init.is_empty());
     }
 }

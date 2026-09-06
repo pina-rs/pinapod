@@ -1,4 +1,4 @@
-# pinapod_derive
+# pinapod-derive
 
 Derive macros for [pinapod](https://crates.io/crates/pinapod).
 
