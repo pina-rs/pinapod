@@ -290,6 +290,35 @@ impl_zc_field!(i64, PodI64, 8);
 impl_zc_field!(i128, PodI128, 16);
 impl_zc_field!(bool, PodBool, 1);
 
+#[cfg(feature = "fixed")]
+mod fixed_impls {
+    use super::*;
+
+    macro_rules! impl_fixed_zc_field {
+        ($fixed:ident, $pod:ty) => {
+            // SAFETY: `fixed::$fixed<Frac>` is a schema type whose complete
+            // bit pattern is stored in the matching little-endian integer pod.
+            // The pod type is an alignment-one `ZcElem`, and `POD_SIZE` is
+            // derived directly from it.
+            unsafe impl<Frac> ZcField for fixed::$fixed<Frac> {
+                type Pod = $pod;
+                const POD_SIZE: usize = core::mem::size_of::<Self::Pod>();
+            }
+        };
+    }
+
+    impl_fixed_zc_field!(FixedI8, i8);
+    impl_fixed_zc_field!(FixedI16, PodI16);
+    impl_fixed_zc_field!(FixedI32, PodI32);
+    impl_fixed_zc_field!(FixedI64, PodI64);
+    impl_fixed_zc_field!(FixedI128, PodI128);
+    impl_fixed_zc_field!(FixedU8, u8);
+    impl_fixed_zc_field!(FixedU16, PodU16);
+    impl_fixed_zc_field!(FixedU32, PodU32);
+    impl_fixed_zc_field!(FixedU64, PodU64);
+    impl_fixed_zc_field!(FixedU128, PodU128);
+}
+
 unsafe impl<const N: usize> ZcField for [u8; N] {
     type Pod = [u8; N];
     const POD_SIZE: usize = N;

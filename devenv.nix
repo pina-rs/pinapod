@@ -43,8 +43,9 @@ in
       exec = ''
         set -euo pipefail
         cargo check -p pinapod --no-default-features --locked
+        cargo check -p pinapod --no-default-features --features fixed --locked
       '';
-      description = "Verify the no_std Pinapod core without optional features.";
+      description = "Verify the no_std Pinapod core with no features and with fixed-point support.";
       binary = "bash";
     };
     "test:all" = {

@@ -25,6 +25,8 @@ Later upstream changes are reviewed and ported rather than merged blindly. The c
 pinapod = "0.1"
 ```
 
+Pinapod supports Rust 1.89 and newer.
+
 ## Pod Types
 
 All pod types are `Copy`, alignment 1, and safe to cast from arbitrary byte slices after validation.
@@ -91,6 +93,53 @@ m.set_name("alice")?;
 m.commit()?;
 ```
 
+### Fixed-point fields
+
+Enable the opt-in `fixed` feature to use any signed or unsigned [`fixed`](https://docs.rs/fixed/1.30.0/fixed/) type in fixed or compact schemas:
+
+```toml
+[dependencies]
+fixed = { version = "=1.30.0", default-features = false }
+pinapod = { version = "0.1", features = ["fixed"] }
+```
+
+Pinapod pins `fixed` 1.30.0 because it supports Rust 1.85; `fixed` 1.31.0 raises its minimum supported Rust version to 1.93, above Pinapod's Rust 1.89 baseline. Fixed-point values retain their raw bits on-chain in little-endian integer pods. Convert at the account boundary with `to_bits` and `from_bits`:
+
+```rust
+use fixed::types::{I16F16, U24F8};
+use pinapod::{pod::{PodI32, PodU32}, ZeroPod};
+
+#[derive(ZeroPod)]
+#[pinapod(compact)]
+struct PriceBook {
+    pub mark_price: I16F16,
+    pub bids: pinapod::Vec<I16F16, 16>,
+    pub asks: pinapod::Vec<U24F8, 16>,
+}
+
+let mut data = [0u8; 256];
+let bids = [
+    PodI32::from(I16F16::from_num(10.25).to_bits()),
+    PodI32::from(I16F16::from_num(10.5).to_bits()),
+];
+let asks = [PodU32::from(U24F8::from_num(11.0).to_bits())];
+
+let encoded_size = {
+    let mut book = PriceBookMut::new(&mut data)?;
+    book.mark_price = I16F16::from_num(10.5).to_bits().into();
+    book.set_bids(&bids)?;
+    book.set_asks(&asks)?;
+    book.commit()?
+};
+
+let book = PriceBookRef::new(&data[..encoded_size])?;
+let mark_price = I16F16::from_bits(book.mark_price.get());
+let first_bid = I16F16::from_bits(book.bids()[0].get());
+let first_ask = U24F8::from_bits(book.asks()[0].get());
+```
+
+Both vectors are independently sized tails: changing the number of bids moves the asks without reserving either vector's maximum capacity. The fixed-point format affects interpretation, not storage size; each value occupies exactly the width of its backing integer.
+
 ### Enums
 
 Unit enums with `#[repr(u8)]` get a zero-copy companion that validates the discriminant.
@@ -154,6 +203,7 @@ assert!(TokenAccount::from_bytes(&buf).is_err());
 
 | Flag                   | What it enables                                    |
 | ---------------------- | -------------------------------------------------- |
+| `fixed`                | `ZcField` for every `fixed` signed/unsigned width  |
 | `solana-address`       | `ZcElem` + `ZcField` for `solana_address::Address` |
 | `solana-program-error` | `From<ZeroPodError> for ProgramError`              |
 | `wincode`              | `SchemaWrite` / `SchemaRead` for all pod types     |

@@ -12,6 +12,7 @@ repository = "https://github.com/pina-rs/pinapod"
 rust-version = "1.89.0"
 
 [workspace.dependencies]
+fixed = { version = "=1.30.0", default-features = false }
 pinapod-derive = { version = "=0.0.0", path = "pinapod-derive" }
 
 [workspace.lints.rust]
