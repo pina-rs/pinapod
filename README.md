@@ -1,30 +1,44 @@
-# zeropod
+# pinapod
 
 Zero-copy, alignment-1 pod types for Solana programs.
 
-zeropod lets you read and write on-chain data through direct pointer casts — no serialization, no copies, no alignment traps. Every type is `#[repr(C)]` with alignment 1, so it maps directly onto Solana account bytes.
+Pinapod is the Pina-maintained, wire-compatible fork of [ZeroPod](https://github.com/blueshift-gg/zeropod). It preserves the existing account representation while independently reviewing and releasing soundness fixes required by the Pina framework.
+
+pinapod lets you read and write on-chain data through direct pointer casts — no serialization, no copies, no alignment traps. Every type is `#[repr(C)]` with alignment 1, so it maps directly onto Solana account bytes.
+
+The fork intentionally keeps ZeroPod's byte representation stable. Public API names use the `pinapod` crate and `#[pinapod(...)]` helper attribute, while the existing `ZeroPod*` trait and derive names remain recognizable to ease audited upstream synchronization.
+
+## Upstream Compatibility
+
+Pinapod versions are independent from ZeroPod versions. Each Pinapod release records the upstream release and commit it was audited against so downstream users can distinguish wire compatibility from package-version equality.
+
+| Pinapod release | ZeroPod baseline | Upstream commit | Notes                                                                               |
+| --------------- | ---------------- | --------------- | ----------------------------------------------------------------------------------- |
+| `0.1.x`         | `0.3.5`          | `78e6e5f`       | Same wire format, plus independently reviewed soundness and compact-accessor fixes. |
+
+Later upstream changes are reviewed and ported rather than merged blindly. The compatibility row is updated whenever a Pinapod release adopts a new ZeroPod baseline.
 
 ## Install
 
 ```toml
 [dependencies]
-zeropod = "0.3"
+pinapod = "0.1"
 ```
 
 ## Pod Types
 
 All pod types are `Copy`, alignment 1, and safe to cast from arbitrary byte slices after validation.
 
-| Type | Size | Description |
-|------|------|-------------|
-| `PodU16` .. `PodU128` | 2–16 | Unsigned integers, little-endian `[u8; N]` |
-| `PodI16` .. `PodI128` | 2–16 | Signed integers, little-endian `[u8; N]` |
-| `PodBool` | 1 | Boolean (byte must be 0 or 1) |
-| `PodOption<T>` | 1 + size_of(T) | Optional value (tag byte + `MaybeUninit<T>`) |
-| `PodString<N, PFX>` | PFX + N | UTF-8 string, length-prefixed, max N bytes |
-| `PodVec<T, N, PFX>` | PFX + N * size_of(T) | Typed vector, length-prefixed, max N elements |
+| Type                  | Size                 | Description                                   |
+| --------------------- | -------------------- | --------------------------------------------- |
+| `PodU16` .. `PodU128` | 2–16                 | Unsigned integers, little-endian `[u8; N]`    |
+| `PodI16` .. `PodI128` | 2–16                 | Signed integers, little-endian `[u8; N]`      |
+| `PodBool`             | 1                    | Boolean (byte must be 0 or 1)                 |
+| `PodOption<T>`        | 1 + size_of(T)       | Optional value (tag byte + `MaybeUninit<T>`)  |
+| `PodString<N, PFX>`   | PFX + N              | UTF-8 string, length-prefixed, max N bytes    |
+| `PodVec<T, N, PFX>`   | PFX + N * size_of(T) | Typed vector, length-prefixed, max N elements |
 
-Convenience aliases: `zeropod::String<N>` = `PodString<N, 1>`, `zeropod::Vec<T, N>` = `PodVec<T, N, 2>`.
+Convenience aliases: `pinapod::String<N>` = `PodString<N, 1>`, `pinapod::Vec<T, N>` = `PodVec<T, N, 2>`.
 
 ## Derive Macro
 
@@ -35,7 +49,7 @@ Convenience aliases: `zeropod::String<N>` = `PodString<N, 1>`, `zeropod::Vec<T, 
 Every field is a known size. The companion type is a direct `#[repr(C)]` mirror.
 
 ```rust
-use zeropod::ZeroPod;
+use pinapod::ZeroPod;
 
 #[derive(ZeroPod)]
 struct TokenAccount {
@@ -55,15 +69,15 @@ let amount: u64 = zc.amount.get();
 For structs with variable-length fields. The on-chain format is `[fixed header + length prefixes][tail data]`. Fixed fields and length prefixes live in the header; dynamic data (strings, vecs) is packed contiguously after it.
 
 ```rust
-use zeropod::ZeroPod;
+use pinapod::ZeroPod;
 
 #[derive(ZeroPod)]
-#[zeropod(compact)]
+#[pinapod(compact)]
 struct Profile {
     pub authority: [u8; 32],
     pub score: u64,
-    pub name: zeropod::String<32>,
-    pub tags: zeropod::Vec<u8, 16>,
+    pub name: pinapod::String<32>,
+    pub tags: pinapod::Vec<u8, 16>,
 }
 
 // Read via zero-copy Ref:
@@ -96,7 +110,7 @@ enum Status {
 Numeric pods use wrapping semantics in release builds and panic on overflow in debug builds — matching native integer behavior.
 
 ```rust
-use zeropod::pod::PodU64;
+use pinapod::pod::PodU64;
 
 let a = PodU64::from(100u64);
 let b = PodU64::from(42u64);
@@ -127,26 +141,26 @@ assert!(TokenAccount::from_bytes(&buf).is_err());
 
 ## Traits
 
-| Trait | Purpose |
-|-------|---------|
-| `ZeroPodSchema` | Declares fixed vs compact layout |
-| `ZeroPodFixed` | Zero-copy access for fixed-size types |
-| `ZeroPodCompact` | Zero-copy access for variable-length types |
-| `ZcValidate` | Validates byte representations |
-| `ZcElem` | Marker: alignment 1, valid for packed access (unsafe) |
-| `ZcField` | Maps native Rust types to their pod companions |
+| Trait            | Purpose                                               |
+| ---------------- | ----------------------------------------------------- |
+| `ZeroPodSchema`  | Declares fixed vs compact layout                      |
+| `ZeroPodFixed`   | Zero-copy access for fixed-size types                 |
+| `ZeroPodCompact` | Zero-copy access for variable-length types            |
+| `ZcValidate`     | Validates byte representations                        |
+| `ZcElem`         | Marker: alignment 1, valid for packed access (unsafe) |
+| `ZcField`        | Maps native Rust types to their pod companions        |
 
 ## Feature Flags
 
-| Flag | What it enables |
-|------|----------------|
-| `solana-address` | `ZcElem` + `ZcField` for `solana_address::Address` |
-| `solana-program-error` | `From<ZeroPodError> for ProgramError` |
-| `wincode` | `SchemaWrite` / `SchemaRead` for all pod types |
+| Flag                   | What it enables                                    |
+| ---------------------- | -------------------------------------------------- |
+| `solana-address`       | `ZcElem` + `ZcField` for `solana_address::Address` |
+| `solana-program-error` | `From<ZeroPodError> for ProgramError`              |
+| `wincode`              | `SchemaWrite` / `SchemaRead` for all pod types     |
 
 ## Formal Verification
 
-zeropod includes [Kani](https://model-checking.github.io/kani/) model-checking proofs covering:
+pinapod includes [Kani](https://model-checking.github.io/kani/) model-checking proofs covering:
 
 - Roundtrip correctness for all pod types (encode -> decode preserves value)
 - Length prefix encode/decode consistency across all prefix widths
@@ -155,6 +169,12 @@ zeropod includes [Kani](https://model-checking.github.io/kani/) model-checking p
 - UTF-8 preservation in `PodString`
 - `PodOption` tag semantics (invalid tags treated as None)
 - Checked arithmetic matches `std` semantics
+
+CI additionally runs the complete test suite under Miri. Wincode containers use validated deserialization and canonical recursive serialization rather than advertising direct-borrow `ZeroCopy`: inactive capacity is zero-filled and nested values cannot expose uninitialized or stale bytes.
+
+## Security
+
+Please report suspected soundness or security defects privately as described in [SECURITY.md](SECURITY.md). Pinapod reviews upstream ZeroPod changes, but does not merge them automatically; wire compatibility and safety invariants are verified before each release.
 
 ## License
 
