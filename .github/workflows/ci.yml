@@ -123,5 +123,6 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: preview release
+        if: hashFiles('.changeset/*.md') != ''
         run: monochange step prepare-release --dry-run --format json
         shell: devenv shell -c -- bash -e {0}
