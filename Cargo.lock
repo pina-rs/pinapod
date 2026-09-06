@@ -100,14 +100,14 @@ name = "pinapod"
 version = "0.0.0"
 dependencies = [
  "fixed",
- "pinapod-derive",
+ "pinapod_derive",
  "solana-address",
  "solana-program-error",
  "wincode",
 ]
 
 [[package]]
-name = "pinapod-derive"
+name = "pinapod_derive"
 version = "0.0.0"
 dependencies = [
  "proc-macro2",
