@@ -164,10 +164,10 @@ mod tests {
             }
         };
 
-        let error = match Schema::parse(&input) {
-            Ok(_) => panic!("invalid prefix unexpectedly parsed"),
-            Err(error) => error.to_string(),
-        };
+        let error = Schema::parse(&input)
+            .err()
+            .expect("invalid prefix should be rejected")
+            .to_string();
 
         assert!(error.contains("PodVec length prefix must be"));
     }
