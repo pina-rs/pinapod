@@ -109,6 +109,8 @@ jobs:
           gh auth setup-git
         shell: bash
       - name: create release tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: monochange --log-level=debug step tag-release --from HEAD --push=true --format json
         shell: devenv shell -- bash -e {0}
       - name: create draft releases
@@ -129,7 +131,7 @@ jobs:
             exit 1
           fi
           for tag in "${release_tags[@]}"; do
-            [[ "$tag" == v* ]] || { echo "::error::Unexpected release tag '$tag'." >&2; exit 1; }
+            [[ "$tag" == pina/v* ]] || { echo "::error::Unexpected release tag '$tag'." >&2; exit 1; }
             gh workflow run publish.yml --repo "$GITHUB_REPOSITORY" --ref main --field "tag=$tag"
           done
         shell: devenv shell -- bash -e {0}

@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to publish, for example v0.1.0
+        description: Release tag to publish, for example pina/v0.1.0
         required: true
         type: string
   push:
-    tags: ["v*"]
+    tags: ["pina/v*"]
 
 permissions:
   contents: read
@@ -22,7 +22,7 @@ env:
 
 jobs:
   publish:
-    if: github.repository_owner == 'pina-rs' && startsWith(inputs.tag || github.ref_name, 'v')
+    if: github.repository_owner == 'pina-rs' && startsWith(inputs.tag || github.ref_name, 'pina/v')
     environment: publisher
     permissions:
       contents: write
@@ -32,7 +32,7 @@ jobs:
     steps:
       - name: validate release tag
         run: |
-          [[ "$RELEASE_TAG" == v* ]] || { echo "::error::Unexpected release tag '$RELEASE_TAG'." >&2; exit 1; }
+          [[ "$RELEASE_TAG" == pina/v* ]] || { echo "::error::Unexpected release tag '$RELEASE_TAG'." >&2; exit 1; }
         shell: bash
       - name: checkout release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
