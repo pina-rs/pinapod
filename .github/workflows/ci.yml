@@ -177,8 +177,10 @@ jobs:
       fail-fast: false
       matrix:
         shard:
-          - name: bool-option
-            harness: "bool::kani_proofs|option::kani_proofs"
+          - name: bool
+            harness: "bool::kani_proofs"
+          - name: option
+            harness: "option::kani_proofs"
           - name: string
             harness: "string::kani_proofs"
           - name: vec
