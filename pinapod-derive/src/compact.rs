@@ -598,16 +598,10 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
         let edit_name = format_ident!("__{}_edit", f.name);
         match &f.kind {
             FieldKind::Tail(TailField::Segment {
-                payload: TailPayload::String { .. },
+                payload: TailPayload::String { .. } | TailPayload::Vec { .. },
                 ..
             }) => {
                 edit_fields.push(quote! { #edit_name: Option<(*const u8, usize)> });
-            }
-            FieldKind::Tail(TailField::Segment {
-                payload: TailPayload::Vec { .. },
-                ..
-            }) => {
-                edit_fields.push(quote! { #edit_name: Option<(*const u8, usize, usize)> });
             }
             _ => unreachable!(),
         }
@@ -659,7 +653,6 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
                         self.#edit_name = Some((
                             value.as_ptr() as *const u8,
                             value.len(),
-                            core::mem::size_of::<#mapped_elem>(),
                         ));
                         Ok(())
                     }
@@ -700,10 +693,9 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
                             self.#edit_name = Some((
                                 value.as_ptr() as *const u8,
                                 value.len(),
-                                core::mem::size_of::<#mapped_elem>(),
                             ));
                         } else {
-                            self.#edit_name = Some((core::ptr::null(), 0, core::mem::size_of::<#mapped_elem>()));
+                            self.#edit_name = Some((core::ptr::null(), 0));
                         }
                         Ok(())
                     }
@@ -746,7 +738,7 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
                 let read_len = read_len_expr(&len_name, *pfx);
                 let mapped_elem = map_to_pod_type(elem);
                 projected_steps.push(quote! {
-                    if let Some((_, __new_count, __new_elem_size)) = self.#edit_name {
+                    if let Some((_, __new_count)) = self.#edit_name {
                         let __hdr = self.header();
                         let __old_count = #read_len;
                         let __old_len = __pinapod_checked_mul(
@@ -755,7 +747,7 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
                         )?;
                         let __new_len = __pinapod_checked_mul(
                             __new_count,
-                            __new_elem_size,
+                            core::mem::size_of::<#mapped_elem>(),
                         )?;
                         __total = __total
                             .checked_sub(__old_len)
@@ -796,7 +788,7 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
                 let old_size =
                     old_option_vec_size_expr(&tag_name, *pfx, quote! { __offset }, &mapped_elem);
                 projected_steps.push(quote! {
-                    if let Some((__ptr, __count, __elem_size)) = self.#edit_name {
+                    if let Some((__ptr, __count)) = self.#edit_name {
                         let __hdr = self.header();
                         #offset_computation
                         let __old_len = #old_size;
@@ -805,7 +797,10 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
                         } else {
                             __pinapod_checked_add(
                                 #pfx,
-                                __pinapod_checked_mul(__count, __elem_size)?,
+                                __pinapod_checked_mul(
+                                    __count,
+                                    core::mem::size_of::<#mapped_elem>(),
+                                )?,
                             )?
                         };
                         __total = __total
@@ -1075,7 +1070,6 @@ fn generate_patch(
                         writer.#edit = Some((
                             value.as_ptr() as *const u8,
                             value.len(),
-                            core::mem::size_of::<#mapped_elem>(),
                         ));
                     }
                 });
@@ -1212,13 +1206,8 @@ fn generate_patch(
                             Some(value) => (
                                 value.as_ptr() as *const u8,
                                 value.len(),
-                                core::mem::size_of::<#mapped_elem>(),
                             ),
-                            None => (
-                                core::ptr::null(),
-                                0,
-                                core::mem::size_of::<#mapped_elem>(),
-                            ),
+                            None => (core::ptr::null(), 0),
                         });
                     }
                 });
@@ -1483,7 +1472,10 @@ fn generate_commit_body(
                         )?
                     };
                     let #new_len_var: usize = match self.#edit_name {
-                        Some((_, __count, __sz)) => __pinapod_checked_mul(__count, __sz)?,
+                        Some((_, __count)) => __pinapod_checked_mul(
+                            __count,
+                            core::mem::size_of::<#mapped_elem>(),
+                        )?,
                         None => #old_len_var,
                     };
                 });
@@ -1532,13 +1524,16 @@ fn generate_commit_body(
                         #old_size
                     };
                     let #new_len_var: usize = match self.#edit_name {
-                        Some((ptr, __count, __sz)) => {
+                        Some((ptr, __count)) => {
                             if ptr.is_null() {
                                 0
                             } else {
                                 __pinapod_checked_add(
                                     #pfx,
-                                    __pinapod_checked_mul(__count, __sz)?,
+                                    __pinapod_checked_mul(
+                                        __count,
+                                        core::mem::size_of::<#mapped_elem>(),
+                                    )?,
                                 )?
                             }
                         }
@@ -1655,7 +1650,7 @@ fn generate_commit_body(
             }) => {
                 let new_len_var = format_ident!("__new_len_{}", fname);
                 phase_2.push(quote! {
-                    if let Some((__src_ptr, _, _)) = self.#edit_name {
+                    if let Some((__src_ptr, _)) = self.#edit_name {
                         if #new_len_var > 0 {
                             let __source = unsafe {
                                 core::slice::from_raw_parts(__src_ptr, #new_len_var)
@@ -1700,10 +1695,11 @@ fn generate_commit_body(
             }
             FieldKind::Tail(TailField::Segment {
                 presence: TailPresence::OptionTag,
-                payload: TailPayload::Vec { pfx, .. },
+                payload: TailPayload::Vec { elem, pfx, .. },
             }) => {
+                let mapped_elem = map_to_pod_type(elem);
                 phase_2.push(quote! {
-                    if let Some((__src_ptr, __count, __elem_size)) = self.#edit_name {
+                    if let Some((__src_ptr, __count)) = self.#edit_name {
                         if !__src_ptr.is_null() {
                             __pinapod_write_prefix(
                                 self.data,
@@ -1711,7 +1707,10 @@ fn generate_commit_body(
                                 #pfx,
                                 __count,
                             )?;
-                            let __new_byte_len = __pinapod_checked_mul(__count, __elem_size)?;
+                            let __new_byte_len = __pinapod_checked_mul(
+                                __count,
+                                core::mem::size_of::<#mapped_elem>(),
+                            )?;
                             let __payload_offset = __pinapod_checked_add(#new_off_var, #pfx)?;
                             if __new_byte_len > 0 {
                                 let __source = unsafe {
@@ -1760,7 +1759,7 @@ fn generate_commit_body(
                 payload: TailPayload::Vec { .. },
             }) => {
                 update_lens.push(quote! {
-                    if let Some((_, __count, _)) = self.#edit_name {
+                    if let Some((_, __count)) = self.#edit_name {
                         __pinapod_write_prefix(
                             &mut self.header_mut().#len_name,
                             0,
@@ -1772,22 +1771,11 @@ fn generate_commit_body(
             }
             FieldKind::Tail(TailField::Segment {
                 presence: TailPresence::OptionTag,
-                payload: TailPayload::String { .. },
+                payload: TailPayload::String { .. } | TailPayload::Vec { .. },
             }) => {
                 let tag_name = format_ident!("__{}_tag", f.name);
                 update_lens.push(quote! {
                     if let Some((ptr, _)) = self.#edit_name {
-                        self.header_mut().#tag_name[0] = if ptr.is_null() { 0 } else { 1 };
-                    }
-                });
-            }
-            FieldKind::Tail(TailField::Segment {
-                presence: TailPresence::OptionTag,
-                payload: TailPayload::Vec { .. },
-            }) => {
-                let tag_name = format_ident!("__{}_tag", f.name);
-                update_lens.push(quote! {
-                    if let Some((ptr, _, _)) = self.#edit_name {
                         self.header_mut().#tag_name[0] = if ptr.is_null() { 0 } else { 1 };
                     }
                 });

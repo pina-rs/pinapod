@@ -19,20 +19,20 @@ The compact writer types differ by API generation. The current fixture measures 
 The table below reports median latency from GitHub Actions run `34127045383` on 7 September 2026. A positive score means the current implementation is faster than PinaPod v0.1; a negative score means it is slower. The score is `(previous - current) / previous`, so its sign follows performance rather than elapsed time.
 
 | Workload                 | PinaPod v0.2 | PinaPod v0.1 | ZeroPod v0.3.5 | Performance score |
-| ------------------------ | -----------: | -----------: | ---------------: | ----------------: |
-| Fixed parse              |     1.406 ns |     1.406 ns |         1.406 ns |            +0.02% |
-| Fixed validation         |     0.703 ns |     0.703 ns |         0.703 ns |             0.00% |
-| Fixed read               |     3.516 ns |     3.515 ns |         3.514 ns |            -0.01% |
-| Fixed mutation           |     2.044 ns |     2.082 ns |         2.036 ns |            +1.80% |
-| Fixed initialization     |     1.979 ns |     2.023 ns |         2.024 ns |            +2.18% |
-| Compact-small parse      |     7.032 ns |     6.682 ns |         6.682 ns |            -5.24% |
-| Compact-small validation |     6.426 ns |     5.977 ns |         5.975 ns |            -7.51% |
-| Compact-small access     |     2.108 ns |     2.108 ns |         2.108 ns |            +0.01% |
-| Compact-small update     |    17.231 ns |    16.390 ns |        16.500 ns |            -5.13% |
-| Compact-maximum parse    |    12.665 ns |    12.339 ns |        12.436 ns |            -2.65% |
-| Compact-maximum validate |    12.694 ns |    11.979 ns |        11.983 ns |            -5.97% |
-| Compact-maximum access   |     2.108 ns |     2.108 ns |         2.108 ns |            +0.01% |
-| Compact-maximum update   |    18.282 ns |    17.769 ns |        17.666 ns |            -2.89% |
+| ------------------------ | -----------: | -----------: | -------------: | ----------------: |
+| Fixed parse              |     1.406 ns |     1.406 ns |       1.406 ns |            +0.02% |
+| Fixed validation         |     0.703 ns |     0.703 ns |       0.703 ns |             0.00% |
+| Fixed read               |     3.516 ns |     3.515 ns |       3.514 ns |            -0.01% |
+| Fixed mutation           |     2.044 ns |     2.082 ns |       2.036 ns |            +1.80% |
+| Fixed initialization     |     1.979 ns |     2.023 ns |       2.024 ns |            +2.18% |
+| Compact-small parse      |     7.032 ns |     6.682 ns |       6.682 ns |            -5.24% |
+| Compact-small validation |     6.426 ns |     5.977 ns |       5.975 ns |            -7.51% |
+| Compact-small access     |     2.108 ns |     2.108 ns |       2.108 ns |            +0.01% |
+| Compact-small update     |    17.231 ns |    16.390 ns |      16.500 ns |            -5.13% |
+| Compact-maximum parse    |    12.665 ns |    12.339 ns |      12.436 ns |            -2.65% |
+| Compact-maximum validate |    12.694 ns |    11.979 ns |      11.983 ns |            -5.97% |
+| Compact-maximum access   |     2.108 ns |     2.108 ns |       2.108 ns |            +0.01% |
+| Compact-maximum update   |    18.282 ns |    17.769 ns |      17.666 ns |            -2.89% |
 
 The fixed path is effectively unchanged and its safe one-pass initializer is 2.18% faster than the historical zero-buffer setup. Compact access is also unchanged. Compact parse, validation, and atomic update add between 2.65% and 7.51% in these representative records. That cost buys allocation-bound validation, checked offset arithmetic, preflighted all-or-nothing updates, and stale-suffix clearing. The scaling fixtures show that compact access and validation remain flat as the vector grows; the fixed validation overhead is not proportional to active element count.
 
