@@ -248,7 +248,7 @@ fn validate_rejects_eight_byte_lengths_that_do_not_fit_usize() {
 
     // 2^32 encoded as a little-endian u64. This cannot be represented by a
     // 32-bit usize, even for a zero-capacity container.
-    let bytes = [0, 0, 0, 0, 1, 0, 0, 0];
+    let bytes: [u8; 8] = [0, 0, 0, 0, 1, 0, 0, 0];
     let string = unsafe { &*(bytes.as_ptr() as *const PodString<0, 8>) };
     let vector = unsafe { &*(bytes.as_ptr() as *const PodVec<u8, 0, 8>) };
 
