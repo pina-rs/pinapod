@@ -13,7 +13,7 @@ fn renamed_direct_dependency_compiles() {
         .arg("check")
         .arg("--manifest-path")
         .arg(fixture)
-        .args(["--locked", "--offline"])
+        .arg("--locked")
         .env("CARGO_TARGET_DIR", target)
         .output()
         .unwrap_or_else(|error| panic!("renamed-dependency compile fixture must run: {error}"));

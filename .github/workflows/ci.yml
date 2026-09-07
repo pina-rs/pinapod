@@ -151,6 +151,9 @@ jobs:
       - name: run fixed-prefix regressions on 32-bit Rust
         run: cargo test --manifest-path pinapod/Cargo.toml --all-features --locked --target i686-unknown-linux-gnu --test validation
         shell: devenv shell -c -- bash -e {0}
+        env:
+          CARGO_TARGET_I686_UNKNOWN_LINUX_GNU_LINKER: /usr/bin/gcc
+          RUSTFLAGS: -C link-self-contained=no
 
   miri:
     timeout-minutes: 90
