@@ -4,7 +4,7 @@
     reason = "adversarial tests construct raw layouts and preserve explicit upstream trait paths"
 )]
 
-use pinapod::pod::*;
+use pinapod::{pod::*, PinaPodError};
 
 // ---- PodOption tests ----
 
@@ -35,7 +35,7 @@ fn pod_option_tag_valid_all_prefixes() {
     assert!(PodOption::<u8, 4>::some(1).tag_valid());
 
     let invalid = [2u8, 0, 0, 0, 0];
-    let opt = unsafe { &*(invalid.as_ptr() as *const PodOption<u8, 4>) };
+    let opt = unsafe { &*invalid.as_ptr().cast::<PodOption<u8, 4>>() };
     assert_eq!(opt.raw_tag(), 2);
     assert!(!opt.tag_valid());
 }
@@ -70,23 +70,23 @@ fn pod_option_default() {
 
 #[test]
 fn pod_option_eq() {
-    let a = PodOption::<u8>::some(5u8);
-    let b = PodOption::<u8>::some(5u8);
-    let c = PodOption::<u8>::some(6u8);
-    let d = PodOption::<u8>::none();
-    let e = PodOption::<u8>::none();
-    assert_eq!(a, b);
-    assert_ne!(a, c);
-    assert_ne!(a, d);
-    assert_eq!(d, e);
+    let first = PodOption::<u8>::some(5u8);
+    let same = PodOption::<u8>::some(5u8);
+    let different = PodOption::<u8>::some(6u8);
+    let absent = PodOption::<u8>::none();
+    let also_absent = PodOption::<u8>::none();
+    assert_eq!(first, same);
+    assert_ne!(first, different);
+    assert_ne!(first, absent);
+    assert_eq!(absent, also_absent);
 }
 
 #[test]
 fn pod_option_debug() {
     let some = PodOption::<u8>::some(42u8);
     let none = PodOption::<u8>::none();
-    assert_eq!(format!("{:?}", some), "Some(42)");
-    assert_eq!(format!("{:?}", none), "None");
+    assert_eq!(format!("{some:?}"), "Some(42)");
+    assert_eq!(format!("{none:?}"), "None");
 }
 
 // ---- Numeric pod type smoke tests ----
@@ -117,11 +117,11 @@ fn numeric_size() {
     assert_eq!(core::mem::size_of::<PodBool>(), 1);
 }
 
-// ---- PodU64 roundtrip, arithmetic, comparison ----
+// ---- PodU64 roundtrip, explicit arithmetic, comparison ----
 
 #[test]
 fn pod_u64_roundtrip() {
-    let val = 123456789u64;
+    let val = 123_456_789_u64;
     let pod = PodU64::from(val);
     assert_eq!(pod.get(), val);
     let back: u64 = pod.into();
@@ -134,17 +134,6 @@ fn pod_u32_new_from_array() {
 
     assert_eq!(pod.get(), 0x1234_5678);
     assert_eq!(pod, PodU32::from(0x1234_5678));
-}
-
-#[test]
-fn pod_u64_arithmetic() {
-    let a = PodU64::from(100u64);
-    let b = PodU64::from(42u64);
-    assert_eq!((a + b).get(), 142);
-    assert_eq!((a - b).get(), 58);
-    assert_eq!((a * b).get(), 4200);
-    assert_eq!((a / b).get(), 2);
-    assert_eq!((a % b).get(), 16);
 }
 
 #[test]
@@ -192,7 +181,7 @@ fn pod_bool_roundtrip() {
 fn pod_string_basic() {
     let mut s = PodString::<32>::default();
     assert!(s.is_empty());
-    assert!(s.set("hello"));
+    s.try_set("hello").unwrap();
     assert_eq!(s.as_str(), "hello");
     assert_eq!(s.len(), 5);
 }
@@ -207,17 +196,17 @@ fn pod_string_alignment() {
 #[test]
 fn pod_string_overflow() {
     let mut s = PodString::<3>::default();
-    assert!(!s.set("abcd"));
+    assert!(s.try_set("abcd").is_err());
     assert!(s.is_empty());
 }
 
 #[test]
 fn pod_string_push_str() {
     let mut s = PodString::<10>::default();
-    assert!(s.set("hello"));
-    assert!(s.push_str(" wor"));
+    s.try_set("hello").unwrap();
+    s.try_push_str(" wor").unwrap();
     assert_eq!(s.as_str(), "hello wor");
-    assert!(!s.push_str("ld")); // would exceed capacity
+    assert!(s.try_push_str("ld").is_err());
 }
 
 #[test]
@@ -234,9 +223,9 @@ fn pod_string_try_from() {
 fn pod_vec_basic() {
     let mut v = PodVec::<u8, 10>::default();
     assert!(v.is_empty());
-    assert!(v.push(1));
-    assert!(v.push(2));
-    assert!(v.push(3));
+    v.try_push(1).unwrap();
+    v.try_push(2).unwrap();
+    v.try_push(3).unwrap();
     assert_eq!(v.len(), 3);
     assert_eq!(v.as_slice(), &[1, 2, 3]);
 }
@@ -244,7 +233,7 @@ fn pod_vec_basic() {
 #[test]
 fn pod_vec_iterates_by_shared_and_mutable_reference() {
     let mut values = PodVec::<u8, 3>::default();
-    assert!(values.set_from_slice(&[1, 2, 3]));
+    values.try_set_from_slice(&[1, 2, 3]).unwrap();
 
     assert_eq!((&values).into_iter().copied().sum::<u8>(), 6);
     for value in &mut values {
@@ -261,12 +250,22 @@ fn pod_vec_alignment() {
 }
 
 #[test]
+fn pod_vec_maps_native_elements_with_an_explicit_prefix() {
+    let mut values = PodVec::<u64, 1024, 2>::default();
+    values.try_set([42_u64, 84]).unwrap();
+
+    assert_eq!(core::mem::align_of_val(&values), 1);
+    assert_eq!(values[0].get(), 42);
+    assert_eq!(values[1].get(), 84);
+}
+
+#[test]
 fn pod_vec_push_pop() {
     let mut v = PodVec::<u8, 3>::default();
-    assert!(v.push(10));
-    assert!(v.push(20));
-    assert!(v.push(30));
-    assert!(!v.push(40)); // full
+    v.try_push(10).unwrap();
+    v.try_push(20).unwrap();
+    v.try_push(30).unwrap();
+    assert!(v.try_push(40).is_err());
     assert_eq!(v.pop(), Some(30));
     assert_eq!(v.pop(), Some(20));
     assert_eq!(v.pop(), Some(10));
@@ -276,45 +275,9 @@ fn pod_vec_push_pop() {
 #[test]
 fn pod_vec_set_from_slice() {
     let mut v = PodVec::<u8, 5>::default();
-    assert!(v.set_from_slice(&[1, 2, 3, 4, 5]));
+    v.try_set_from_slice(&[1, 2, 3, 4, 5]).unwrap();
     assert_eq!(v.as_slice(), &[1, 2, 3, 4, 5]);
-    assert!(!v.set_from_slice(&[1, 2, 3, 4, 5, 6])); // too many
-}
-
-// ---- Reverse-direction operator tests ----
-
-#[test]
-fn reverse_comparison() {
-    let v = PodU64::from(42u64);
-    assert!(100u64 > v);
-    assert!(42u64 == v);
-    assert!(10u64 < v);
-}
-
-#[test]
-fn reverse_arithmetic() {
-    let v = PodU64::from(10u64);
-    assert_eq!((100u64 + v).get(), 110);
-    assert_eq!((100u64 - v).get(), 90);
-    assert_eq!((5u64 * v).get(), 50);
-    assert_eq!((100u64 / v).get(), 10);
-    assert_eq!((105u64 % v).get(), 5);
-}
-
-#[test]
-fn reverse_comparison_signed() {
-    let v = PodI32::from(-5i32);
-    assert!(0i32 > v);
-    assert!(-5i32 == v);
-    assert!(-10i32 < v);
-}
-
-#[test]
-fn reverse_arithmetic_signed() {
-    let v = PodI32::from(10i32);
-    assert_eq!((100i32 + v).get(), 110);
-    assert_eq!((100i32 - v).get(), 90);
-    assert_eq!((5i32 * v).get(), 50);
+    assert!(v.try_set_from_slice(&[1, 2, 3, 4, 5, 6]).is_err());
 }
 
 use core::hash::{Hash, Hasher};
@@ -327,7 +290,7 @@ impl Hasher for TestHasher {
     }
     fn write(&mut self, bytes: &[u8]) {
         for &b in bytes {
-            self.0 = self.0.wrapping_mul(31).wrapping_add(b as u64);
+            self.0 = self.0.wrapping_mul(31).wrapping_add(u64::from(b));
         }
     }
 }
@@ -346,9 +309,9 @@ fn pod_u64_hash() {
 #[test]
 fn pod_u64_formatting() {
     let v = PodU64::from(255u64);
-    assert_eq!(format!("{:b}", v), format!("{:b}", 255u64));
-    assert_eq!(format!("{:x}", v), format!("{:x}", 255u64));
-    assert_eq!(format!("{:X}", v), format!("{:X}", 255u64));
+    assert_eq!(format!("{v:b}"), format!("{:b}", 255u64));
+    assert_eq!(format!("{v:x}"), format!("{:x}", 255u64));
+    assert_eq!(format!("{v:X}"), format!("{:X}", 255u64));
 }
 
 #[test]
@@ -363,6 +326,13 @@ fn pod_u64_wrapping() {
 }
 
 #[test]
+fn pod_u64_saturating() {
+    assert_eq!(PodU64::MAX.saturating_add(1u64), PodU64::MAX);
+    assert_eq!(PodU64::ZERO.saturating_sub(1u64), PodU64::ZERO);
+    assert_eq!(PodU64::MAX.saturating_mul(2u64), PodU64::MAX);
+}
+
+#[test]
 fn pod_u64_set() {
     let mut v = PodU64::from(0u64);
     v.set(42u64);
@@ -373,6 +343,15 @@ fn pod_u64_set() {
 fn pod_i64_wrapping() {
     let v = PodI64::from(i64::MAX);
     assert_eq!(v.wrapping_add(1i64).get(), i64::MIN);
+}
+
+#[test]
+fn pod_i64_explicit_negation() {
+    let value = PodI64::from(42);
+
+    assert_eq!(value.checked_neg(), Some(PodI64::from(-42)));
+    assert!(PodI64::MIN.checked_neg().is_none());
+    assert_eq!(PodI64::MIN.wrapping_neg(), PodI64::MIN);
 }
 
 #[test]
@@ -517,6 +496,18 @@ fn pod_vec_try_extend() {
     assert!(v.try_extend_from_slice(&[3, 4]).is_ok());
     assert!(v.try_extend_from_slice(&[5, 6]).is_err()); // would exceed
     assert_eq!(v.as_slice(), &[1, 2, 3, 4]);
+}
+
+#[test]
+fn pod_vec_slice_like_setters_are_atomic_on_overflow() {
+    let mut values = PodVec::<u8, 3>::default();
+    values.try_set([9, 8]).unwrap();
+
+    assert_eq!(values.try_set([1, 2, 3, 4]), Err(PinaPodError::Overflow));
+    assert_eq!(values.as_slice(), &[9, 8]);
+
+    assert_eq!(values.try_extend(vec![1, 2]), Err(PinaPodError::Overflow));
+    assert_eq!(values.as_slice(), &[9, 8]);
 }
 
 #[test]

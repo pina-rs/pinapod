@@ -1,0 +1,5 @@
+error: PodVec length prefix must be the byte width 1, 2, 4, or 8
+ --> tests/ui/fail/prefix_width.rs:6:37
+  |
+6 |     values: pinapod::PodVec<u64, 8, 3>,
+  |                                     ^

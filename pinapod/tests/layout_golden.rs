@@ -3,10 +3,10 @@
     reason = "these upstream layout assertions intentionally spell out trait and core memory paths"
 )]
 
-use pinapod::{pod::*, ZeroPod, ZeroPodFixed};
+use pinapod::{pod::*, PinaPod};
 
 #[allow(dead_code)]
-#[derive(ZeroPod)]
+#[derive(PinaPod)]
 struct GoldenFixed {
     pub a: u8,
     pub b: u64,
@@ -16,13 +16,13 @@ struct GoldenFixed {
 
 #[test]
 fn golden_fixed_size() {
-    assert_eq!(<GoldenFixed as pinapod::ZeroPodFixed>::SIZE, 1 + 8 + 1 + 4);
+    assert_eq!(GoldenFixed::SIZE, 1 + 8 + 1 + 4);
 }
 
 #[test]
 fn golden_fixed_alignment() {
     assert_eq!(
-        core::mem::align_of::<<GoldenFixed as pinapod::ZeroPodFixed>::Zc>(),
+        core::mem::align_of::<<GoldenFixed as pinapod::PinaPodFixed>::Zc>(),
         1
     );
 }
@@ -30,7 +30,7 @@ fn golden_fixed_alignment() {
 #[test]
 fn golden_fixed_field_offsets() {
     let buf = [0u8; 14];
-    let zc = GoldenFixed::from_bytes(&buf).unwrap();
+    let zc = GoldenFixed::read_exact(&buf).unwrap();
     let base = zc as *const _ as usize;
     assert_eq!(&zc.a as *const _ as usize - base, 0);
     assert_eq!(&zc.b as *const _ as usize - base, 1);

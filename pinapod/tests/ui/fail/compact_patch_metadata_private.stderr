@@ -1,0 +1,5 @@
+error[E0616]: field `entries` of struct `JournalPatch` is private
+  --> tests/ui/fail/compact_patch_metadata_private.rs:13:11
+   |
+13 |     patch.entries = None;
+   |           ^^^^^^^ private field

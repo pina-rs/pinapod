@@ -1,0 +1,7 @@
+error: cannot construct `JournalRef<'_>` with struct literal syntax due to private fields
+  --> tests/ui/fail/compact_ref_construction_private.rs:11:13
+   |
+11 |     let _ = JournalRef { data: &bytes };
+   |             ^^^^^^^^^^   ------------ private field
+   |
+   = note: ...and other private field `encoded_len` that was not provided

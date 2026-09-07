@@ -19,7 +19,7 @@ pub mod error;
     clippy::uninlined_format_args,
     unsafe_code,
     unused_qualifications,
-    reason = "Pinapod's audited zero-copy primitives require narrowly scoped unsafe operations"
+    reason = "PinaPod's audited zero-copy primitives require narrowly scoped unsafe operations"
 )]
 pub mod pod;
 #[allow(
@@ -29,24 +29,24 @@ pub mod pod;
     clippy::wildcard_imports,
     unsafe_code,
     unused_qualifications,
-    reason = "Pinapod's audited byte-casting contracts require narrowly scoped unsafe operations"
+    reason = "PinaPod's audited byte-casting contracts require narrowly scoped unsafe operations"
 )]
 pub mod traits;
 
 pub use {
-    error::ZeroPodError,
-    pinapod_derive::ZeroPod,
-    traits::{
-        LayoutKind, ZcElem, ZcField, ZcValidate, ZeroPodCompact, ZeroPodFixed, ZeroPodSchema,
-    },
+    error::PinaPodError,
+    pinapod_derive::PinaPod,
+    pod::{PodString, PodVec},
+    traits::{PinaPod, PinaPodCompact, PinaPodFixed, PinaPodPatch, ZcElem, ZcField, ZcValidate},
 };
 
 // Schema-friendly aliases to pod storage types.
 // These are NOT a separate abstraction layer — they ARE PodString/PodVec
 // with default prefix sizes.
-pub type String<const N: usize> = pod::PodString<N, 1>;
+pub type String<const N: usize> = PodString<N, 1>;
 
-/// Schema-friendly Vec alias. Maps native types to their pod companions
-/// via `ZcField`, so `Vec<u64, 8>` becomes `PodVec<PodU64, 8, 2>`.
-#[allow(type_alias_bounds)]
-pub type Vec<T: ZcField<Pod: ZcElem>, const N: usize> = pod::PodVec<<T as ZcField>::Pod, N, 2>;
+/// Schema-friendly vector with a two-byte length prefix.
+///
+/// Use [`pod::PodVec`] directly when the wire format needs an explicit prefix
+/// width, for example `PodVec<u64, 1024, 2>`.
+pub type Vec<T, const N: usize> = PodVec<T, N, 2>;

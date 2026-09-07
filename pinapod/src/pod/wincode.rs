@@ -1,14 +1,13 @@
 //! Manual `SchemaWrite` / `SchemaRead` impls for pod types that cannot use
 //! derive (generic params, `MaybeUninit` fields).
 //!
-//! The inactive capacity of a container may be uninitialized or may contain
-//! stale bytes read from an existing account. Writers therefore emit only
-//! active values and canonical zero padding. This avoids reading uninitialized
-//! memory, prevents stale-capacity disclosure, and makes equivalent logical
-//! values encode identically.
+//! The inactive capacity of a container may contain stale bytes read from an
+//! existing account. Writers therefore emit only active values and canonical
+//! zero padding. This prevents stale-capacity disclosure and makes equivalent
+//! logical values encode identically.
 
 use {
-    super::{bool::PodBool, option::PodOption, string::PodString, vec::PodVec},
+    super::{bool::PodBool, option::PodOption, string::PodString, vec::PodVecRepr},
     crate::traits::ZcElem,
     wincode::{config::ConfigCore, TypeMeta},
 };
@@ -91,7 +90,7 @@ where
     match <T as wincode::SchemaWrite<C>>::TYPE_META {
         TypeMeta::Static { size, .. } if size == core::mem::size_of::<T>() => Ok(size),
         _ => Err(wincode::error::WriteError::Custom(
-            "Pinapod container elements require a fixed wincode representation matching their in-memory size",
+            "PinaPod container elements require a fixed wincode representation matching their in-memory size",
         )),
     }
 }
@@ -145,12 +144,20 @@ unsafe impl<'__de, const N: usize, const PFX: usize, C: ConfigCore> wincode::Sch
 // PodVec
 // ---------------------------------------------------------------------------
 
-unsafe impl<T, const N: usize, const PFX: usize, C> wincode::SchemaWrite<C> for PodVec<T, N, PFX>
+unsafe impl<T, const N: usize, const PFX: usize, C> wincode::SchemaWrite<C>
+    for PodVecRepr<T, N, PFX>
 where
     T: ZcElem + wincode::SchemaWrite<C, Src = T>,
     C: ConfigCore,
 {
     type Src = Self;
+
+    const TYPE_META: TypeMeta = match <T as wincode::SchemaWrite<C>>::TYPE_META {
+        TypeMeta::Static { size, .. } if size == core::mem::size_of::<T>() => {
+            static_encoded!(Self)
+        }
+        _ => TypeMeta::Dynamic,
+    };
 
     fn size_of(_src: &Self) -> wincode::error::WriteResult<usize> {
         require_fixed_wire_size::<T, C>()?;
@@ -171,7 +178,7 @@ where
 }
 
 unsafe impl<'__de, T: ZcElem, const N: usize, const PFX: usize, C: ConfigCore>
-    wincode::SchemaRead<'__de, C> for PodVec<T, N, PFX>
+    wincode::SchemaRead<'__de, C> for PodVecRepr<T, N, PFX>
 {
     type Dst = Self;
 
@@ -201,6 +208,13 @@ where
 {
     type Src = Self;
 
+    const TYPE_META: TypeMeta = match <T as wincode::SchemaWrite<C>>::TYPE_META {
+        TypeMeta::Static { size, .. } if size == core::mem::size_of::<T>() => {
+            static_encoded!(Self)
+        }
+        _ => TypeMeta::Dynamic,
+    };
+
     fn size_of(_src: &Self) -> wincode::error::WriteResult<usize> {
         require_fixed_wire_size::<T, C>()?;
         Ok(core::mem::size_of::<Self>())
@@ -216,7 +230,7 @@ where
             Some(value) => <T as wincode::SchemaWrite<C>>::write(__writer, value),
             None if src.tag_valid() => write_zeroed_padding(__writer, value_size),
             None => Err(wincode::error::WriteError::Custom(
-                "Pinapod option has an invalid tag",
+                "PinaPod option has an invalid tag",
             )),
         }
     }

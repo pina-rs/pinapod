@@ -1,0 +1,5 @@
+error: unsupported dynamic nesting: `Option<Vec<String<_>, _>>` is not supported; supported compact fields are: `String<N>`, `Vec<T, N>` for fixed `T`, `Option<T>` for fixed `T`, `Option<String<N>>`, `Option<Vec<T, N>>` for fixed `T`, and `Vec<String<M>, N>`
+ --> tests/ui/fail/unsupported_compact_nesting.rs:6:20
+  |
+6 |     values: Option<pinapod::Vec<pinapod::String<8>, 4>>,
+  |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

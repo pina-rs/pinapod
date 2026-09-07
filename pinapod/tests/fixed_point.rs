@@ -7,7 +7,7 @@ use {
     },
     pinapod::{
         pod::{PodI128, PodI16, PodI32, PodI64, PodU128, PodU16, PodU32, PodU64},
-        ZcElem, ZcField, ZeroPod, ZeroPodCompact, ZeroPodFixed,
+        PinaPod, ZcElem, ZcField,
     },
     std::vec::Vec as StdVec,
 };
@@ -17,7 +17,7 @@ where
     T: ZcField<Pod = Pod>,
     Pod: ZcElem,
 {
-    assert_eq!(T::POD_SIZE, size_of::<Pod>());
+    assert_eq!(size_of::<T::Pod>(), size_of::<Pod>());
     assert_eq!(align_of::<Pod>(), 1);
 }
 
@@ -36,7 +36,7 @@ fn every_fixed_width_maps_to_an_alignment_one_integer_pod() {
 }
 
 #[allow(dead_code)]
-#[derive(ZeroPod)]
+#[derive(PinaPod)]
 struct FixedPointAccount {
     pub price: I16F16,
     pub quantity: U24F8,
@@ -51,7 +51,7 @@ fn fixed_schema_roundtrips_values_and_uses_little_endian_bits() {
     let mut bytes = [0u8; FixedPointAccount::SIZE];
 
     {
-        let account = FixedPointAccount::from_bytes_mut(&mut bytes).unwrap();
+        let account = FixedPointAccount::read_exact_mut(&mut bytes).unwrap();
         account.price = price.to_bits().into();
         account.quantity = quantity.to_bits().into();
         account
@@ -62,7 +62,7 @@ fn fixed_schema_roundtrips_values_and_uses_little_endian_bits() {
     assert_eq!(&bytes[..4], &price.to_bits().to_le_bytes());
     assert_eq!(&bytes[4..8], &quantity.to_bits().to_le_bytes());
 
-    let account = FixedPointAccount::from_bytes(&bytes).unwrap();
+    let account = FixedPointAccount::read_exact(&bytes).unwrap();
     assert_eq!(I16F16::from_bits(account.price.get()), price);
     assert_eq!(U24F8::from_bits(account.quantity.get()), quantity);
     assert_eq!(
@@ -75,7 +75,7 @@ fn fixed_schema_roundtrips_values_and_uses_little_endian_bits() {
 }
 
 #[allow(dead_code)]
-#[derive(ZeroPod)]
+#[derive(PinaPod)]
 #[pinapod(compact)]
 struct FixedPointBook {
     pub mark_price: I16F16,
@@ -86,7 +86,7 @@ struct FixedPointBook {
 
 #[test]
 fn compact_schema_roundtrips_multiple_dynamic_fixed_point_fields() {
-    let mut bytes = [0u8; 256];
+    let mut bytes = [0u8; FixedPointBook::MAX_SIZE];
     let bid_values = [
         I16F16::from_num(10.25),
         I16F16::from_num(10.5),
@@ -96,14 +96,12 @@ fn compact_schema_roundtrips_multiple_dynamic_fixed_point_fields() {
     let bids = bid_values.map(|value| PodI32::from(value.to_bits()));
     let asks = ask_values.map(|value| PodU32::from(value.to_bits()));
 
-    let encoded_size = {
-        let mut book = FixedPointBookMut::new(&mut bytes).unwrap();
-        book.mark_price = I16F16::from_num(10.5).to_bits().into();
-        book.set_bids(&bids).unwrap();
-        book.set_venue("Pina DEX").unwrap();
-        book.set_asks(&asks).unwrap();
-        book.commit().unwrap()
-    };
+    let patch = FixedPointBookPatch::new()
+        .mark_price(I16F16::from_num(10.5).to_bits())
+        .replace_bids(&bids)
+        .venue("Pina DEX")
+        .replace_asks(&asks);
+    let encoded_size = FixedPointBook::initialize(&mut bytes, &patch).unwrap();
 
     assert_eq!(
         encoded_size,
@@ -113,7 +111,7 @@ fn compact_schema_roundtrips_multiple_dynamic_fixed_point_fields() {
             + asks.len() * size_of::<PodU32>(),
     );
 
-    let book = FixedPointBookRef::new(&bytes[..encoded_size]).unwrap();
+    let book = FixedPointBook::read_prefix(&bytes[..encoded_size]).unwrap();
     assert_eq!(
         I16F16::from_bits(book.mark_price.get()),
         I16F16::from_num(10.5),
@@ -137,20 +135,18 @@ fn compact_schema_roundtrips_multiple_dynamic_fixed_point_fields() {
 
 #[test]
 fn resizing_one_fixed_point_tail_preserves_the_others() {
-    let mut bytes = [0u8; 256];
+    let mut bytes = [0u8; FixedPointBook::MAX_SIZE];
     let initial_bids = [PodI32::from(I16F16::from_num(9.5).to_bits())];
     let asks = [
         PodU32::from(U24F8::from_num(11.0).to_bits()),
         PodU32::from(U24F8::from_num(11.5).to_bits()),
     ];
 
-    {
-        let mut book = FixedPointBookMut::new(&mut bytes).unwrap();
-        book.set_bids(&initial_bids).unwrap();
-        book.set_venue("market").unwrap();
-        book.set_asks(&asks).unwrap();
-        book.commit().unwrap();
-    }
+    let initial = FixedPointBookPatch::new()
+        .replace_bids(&initial_bids)
+        .venue("market")
+        .replace_asks(&asks);
+    FixedPointBook::initialize(&mut bytes, &initial).unwrap();
 
     let expanded_bids = [
         PodI32::from(I16F16::from_num(9.0).to_bits()),
@@ -158,13 +154,10 @@ fn resizing_one_fixed_point_tail_preserves_the_others() {
         PodI32::from(I16F16::from_num(9.5).to_bits()),
         PodI32::from(I16F16::from_num(9.75).to_bits()),
     ];
-    let encoded_size = {
-        let mut book = FixedPointBookMut::new(&mut bytes).unwrap();
-        book.set_bids(&expanded_bids).unwrap();
-        book.commit().unwrap()
-    };
+    let patch = FixedPointBookPatch::new().replace_bids(&expanded_bids);
+    let encoded_size = FixedPointBook::update(&mut bytes, &patch).unwrap();
 
-    let book = FixedPointBookRef::new(&bytes[..encoded_size]).unwrap();
+    let book = FixedPointBook::read_prefix(&bytes[..encoded_size]).unwrap();
     assert_eq!(book.bids(), expanded_bids);
     assert_eq!(book.venue(), "market");
     assert_eq!(book.asks(), asks);

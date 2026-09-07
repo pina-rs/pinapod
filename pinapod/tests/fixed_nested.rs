@@ -3,10 +3,10 @@
     reason = "these upstream layout assertions intentionally spell out trait paths"
 )]
 
-use pinapod::{ZeroPod, ZeroPodFixed};
+use pinapod::PinaPod;
 
 #[allow(dead_code)]
-#[derive(ZeroPod)]
+#[derive(PinaPod)]
 struct Inner {
     pub threshold: u64,
     pub bump: u8,
@@ -14,7 +14,7 @@ struct Inner {
 }
 
 #[allow(dead_code)]
-#[derive(ZeroPod)]
+#[derive(PinaPod)]
 struct Outer {
     pub authority: [u8; 32],
     pub settings: Inner,
@@ -23,20 +23,18 @@ struct Outer {
 
 #[test]
 fn nested_size() {
-    assert_eq!(<Inner as pinapod::ZeroPodFixed>::SIZE, 10); // PodU64(8) + u8(1) + PodBool(1)
-    assert_eq!(<Outer as pinapod::ZeroPodFixed>::SIZE, 50); // [u8;32](32) +
-                                                            // InnerZc(10) +
-                                                            // PodU64(8)
+    assert_eq!(Inner::SIZE, 10); // PodU64(8) + u8(1) + PodBool(1)
+    assert_eq!(Outer::SIZE, 50); // [u8;32](32) + InnerZc(10) + PodU64(8)
 }
 
 #[test]
 fn nested_alignment() {
     assert_eq!(
-        core::mem::align_of::<<Inner as pinapod::ZeroPodFixed>::Zc>(),
+        core::mem::align_of::<<Inner as pinapod::PinaPodFixed>::Zc>(),
         1
     );
     assert_eq!(
-        core::mem::align_of::<<Outer as pinapod::ZeroPodFixed>::Zc>(),
+        core::mem::align_of::<<Outer as pinapod::PinaPodFixed>::Zc>(),
         1
     );
 }
@@ -44,7 +42,7 @@ fn nested_alignment() {
 #[test]
 fn nested_field_access() {
     let mut buf = [0u8; 50];
-    let zc = Outer::from_bytes_mut(&mut buf).unwrap();
+    let zc = Outer::read_exact_mut(&mut buf).unwrap();
     zc.settings.threshold = 100.into();
     zc.settings.bump = 7;
     zc.settings.enabled = true.into();
@@ -61,5 +59,5 @@ fn nested_validation_propagates() {
     let mut buf = [0u8; 50];
     // Inner.enabled is at offset 32 (authority) + 8 (threshold) + 1 (bump) = 41
     buf[41] = 5; // invalid bool
-    assert!(Outer::from_bytes(&buf).is_err());
+    assert!(Outer::read_exact(&buf).is_err());
 }

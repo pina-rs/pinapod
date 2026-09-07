@@ -3,9 +3,9 @@
     reason = "these upstream layout assertions intentionally spell out trait paths"
 )]
 
-use pinapod::{ZeroPod, ZeroPodFixed};
+use pinapod::PinaPod;
 
-#[derive(ZeroPod, Debug, PartialEq)]
+#[derive(PinaPod, Debug, PartialEq)]
 #[repr(u8)]
 enum Status {
     Active = 0,
@@ -15,20 +15,20 @@ enum Status {
 
 #[test]
 fn enum_size() {
-    assert_eq!(<Status as pinapod::ZeroPodFixed>::SIZE, 1);
+    assert_eq!(Status::SIZE, 1);
 }
 
 #[test]
 fn enum_from_bytes_valid() {
     let buf = [1u8];
-    let zc = Status::from_bytes(&buf).unwrap();
+    let zc = Status::read_exact(&buf).unwrap();
     assert_eq!(zc.get(), 1u8);
 }
 
 #[test]
 fn enum_validate_rejects_invalid() {
     let buf = [5u8];
-    assert!(Status::from_bytes(&buf).is_err());
+    assert!(Status::read_exact(&buf).is_err());
 }
 
 #[test]
@@ -37,7 +37,7 @@ fn enum_from_into() {
     assert_eq!(pod, 1u8);
 }
 
-#[derive(ZeroPod, Debug, PartialEq)]
+#[derive(PinaPod, Debug, PartialEq)]
 #[repr(u16)]
 enum LargeEnum {
     A = 0,
@@ -47,26 +47,26 @@ enum LargeEnum {
 
 #[test]
 fn enum_u16_size() {
-    assert_eq!(<LargeEnum as pinapod::ZeroPodFixed>::SIZE, 2);
+    assert_eq!(LargeEnum::SIZE, 2);
 }
 
 #[test]
 fn enum_u16_from_bytes() {
     let buf = 256u16.to_le_bytes();
-    let zc = LargeEnum::from_bytes(&buf).unwrap();
+    let zc = LargeEnum::read_exact(&buf).unwrap();
     assert_eq!(zc.get(), 256u16);
 }
 
 #[test]
 fn enum_u16_rejects_invalid() {
     let buf = 999u16.to_le_bytes();
-    assert!(LargeEnum::from_bytes(&buf).is_err());
+    assert!(LargeEnum::read_exact(&buf).is_err());
 }
 
 #[test]
 fn enum_zc_is() {
     let buf = [1u8]; // Paused
-    let zc = Status::from_bytes(&buf).unwrap();
+    let zc = Status::read_exact(&buf).unwrap();
     assert!(zc.is(Status::Paused));
     assert!(!zc.is(Status::Active));
 }
@@ -74,7 +74,7 @@ fn enum_zc_is() {
 #[test]
 fn enum_zc_display() {
     let buf = [0u8]; // Active
-    let zc = Status::from_bytes(&buf).unwrap();
+    let zc = Status::read_exact(&buf).unwrap();
     let s = format!("{}", zc);
     assert_eq!(s, "Active");
 }
@@ -82,7 +82,7 @@ fn enum_zc_display() {
 #[test]
 fn enum_zc_debug() {
     let buf = [2u8]; // Closed
-    let zc = Status::from_bytes(&buf).unwrap();
+    let zc = Status::read_exact(&buf).unwrap();
     let s = format!("{:?}", zc);
     assert!(s.contains("Closed"));
 }
@@ -90,15 +90,15 @@ fn enum_zc_debug() {
 #[test]
 fn enum_zc_eq_repr() {
     let buf = [1u8];
-    let zc = Status::from_bytes(&buf).unwrap();
+    let zc = Status::read_exact(&buf).unwrap();
     assert!(*zc == 1u8); // PartialEq with repr type
 }
 
 #[test]
 fn error_invalid_discriminant_variant() {
     let buf = [99u8]; // bad discriminant
-    let err = Status::validate(&buf);
-    assert_eq!(err, Err(pinapod::ZeroPodError::InvalidDiscriminant));
+    let err = Status::validate_exact(&buf);
+    assert_eq!(err, Err(pinapod::PinaPodError::InvalidDiscriminant));
 }
 
 #[test]

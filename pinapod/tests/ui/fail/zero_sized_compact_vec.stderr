@@ -1,0 +1,13 @@
+error[E0080]: evaluation panicked: compact vector elements must not be zero-sized
+ --> tests/ui/fail/zero_sized_compact_vec.rs:3:10
+  |
+3 | #[derive(PinaPod)]
+  |          ^^^^^^^ evaluation of `__pinapod_compact_ZeroSizedElements::<impl pinapod::PinaPodCompact for ZeroSizedElements>::validate::{constant#7}` failed here
+
+note: erroneous constant encountered
+ --> tests/ui/fail/zero_sized_compact_vec.rs:3:10
+  |
+3 | #[derive(PinaPod)]
+  |          ^^^^^^^
+  |
+  = note: this note originates in the derive macro `PinaPod` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -4,10 +4,10 @@
     reason = "the derive macro emits audited zero-copy code and these upstream tests preserve explicit trait paths"
 )]
 
-use pinapod::{pod::PodBool, ZeroPod, ZeroPodCompact, ZeroPodFixed};
+use pinapod::{pod::PodBool, PinaPod, PinaPodCompact};
 
 #[allow(dead_code)]
-#[derive(ZeroPod)]
+#[derive(PinaPod)]
 struct Validatable {
     pub score: u64,
     pub active: bool,
@@ -26,40 +26,40 @@ struct Validatable {
 
 #[test]
 fn validate_correct_size() {
-    assert_eq!(<Validatable as ZeroPodFixed>::SIZE, 33);
+    assert_eq!(Validatable::SIZE, 33);
 }
 
 #[test]
 fn validate_zeroed_buffer_ok() {
     let buf = [0u8; 33];
-    assert!(Validatable::from_bytes(&buf).is_ok());
+    assert!(Validatable::read_exact(&buf).is_ok());
 }
 
 #[test]
 fn validate_bad_bool() {
     let mut buf = [0u8; 33];
     buf[8] = 2; // active field: invalid bool value
-    assert!(Validatable::from_bytes(&buf).is_err());
+    assert!(Validatable::read_exact(&buf).is_err());
 }
 
 #[test]
 fn validate_truncated_buffer() {
     let buf = [0u8; 20]; // too small (need 33)
-    assert!(Validatable::from_bytes(&buf).is_err());
+    assert!(Validatable::read_exact(&buf).is_err());
 }
 
 #[test]
 fn validate_bad_option_tag() {
     let mut buf = [0u8; 33];
     buf[9] = 3; // maybe field tag: invalid (must be 0 or 1)
-    assert!(Validatable::from_bytes(&buf).is_err());
+    assert!(Validatable::read_exact(&buf).is_err());
 }
 
 #[test]
 fn validate_overlength_string() {
     let mut buf = [0u8; 33];
     buf[18] = 9; // name len prefix: 9 > max capacity 8
-    assert!(Validatable::from_bytes(&buf).is_err());
+    assert!(Validatable::read_exact(&buf).is_err());
 }
 
 #[test]
@@ -67,7 +67,7 @@ fn validate_overlength_vec() {
     let mut buf = [0u8; 33];
     buf[27] = 5; // items len prefix (LE u16 low byte): 5 > max capacity 4
     buf[28] = 0; // items len prefix (LE u16 high byte)
-    assert!(Validatable::from_bytes(&buf).is_err());
+    assert!(Validatable::read_exact(&buf).is_err());
 }
 
 // --- ZcValidate: invalid UTF-8 in fixed PodString ---
@@ -81,13 +81,13 @@ fn validate_rejects_invalid_utf8_in_string() {
     // Write invalid UTF-8 bytes in the data portion (offset 19)
     buf[19] = 0xFF;
     buf[20] = 0xFE;
-    assert!(Validatable::from_bytes(&buf).is_err());
+    assert!(Validatable::read_exact(&buf).is_err());
 }
 
 // --- ZcValidate: Option<bool> inner validation ---
 
 #[allow(dead_code)]
-#[derive(ZeroPod)]
+#[derive(PinaPod)]
 struct WithOptionBool {
     pub flag: Option<bool>,
 }
@@ -97,24 +97,24 @@ struct WithOptionBool {
 #[test]
 fn validate_option_bool_none_ok() {
     let buf = [0u8; 2]; // tag=0, None
-    assert!(WithOptionBool::from_bytes(&buf).is_ok());
+    assert!(WithOptionBool::read_exact(&buf).is_ok());
 }
 
 #[test]
 fn validate_option_bool_some_valid() {
     let buf = [1u8, 1]; // tag=1, inner=1 (true)
-    assert!(WithOptionBool::from_bytes(&buf).is_ok());
+    assert!(WithOptionBool::read_exact(&buf).is_ok());
 }
 
 #[test]
 fn validate_option_bool_some_invalid_inner() {
     let buf = [1u8, 5]; // tag=1 (Some), inner byte=5 (invalid bool)
-    assert!(WithOptionBool::from_bytes(&buf).is_err());
+    assert!(WithOptionBool::read_exact(&buf).is_err());
 }
 
 // --- ZcValidate: Option<Enum> inner validation ---
 
-#[derive(ZeroPod, Debug, PartialEq)]
+#[derive(PinaPod, Debug, PartialEq)]
 #[repr(u8)]
 enum Color {
     Red = 0,
@@ -123,7 +123,7 @@ enum Color {
 }
 
 #[allow(dead_code)]
-#[derive(ZeroPod)]
+#[derive(PinaPod)]
 struct WithOptionEnum {
     pub color: Option<Color>,
 }
@@ -133,25 +133,25 @@ struct WithOptionEnum {
 #[test]
 fn validate_option_enum_none_ok() {
     let buf = [0u8; 2]; // tag=0, None
-    assert!(WithOptionEnum::from_bytes(&buf).is_ok());
+    assert!(WithOptionEnum::read_exact(&buf).is_ok());
 }
 
 #[test]
 fn validate_option_enum_some_valid() {
     let buf = [1u8, 2]; // tag=1, inner=2 (Blue)
-    assert!(WithOptionEnum::from_bytes(&buf).is_ok());
+    assert!(WithOptionEnum::read_exact(&buf).is_ok());
 }
 
 #[test]
 fn validate_option_enum_some_invalid_inner() {
     let buf = [1u8, 99]; // tag=1 (Some), inner=99 (invalid discriminant)
-    assert!(WithOptionEnum::from_bytes(&buf).is_err());
+    assert!(WithOptionEnum::read_exact(&buf).is_err());
 }
 
 // --- Compact validation ---
 
 #[allow(dead_code)]
-#[derive(ZeroPod)]
+#[derive(PinaPod)]
 #[pinapod(compact)]
 struct CompactVal {
     pub authority: [u8; 32],
@@ -189,7 +189,7 @@ fn compact_validate_rejects_invalid_utf8_in_tail_string() {
 // --- Compact: inline bool validation via ZcValidate ---
 
 #[allow(dead_code)]
-#[derive(ZeroPod)]
+#[derive(PinaPod)]
 #[pinapod(compact)]
 struct CompactWithBool {
     pub active: bool,
@@ -241,6 +241,21 @@ fn validate_vec_bool_rejects_invalid_element() {
     assert!(pinapod::ZcValidate::validate_ref(v).is_err());
 }
 
+#[cfg(target_pointer_width = "32")]
+#[test]
+fn validate_rejects_eight_byte_lengths_that_do_not_fit_usize() {
+    use pinapod::{pod::PodVec, PodString, ZcValidate};
+
+    // 2^32 encoded as a little-endian u64. This cannot be represented by a
+    // 32-bit usize, even for a zero-capacity container.
+    let bytes = [0, 0, 0, 0, 1, 0, 0, 0];
+    let string = unsafe { &*(bytes.as_ptr() as *const PodString<0, 8>) };
+    let vector = unsafe { &*(bytes.as_ptr() as *const PodVec<u8, 0, 8>) };
+
+    assert!(ZcValidate::validate_ref(string).is_err());
+    assert!(ZcValidate::validate_ref(vector).is_err());
+}
+
 // --- ZcValidate: PodVec element validation works at the pod level ---
 // Vec<Enum, N> in schema doesn't work directly because the type alias
 // expands to PodVec<Enum, N> and Enum isn't Copy. This is a known v1
@@ -253,8 +268,8 @@ fn validate_vec_bool_rejects_invalid_element() {
 fn podstring_truncate_snaps_to_char_boundary() {
     use pinapod::pod::PodString;
     let mut s = PodString::<32>::default();
-    let _ = s.set("h\u{00e9}llo"); // 'e\u{0301}' — actually \u{00e9} is 2 bytes: [0xC3, 0xA9]
-                                   // String bytes: h(1) + \u{00e9}(2) + l(1) + l(1) + o(1) = 6 bytes
+    s.try_set("h\u{00e9}llo").unwrap(); // 'e\u{0301}' — actually \u{00e9} is 2 bytes: [0xC3, 0xA9]
+                                        // String bytes: h(1) + \u{00e9}(2) + l(1) + l(1) + o(1) = 6 bytes
     assert_eq!(s.len(), 6);
 
     // Truncate at byte 2 — mid-codepoint (inside the 2-byte \u{00e9})
@@ -270,7 +285,7 @@ fn podstring_truncate_snaps_to_char_boundary() {
 fn podstring_truncate_at_boundary_is_exact() {
     use pinapod::pod::PodString;
     let mut s = PodString::<32>::default();
-    let _ = s.set("h\u{00e9}llo");
+    s.try_set("h\u{00e9}llo").unwrap();
     // Truncate at byte 3 — exactly after \u{00e9} (valid boundary)
     s.truncate(3);
     assert_eq!(s.len(), 3);
@@ -284,7 +299,7 @@ fn error_invalid_bool_variant() {
     let buf = [2u8]; // bad bool byte
     let val = unsafe { &*(buf.as_ptr() as *const pinapod::pod::PodBool) };
     let err = <pinapod::pod::PodBool as pinapod::ZcValidate>::validate_ref(val);
-    assert_eq!(err, Err(pinapod::ZeroPodError::InvalidBool));
+    assert_eq!(err, Err(pinapod::PinaPodError::InvalidBool));
 }
 
 #[test]
@@ -292,7 +307,7 @@ fn error_invalid_tag_variant() {
     let buf = [5u8, 0u8]; // bad option tag
     let val = unsafe { &*(buf.as_ptr() as *const pinapod::pod::PodOption<u8>) };
     let err = <pinapod::pod::PodOption<u8> as pinapod::ZcValidate>::validate_ref(val);
-    assert_eq!(err, Err(pinapod::ZeroPodError::InvalidTag));
+    assert_eq!(err, Err(pinapod::PinaPodError::InvalidTag));
 }
 
 // --- PodOption: is_some/is_none on invalid tag ---
@@ -348,7 +363,7 @@ mod wincode_option_validation {
 // --- Compact: tail Vec element validation ---
 
 #[allow(dead_code)]
-#[derive(ZeroPod)]
+#[derive(PinaPod)]
 #[pinapod(compact)]
 struct CompactWithVecBool {
     pub score: u64,

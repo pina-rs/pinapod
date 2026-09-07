@@ -1,0 +1,8 @@
+error[E0451]: field `__entries_len` of struct `JournalHeader` is private
+  --> tests/ui/fail/compact_header_construction_private.rs:13:9
+   |
+11 |     let _ = JournalHeader {
+   |             ------------- in this type
+12 |         revision: 0_u64.into(),
+13 |         __entries_len: [0; 2],
+   |         ^^^^^^^^^^^^^ private field

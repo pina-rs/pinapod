@@ -1,9 +1,9 @@
-use pinapod::{pod::*, ZeroPod, ZeroPodFixed};
+use pinapod::{pod::*, PinaPod};
 
 // --- Fixed roundtrip ---
 
 #[allow(dead_code)]
-#[derive(ZeroPod)]
+#[derive(PinaPod)]
 struct RoundtripFixed {
     pub amount: u64,
     pub flag: bool,
@@ -22,19 +22,19 @@ fn fixed_roundtrip_write_then_read() {
 
     // Write
     {
-        let zc = RoundtripFixed::from_bytes_mut(&mut buf).unwrap();
+        let zc = RoundtripFixed::read_exact_mut(&mut buf).unwrap();
         zc.amount = 1_000_000u64.into();
         zc.flag = true.into();
         zc.tag = 42;
-        let _ = zc.name.set("alice");
-        let _ = zc.scores.push(10);
-        let _ = zc.scores.push(20);
-        let _ = zc.scores.push(30);
+        zc.name.try_set("alice").unwrap();
+        zc.scores.try_push(10).unwrap();
+        zc.scores.try_push(20).unwrap();
+        zc.scores.try_push(30).unwrap();
         zc.maybe.set(Some(PodU64::from(999u64)));
     }
 
     // Read back
-    let zc = RoundtripFixed::from_bytes(&buf).unwrap();
+    let zc = RoundtripFixed::read_exact(&buf).unwrap();
     assert_eq!(zc.amount.get(), 1_000_000);
     assert!(zc.flag.get());
     assert_eq!(zc.tag, 42);
@@ -49,12 +49,12 @@ fn fixed_byte_stability() {
     let mut buf2 = [0u8; 46];
 
     for buf in [&mut buf1, &mut buf2] {
-        let zc = RoundtripFixed::from_bytes_mut(buf).unwrap();
+        let zc = RoundtripFixed::read_exact_mut(buf).unwrap();
         zc.amount = 42u64.into();
         zc.flag = false.into();
         zc.tag = 7;
-        let _ = zc.name.set("bob");
-        let _ = zc.scores.push(1);
+        zc.name.try_set("bob").unwrap();
+        zc.scores.try_push(1).unwrap();
         zc.maybe.set(None);
     }
 
@@ -64,7 +64,7 @@ fn fixed_byte_stability() {
 // --- Compact roundtrip ---
 
 #[allow(dead_code)]
-#[derive(ZeroPod)]
+#[derive(PinaPod)]
 #[pinapod(compact)]
 struct RoundtripCompact {
     pub authority: [u8; 32],
@@ -77,25 +77,22 @@ struct RoundtripCompact {
 
 #[test]
 fn compact_roundtrip_write_then_read() {
-    let mut buf = vec![0u8; 300];
+    let mut buf = vec![0u8; RoundtripCompact::MAX_SIZE];
 
     let auth = [0xAA; 32];
     let tag1 = [1u8, 2, 3, 4];
     let tag2 = [5u8, 6, 7, 8];
 
-    // Write
-    {
-        let mut m = RoundtripCompactMut::new(&mut buf).unwrap();
-        m.authority = auth;
-        m.level = 50u64.into();
-        m.set_bio("hello world").unwrap();
-        let tags = [tag1, tag2];
-        m.set_tags(&tags).unwrap();
-        m.commit().unwrap();
-    }
+    let tags = [tag1, tag2];
+    let patch = RoundtripCompactPatch::new()
+        .authority(auth)
+        .level(50u64)
+        .bio("hello world")
+        .replace_tags(&tags);
+    RoundtripCompact::initialize(&mut buf, &patch).unwrap();
 
     // Read back
-    let r = RoundtripCompactRef::new(&buf).unwrap();
+    let r = RoundtripCompact::read_prefix(&buf).unwrap();
     assert_eq!(r.authority, [0xAA; 32]);
     assert_eq!(r.level.get(), 50);
     assert_eq!(r.bio(), "hello world");
@@ -106,24 +103,15 @@ fn compact_roundtrip_write_then_read() {
 
 #[test]
 fn compact_overwrite_shorter_roundtrip() {
-    let mut buf = vec![0u8; 300];
+    let mut buf = vec![0u8; RoundtripCompact::MAX_SIZE];
 
-    // Write long bio
-    {
-        let mut m = RoundtripCompactMut::new(&mut buf).unwrap();
-        m.set_bio("a long biography text").unwrap();
-        m.commit().unwrap();
-    }
+    let initial = RoundtripCompactPatch::new().bio("a long biography text");
+    RoundtripCompact::initialize(&mut buf, &initial).unwrap();
 
-    // Overwrite with shorter bio
-    let new_size;
-    {
-        let mut m = RoundtripCompactMut::new(&mut buf).unwrap();
-        m.set_bio("hi").unwrap();
-        new_size = m.commit().unwrap();
-    }
+    let new_size =
+        RoundtripCompact::update(&mut buf, &RoundtripCompactPatch::new().bio("hi")).unwrap();
 
     // Read back — must see the shorter value, not the old one
-    let r = RoundtripCompactRef::new(&buf[..new_size]).unwrap();
+    let r = RoundtripCompact::read_prefix(&buf[..new_size]).unwrap();
     assert_eq!(r.bio(), "hi");
 }

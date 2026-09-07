@@ -1,0 +1,19 @@
+error: cannot construct `JournalPatch<'_>` with struct literal syntax due to private fields
+  --> tests/ui/fail/compact_patch_construction_private.rs:11:13
+   |
+11 |     let _ = JournalPatch {
+   |             ^^^^^^^^^^^^
+12 |         revision: None,
+   |         -------------- private field
+13 |         entries: None,
+   |         ------------- private field
+   |
+   = note: ...and other private field `__pinapod_lifetime` that was not provided
+help: you might have meant to use the `new` associated function
+   |
+11 -     let _ = JournalPatch {
+12 -         revision: None,
+13 -         entries: None,
+14 -     };
+11 +     let _ = JournalPatch::new();
+   |

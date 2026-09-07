@@ -1,18 +1,16 @@
-//! Comprehensive ergonomics test for enriched pod types.
-//! Every interaction here should feel natural for a Rust developer.
+//! Ergonomics tests for `PinaPod` storage types.
 
-use pinapod::{pod::*, ZeroPod, ZeroPodFixed};
+use pinapod::{pod::*, PinaPod};
 
-// --- Numeric: feels like native integers ---
+// --- Numeric: overflow behavior is explicit ---
 
 #[test]
-fn numeric_feels_native() {
+fn numeric_arithmetic_is_explicit() {
     let mut balance = PodU64::from(1000u64);
 
-    // Arithmetic with native values
-    balance += 500u64;
+    balance = balance.checked_add(500u64).unwrap();
     assert!(balance > 1000u64);
-    assert!(1500u64 == balance); // reverse comparison works
+    assert!(balance == 1500u64);
 
     // Checked arithmetic
     let result = balance.checked_sub(2000u64);
@@ -127,7 +125,7 @@ fn option_feels_native() {
 
 // --- Enum: feels like Rust enum ---
 
-#[derive(ZeroPod, Debug, PartialEq)]
+#[derive(PinaPod, Debug, PartialEq)]
 #[repr(u8)]
 enum Direction {
     North = 0,
@@ -137,7 +135,7 @@ enum Direction {
 }
 
 #[allow(dead_code)]
-#[derive(ZeroPod)]
+#[derive(PinaPod)]
 struct Compass {
     pub heading: Direction,
     pub bearing: u16,
@@ -146,7 +144,7 @@ struct Compass {
 #[test]
 fn enum_feels_natural() {
     let mut buf = [0u8; 3]; // DirectionZc(1) + PodU16(2)
-    let zc = Compass::from_bytes_mut(&mut buf).unwrap();
+    let zc = Compass::read_exact_mut(&mut buf).unwrap();
 
     // Set via From
     zc.heading = Direction::East.into();
