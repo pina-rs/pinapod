@@ -18,6 +18,7 @@ in
     gh
     git
     gitleaks
+    mdbook
     custom.monochange
     nixfmt-rfc-style
     rustup
@@ -42,10 +43,10 @@ in
     "build:no-default" = {
       exec = ''
         set -euo pipefail
-        cargo check -p pinapod --no-default-features --locked
-        cargo check -p pinapod --no-default-features --features fixed --locked
+        cargo check --manifest-path pinapod/Cargo.toml --no-default-features --locked
+        cargo check --manifest-path pinapod/Cargo.toml --no-default-features --features fixed --locked
       '';
-      description = "Verify the no_std Pinapod core with no features and with fixed-point support.";
+      description = "Verify the no_std PinaPod core with no features and with fixed-point support.";
       binary = "bash";
     };
     "test:all" = {
@@ -59,9 +60,9 @@ in
     "test:miri" = {
       exec = ''
         set -euo pipefail
-        cargo miri test -p pinapod --all-features --locked
+        cargo miri test --manifest-path pinapod/Cargo.toml --all-features --locked
       '';
-      description = "Run Pinapod's zero-copy regression suite under Miri.";
+      description = "Run PinaPod's zero-copy regression suite under Miri.";
       binary = "bash";
     };
     "coverage:all" = {
@@ -76,6 +77,45 @@ in
           --output-path "$DEVENV_ROOT/target/coverage/lcov.info"
       '';
       description = "Generate workspace LCOV coverage.";
+      binary = "bash";
+    };
+    "bench:compare" = {
+      exec = ''
+        set -euo pipefail
+        if [[ "$(uname -s)" == "Darwin" ]]; then
+          task_sdk="$(xcrun --show-sdk-path)"
+          export SDKROOT="$task_sdk"
+          export RUSTFLAGS="''${RUSTFLAGS:-} -C link-arg=-isysroot -C link-arg=$task_sdk"
+        fi
+        cargo bench --manifest-path pinapod/Cargo.toml --bench api_comparison --locked
+      '';
+      description = "Compare current PinaPod with pinned PinaPod v0.1 and upstream ZeroPod fixed and compact APIs.";
+      binary = "bash";
+    };
+    "bench:compare:baseline" = {
+      exec = ''
+        set -euo pipefail
+        if [[ "$(uname -s)" == "Darwin" ]]; then
+          task_sdk="$(xcrun --show-sdk-path)"
+          export SDKROOT="$task_sdk"
+          export RUSTFLAGS="''${RUSTFLAGS:-} -C link-arg=-isysroot -C link-arg=$task_sdk"
+        fi
+        cargo bench --manifest-path pinapod/Cargo.toml --bench api_comparison --locked -- --save-baseline pinapod-v2-before
+      '';
+      description = "Save the current three-way measurements as the v0.2 migration baseline.";
+      binary = "bash";
+    };
+    "bench:compare:after" = {
+      exec = ''
+        set -euo pipefail
+        if [[ "$(uname -s)" == "Darwin" ]]; then
+          task_sdk="$(xcrun --show-sdk-path)"
+          export SDKROOT="$task_sdk"
+          export RUSTFLAGS="''${RUSTFLAGS:-} -C link-arg=-isysroot -C link-arg=$task_sdk"
+        fi
+        cargo bench --manifest-path pinapod/Cargo.toml --bench api_comparison --locked -- --baseline pinapod-v2-before
+      '';
+      description = "Compare the current measurements with the saved v0.2 migration baseline.";
       binary = "bash";
     };
     "fix:format" = {
@@ -118,6 +158,14 @@ in
       description = "Validate release metadata and Cargo manifests.";
       binary = "bash";
     };
+    "docs:build" = {
+      exec = ''
+        set -euo pipefail
+        mdbook build "$DEVENV_ROOT/docs"
+      '';
+      description = "Build the mdBook documentation for GitHub Pages.";
+      binary = "bash";
+    };
     "docs:api" = {
       exec = ''
         set -euo pipefail
@@ -126,15 +174,26 @@ in
       description = "Build public API documentation and reject warnings.";
       binary = "bash";
     };
+    "verify:docs" = {
+      exec = ''
+        set -euo pipefail
+        [ -f "$DEVENV_ROOT/docs/book.toml" ]
+        [ -f "$DEVENV_ROOT/docs/src/SUMMARY.md" ]
+        mdbook build "$DEVENV_ROOT/docs" -d "$DEVENV_ROOT/target/mdbook"
+        docs:api
+      '';
+      description = "Verify the mdBook structure and public API documentation.";
+      binary = "bash";
+    };
     "lint:all" = {
       exec = ''
         set -euo pipefail
         lint:clippy
         lint:format
         lint:monochange
-        docs:api
+        verify:docs
       '';
-      description = "Run formatting, Rust, manifest, release, and API-doc lints.";
+      description = "Run formatting, Rust, manifest, release, and documentation checks.";
       binary = "bash";
     };
     "security:deny" = {

@@ -76,16 +76,17 @@ steps = [
 [package.pinapod]
 path = "pinapod"
 type = "cargo"
+version_format = "primary"
 
 [package.pinapod-derive]
 path = "pinapod-derive"
 type = "cargo"
 
-[group.pina]
+[group.pinapod-workspace]
 packages = ["pinapod", "pinapod-derive"]
 release = true
 tag = true
-version_format = "namespaced"
+version_format = "pinapod/v{{ version }}"
 changelog = { path = "CHANGELOG.md", format = "keep_a_changelog", include = "all" }
 versioned_files = [
   { path = "Cargo.toml", type = "cargo", fields = ["workspace.package.version", "workspace.dependencies.pinapod-derive.version"] },

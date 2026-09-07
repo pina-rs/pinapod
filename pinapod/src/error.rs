@@ -1,5 +1,5 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ZeroPodError {
+pub enum PinaPodError {
     BufferTooSmall,
     Overflow,
     InvalidBool,
@@ -9,7 +9,7 @@ pub enum ZeroPodError {
     InvalidUtf8,
 }
 
-impl core::fmt::Display for ZeroPodError {
+impl core::fmt::Display for PinaPodError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::BufferTooSmall => write!(f, "buffer too small"),
@@ -24,16 +24,16 @@ impl core::fmt::Display for ZeroPodError {
 }
 
 #[cfg(feature = "solana-program-error")]
-impl From<ZeroPodError> for solana_program_error::ProgramError {
-    fn from(e: ZeroPodError) -> Self {
+impl From<PinaPodError> for solana_program_error::ProgramError {
+    fn from(e: PinaPodError) -> Self {
         match e {
-            ZeroPodError::BufferTooSmall => solana_program_error::ProgramError::AccountDataTooSmall,
-            ZeroPodError::InvalidLength
-            | ZeroPodError::InvalidBool
-            | ZeroPodError::InvalidTag
-            | ZeroPodError::InvalidDiscriminant
-            | ZeroPodError::InvalidUtf8
-            | ZeroPodError::Overflow => solana_program_error::ProgramError::InvalidAccountData,
+            PinaPodError::BufferTooSmall => solana_program_error::ProgramError::AccountDataTooSmall,
+            PinaPodError::InvalidLength
+            | PinaPodError::InvalidBool
+            | PinaPodError::InvalidTag
+            | PinaPodError::InvalidDiscriminant
+            | PinaPodError::InvalidUtf8
+            | PinaPodError::Overflow => solana_program_error::ProgramError::InvalidAccountData,
         }
     }
 }

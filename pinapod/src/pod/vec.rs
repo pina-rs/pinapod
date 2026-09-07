@@ -1,29 +1,46 @@
 use {
     super::string::max_n_for_pfx,
-    crate::{error::ZeroPodError, traits::ZcElem},
+    crate::{
+        error::PinaPodError,
+        traits::{ZcElem, ZcField},
+    },
     core::mem::MaybeUninit,
 };
 
+/// Fixed-capacity vector storage using the `PinaPod` representation of `T`.
+///
+/// `PodVec<u64, 8, 2>` stores eight [`crate::pod::PodU64`] slots, while
+/// `PodVec<PodU64, 8, 2>` remains valid through the identity [`ZcField`]
+/// mapping. The second form exists for source compatibility; schema code
+/// should normally use the native element type.
+pub type PodVec<T, const N: usize, const PFX: usize = 2> = PodVecRepr<<T as ZcField>::Pod, N, PFX>;
+
+/// Raw fixed-capacity vector representation.
+///
+/// This backing type is public because it appears through [`PodVec`], but it
+/// is not the schema-facing API. Prefer [`PodVec`] so native element types map
+/// to their alignment-one PinaPod representation.
+#[doc(hidden)]
 #[repr(C)]
 #[derive(Copy, Clone)]
-pub struct PodVec<T: ZcElem, const N: usize, const PFX: usize = 2> {
+pub struct PodVecRepr<T: ZcElem, const N: usize, const PFX: usize = 2> {
     len: [u8; PFX],
     data: [MaybeUninit<T>; N],
 }
 
 // Compile-time layout invariants — PFX=2 (default, backward-compat).
-const _: () = assert!(core::mem::size_of::<PodVec<u8, 10>>() == 2 + 10);
-const _: () = assert!(core::mem::align_of::<PodVec<u8, 10>>() == 1);
-const _: () = assert!(core::mem::size_of::<PodVec<[u8; 32], 10>>() == 2 + 320);
-const _: () = assert!(core::mem::align_of::<PodVec<[u8; 32], 10>>() == 1);
+const _: () = assert!(core::mem::size_of::<PodVecRepr<u8, 10>>() == 2 + 10);
+const _: () = assert!(core::mem::align_of::<PodVecRepr<u8, 10>>() == 1);
+const _: () = assert!(core::mem::size_of::<PodVecRepr<[u8; 32], 10>>() == 2 + 320);
+const _: () = assert!(core::mem::align_of::<PodVecRepr<[u8; 32], 10>>() == 1);
 // Compile-time layout invariants — PFX=1.
-const _: () = assert!(core::mem::size_of::<PodVec<u8, 10, 1>>() == 1 + 10);
-const _: () = assert!(core::mem::align_of::<PodVec<u8, 10, 1>>() == 1);
+const _: () = assert!(core::mem::size_of::<PodVecRepr<u8, 10, 1>>() == 1 + 10);
+const _: () = assert!(core::mem::align_of::<PodVecRepr<u8, 10, 1>>() == 1);
 // Compile-time layout invariants — PFX=4.
-const _: () = assert!(core::mem::size_of::<PodVec<u8, 10, 4>>() == 4 + 10);
-const _: () = assert!(core::mem::align_of::<PodVec<u8, 10, 4>>() == 1);
+const _: () = assert!(core::mem::size_of::<PodVecRepr<u8, 10, 4>>() == 4 + 10);
+const _: () = assert!(core::mem::align_of::<PodVecRepr<u8, 10, 4>>() == 1);
 
-impl<T: ZcElem, const N: usize, const PFX: usize> PodVec<T, N, PFX> {
+impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
     const _CAP_CHECK: () = {
         assert!(
             PFX == 1 || PFX == 2 || PFX == 4 || PFX == 8,
@@ -39,18 +56,28 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVec<T, N, PFX> {
     pub const VALID: () = Self::_CAP_CHECK;
 
     #[inline(always)]
-    pub fn decode_len(&self) -> usize {
+    pub(crate) fn try_decode_len(&self) -> Result<usize, PinaPodError> {
         #[allow(clippy::let_unit_value)]
         let _ = Self::_CAP_CHECK;
         match PFX {
-            1 => self.len[0] as usize,
-            2 => u16::from_le_bytes([self.len[0], self.len[1]]) as usize,
+            1 => Ok(self.len[0] as usize),
+            2 => Ok(u16::from_le_bytes([self.len[0], self.len[1]]) as usize),
             _ => {
                 let mut buf = [0u8; 8];
                 buf[..PFX].copy_from_slice(&self.len);
-                u64::from_le_bytes(buf) as usize
+                let raw = u64::from_le_bytes(buf);
+                if raw > usize::MAX as u64 {
+                    Err(PinaPodError::InvalidLength)
+                } else {
+                    Ok(raw as usize)
+                }
             }
         }
+    }
+
+    #[inline(always)]
+    pub fn decode_len(&self) -> usize {
+        self.try_decode_len().unwrap_or(usize::MAX)
     }
 
     #[inline(always)]
@@ -69,6 +96,11 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVec<T, N, PFX> {
                 self.len.copy_from_slice(&bytes[..PFX]);
             }
         }
+    }
+
+    #[inline(always)]
+    fn zero_range(&mut self, range: core::ops::Range<usize>) {
+        self.data[range].fill(MaybeUninit::zeroed());
     }
 
     #[inline(always)]
@@ -122,34 +154,85 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVec<T, N, PFX> {
         self.as_slice_mut().iter_mut()
     }
 
-    pub fn try_push(&mut self, value: T) -> Result<(), ZeroPodError> {
+    /// Appends one value.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PinaPodError::Overflow`] when the vector is full.
+    pub fn try_push<V: Into<T>>(&mut self, value: V) -> Result<(), PinaPodError> {
         let cur = self.len();
         if cur >= N {
-            return Err(ZeroPodError::Overflow);
+            return Err(PinaPodError::Overflow);
         }
-        self.data[cur] = MaybeUninit::new(value);
+        self.data[cur] = MaybeUninit::new(value.into());
         self.encode_len(cur + 1);
         Ok(())
     }
 
-    pub fn try_set_from_slice(&mut self, values: &[T]) -> Result<(), ZeroPodError> {
+    /// Replaces the active values from a representation slice.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PinaPodError::Overflow`] when `values` exceeds the fixed capacity.
+    pub fn try_set_from_slice(&mut self, values: &[T]) -> Result<(), PinaPodError> {
         let vlen = values.len();
         if vlen > N {
-            return Err(ZeroPodError::Overflow);
+            return Err(PinaPodError::Overflow);
         }
+        let old_len = self.len();
         unsafe {
             core::ptr::copy_nonoverlapping(values.as_ptr(), self.data.as_mut_ptr() as *mut T, vlen);
+        }
+        if vlen < old_len {
+            self.zero_range(vlen..old_len);
         }
         self.encode_len(vlen);
         Ok(())
     }
 
-    pub fn try_extend_from_slice(&mut self, values: &[T]) -> Result<(), ZeroPodError> {
-        let cur = self.len();
-        let new_len = cur + values.len();
+    /// Replaces the active values from a slice-like collection.
+    ///
+    /// Each item converts to the stored `PinaPod` representation. This accepts
+    /// native values for schema-facing aliases such as `PodVec<u64, N>` while
+    /// retaining [`try_set_from_slice`](Self::try_set_from_slice) for an
+    /// already-converted representation slice.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PinaPodError::Overflow`] when `values` exceeds the fixed capacity.
+    pub fn try_set<V>(&mut self, values: impl AsRef<[V]>) -> Result<(), PinaPodError>
+    where
+        V: Copy + Into<T>,
+    {
+        let values = values.as_ref();
+        let new_len = values.len();
         if new_len > N {
-            return Err(ZeroPodError::Overflow);
+            return Err(PinaPodError::Overflow);
         }
+
+        let old_len = self.len();
+        for (slot, value) in self.data.iter_mut().zip(values) {
+            *slot = MaybeUninit::new((*value).into());
+        }
+
+        if new_len < old_len {
+            self.zero_range(new_len..old_len);
+        }
+        self.encode_len(new_len);
+        Ok(())
+    }
+
+    /// Appends values from a representation slice.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PinaPodError::Overflow`] when the combined length exceeds the fixed capacity.
+    pub fn try_extend_from_slice(&mut self, values: &[T]) -> Result<(), PinaPodError> {
+        let cur = self.len();
+        let new_len = cur
+            .checked_add(values.len())
+            .filter(|new_len| *new_len <= N)
+            .ok_or(PinaPodError::Overflow)?;
         unsafe {
             core::ptr::copy_nonoverlapping(
                 values.as_ptr(),
@@ -161,18 +244,29 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVec<T, N, PFX> {
         Ok(())
     }
 
-    #[must_use = "returns false if values.len() exceeds capacity — unhandled means the write was \
-                  silently skipped"]
-    #[inline(always)]
-    pub fn set_from_slice(&mut self, values: &[T]) -> bool {
-        self.try_set_from_slice(values).is_ok()
-    }
+    /// Appends native or representation values from a slice-like collection.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PinaPodError::Overflow`] when the combined length exceeds the fixed capacity.
+    pub fn try_extend<V>(&mut self, values: impl AsRef<[V]>) -> Result<(), PinaPodError>
+    where
+        V: Copy + Into<T>,
+    {
+        let values = values.as_ref();
+        let cur = self.len();
+        let added_len = values.len();
+        let new_len = cur
+            .checked_add(added_len)
+            .filter(|new_len| *new_len <= N)
+            .ok_or(PinaPodError::Overflow)?;
 
-    #[must_use = "returns false if capacity is exceeded — unhandled means the push was silently \
-                  skipped"]
-    #[inline(always)]
-    pub fn push(&mut self, value: T) -> bool {
-        self.try_push(value).is_ok()
+        for (slot, value) in self.data[cur..new_len].iter_mut().zip(values) {
+            *slot = MaybeUninit::new((*value).into());
+        }
+
+        self.encode_len(new_len);
+        Ok(())
     }
 
     #[must_use = "returns None if the vector is empty"]
@@ -184,6 +278,7 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVec<T, N, PFX> {
         }
         let new_len = cur - 1;
         let val = unsafe { self.data[new_len].assume_init() };
+        self.data[new_len] = MaybeUninit::zeroed();
         self.encode_len(new_len);
         Some(val)
     }
@@ -200,6 +295,7 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVec<T, N, PFX> {
         if index != last {
             self.data[index] = self.data[last];
         }
+        self.data[last] = MaybeUninit::zeroed();
         self.encode_len(last);
         Some(removed)
     }
@@ -222,21 +318,17 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVec<T, N, PFX> {
                 );
             }
         }
-        self.encode_len(cur - 1);
+        let new_len = cur - 1;
+        self.data[new_len] = MaybeUninit::zeroed();
+        self.encode_len(new_len);
         Some(removed)
-    }
-
-    #[must_use = "returns false if there is insufficient remaining capacity — unhandled means the \
-                  append was silently skipped"]
-    #[inline(always)]
-    pub fn extend_from_slice(&mut self, values: &[T]) -> bool {
-        self.try_extend_from_slice(values).is_ok()
     }
 
     #[inline(always)]
     pub fn truncate(&mut self, new_len: usize) {
         let cur = self.len();
         if new_len < cur {
+            self.zero_range(new_len..cur);
             self.encode_len(new_len);
         }
     }
@@ -251,25 +343,31 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVec<T, N, PFX> {
                 write += 1;
             }
         }
+        self.zero_range(write..cur);
         self.encode_len(write);
     }
 
     #[inline(always)]
     pub fn clear(&mut self) {
+        self.zero_range(0..self.len());
         self.len = [0u8; PFX];
     }
 }
 
-impl<T: ZcElem, const N: usize, const PFX: usize> Default for PodVec<T, N, PFX> {
+impl<T: ZcElem, const N: usize, const PFX: usize> Default for PodVecRepr<T, N, PFX> {
     fn default() -> Self {
+        #[allow(clippy::let_unit_value)]
+        let _ = Self::_CAP_CHECK;
+
         Self {
             len: [0u8; PFX],
-            data: [MaybeUninit::uninit(); N],
+            // Typed assignments and compact copies include inactive capacity.
+            data: [MaybeUninit::zeroed(); N],
         }
     }
 }
 
-impl<T: ZcElem, const N: usize, const PFX: usize> core::ops::Deref for PodVec<T, N, PFX> {
+impl<T: ZcElem, const N: usize, const PFX: usize> core::ops::Deref for PodVecRepr<T, N, PFX> {
     type Target = [T];
 
     #[inline(always)]
@@ -278,28 +376,28 @@ impl<T: ZcElem, const N: usize, const PFX: usize> core::ops::Deref for PodVec<T,
     }
 }
 
-impl<T: ZcElem, const N: usize, const PFX: usize> core::ops::DerefMut for PodVec<T, N, PFX> {
+impl<T: ZcElem, const N: usize, const PFX: usize> core::ops::DerefMut for PodVecRepr<T, N, PFX> {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut [T] {
         self.as_slice_mut()
     }
 }
 
-impl<T: ZcElem, const N: usize, const PFX: usize> AsRef<[T]> for PodVec<T, N, PFX> {
+impl<T: ZcElem, const N: usize, const PFX: usize> AsRef<[T]> for PodVecRepr<T, N, PFX> {
     #[inline(always)]
     fn as_ref(&self) -> &[T] {
         self.as_slice()
     }
 }
 
-impl<T: ZcElem, const N: usize, const PFX: usize> AsMut<[T]> for PodVec<T, N, PFX> {
+impl<T: ZcElem, const N: usize, const PFX: usize> AsMut<[T]> for PodVecRepr<T, N, PFX> {
     #[inline(always)]
     fn as_mut(&mut self) -> &mut [T] {
         self.as_slice_mut()
     }
 }
 
-impl<'a, T: ZcElem, const N: usize, const PFX: usize> IntoIterator for &'a PodVec<T, N, PFX> {
+impl<'a, T: ZcElem, const N: usize, const PFX: usize> IntoIterator for &'a PodVecRepr<T, N, PFX> {
     type Item = &'a T;
     type IntoIter = core::slice::Iter<'a, T>;
 
@@ -309,7 +407,9 @@ impl<'a, T: ZcElem, const N: usize, const PFX: usize> IntoIterator for &'a PodVe
     }
 }
 
-impl<'a, T: ZcElem, const N: usize, const PFX: usize> IntoIterator for &'a mut PodVec<T, N, PFX> {
+impl<'a, T: ZcElem, const N: usize, const PFX: usize> IntoIterator
+    for &'a mut PodVecRepr<T, N, PFX>
+{
     type Item = &'a mut T;
     type IntoIter = core::slice::IterMut<'a, T>;
 
@@ -319,14 +419,16 @@ impl<'a, T: ZcElem, const N: usize, const PFX: usize> IntoIterator for &'a mut P
     }
 }
 
-impl<T: ZcElem + PartialEq, const N: usize, const PFX: usize> PartialEq for PodVec<T, N, PFX> {
+impl<T: ZcElem + PartialEq, const N: usize, const PFX: usize> PartialEq for PodVecRepr<T, N, PFX> {
     #[inline(always)]
     fn eq(&self, other: &Self) -> bool {
         self.as_slice() == other.as_slice()
     }
 }
 
-impl<T: ZcElem + PartialEq, const N: usize, const PFX: usize> PartialEq<[T]> for PodVec<T, N, PFX> {
+impl<T: ZcElem + PartialEq, const N: usize, const PFX: usize> PartialEq<[T]>
+    for PodVecRepr<T, N, PFX>
+{
     #[inline(always)]
     fn eq(&self, other: &[T]) -> bool {
         self.as_slice() == other
@@ -334,7 +436,7 @@ impl<T: ZcElem + PartialEq, const N: usize, const PFX: usize> PartialEq<[T]> for
 }
 
 impl<T: ZcElem + PartialEq, const N: usize, const PFX: usize> PartialEq<&[T]>
-    for PodVec<T, N, PFX>
+    for PodVecRepr<T, N, PFX>
 {
     #[inline(always)]
     fn eq(&self, other: &&[T]) -> bool {
@@ -342,10 +444,10 @@ impl<T: ZcElem + PartialEq, const N: usize, const PFX: usize> PartialEq<&[T]>
     }
 }
 
-impl<T: ZcElem + Eq, const N: usize, const PFX: usize> Eq for PodVec<T, N, PFX> {}
+impl<T: ZcElem + Eq, const N: usize, const PFX: usize> Eq for PodVecRepr<T, N, PFX> {}
 
 impl<T: ZcElem + core::fmt::Debug, const N: usize, const PFX: usize> core::fmt::Debug
-    for PodVec<T, N, PFX>
+    for PodVecRepr<T, N, PFX>
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         core::fmt::Debug::fmt(self.as_slice(), f)
@@ -353,7 +455,7 @@ impl<T: ZcElem + core::fmt::Debug, const N: usize, const PFX: usize> core::fmt::
 }
 
 impl<T: ZcElem + core::hash::Hash, const N: usize, const PFX: usize> core::hash::Hash
-    for PodVec<T, N, PFX>
+    for PodVecRepr<T, N, PFX>
 {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.as_slice().hash(state);
@@ -372,7 +474,7 @@ mod kani_proofs {
     fn encode_decode_roundtrip_pfx1() {
         let n: usize = kani::any();
         kani::assume(n <= u8::MAX as usize);
-        let mut v = PodVec::<u8, 255, 1>::default();
+        let mut v = PodVecRepr::<u8, 255, 1>::default();
         v.encode_len(n);
         assert!(v.decode_len() == n);
     }
@@ -381,7 +483,7 @@ mod kani_proofs {
     fn encode_decode_roundtrip_pfx2() {
         let n: usize = kani::any();
         kani::assume(n <= u16::MAX as usize);
-        let mut v = PodVec::<u8, 255, 2>::default();
+        let mut v = PodVecRepr::<u8, 255, 2>::default();
         v.encode_len(n);
         assert!(v.decode_len() == n);
     }
@@ -390,7 +492,7 @@ mod kani_proofs {
     fn encode_decode_roundtrip_pfx4() {
         let n: usize = kani::any();
         kani::assume(n <= u32::MAX as usize);
-        let mut v = PodVec::<u8, 255, 4>::default();
+        let mut v = PodVecRepr::<u8, 255, 4>::default();
         v.encode_len(n);
         assert!(v.decode_len() == n);
     }
@@ -398,9 +500,9 @@ mod kani_proofs {
     #[kani::proof]
     fn len_clamp_pfx2() {
         let raw: [u8; 2] = kani::any();
-        let v = PodVec::<u8, 8, 2> {
+        let v = PodVecRepr::<u8, 8, 2> {
             len: raw,
-            data: [MaybeUninit::uninit(); 8],
+            data: [MaybeUninit::zeroed(); 8],
         };
         assert!(v.len() <= 8);
     }
@@ -408,9 +510,9 @@ mod kani_proofs {
     #[kani::proof]
     fn len_clamp_pfx1() {
         let raw: [u8; 1] = kani::any();
-        let v = PodVec::<u8, 8, 1> {
+        let v = PodVecRepr::<u8, 8, 1> {
             len: raw,
-            data: [MaybeUninit::uninit(); 8],
+            data: [MaybeUninit::zeroed(); 8],
         };
         assert!(v.len() <= 8);
     }
@@ -418,8 +520,8 @@ mod kani_proofs {
     #[kani::proof]
     fn push_pop_roundtrip() {
         let val: u8 = kani::any();
-        let mut v = PodVec::<u8, 4, 1>::default();
-        assert!(v.push(val));
+        let mut v = PodVecRepr::<u8, 4, 1>::default();
+        assert!(v.try_push(val).is_ok());
         assert!(v.len() == 1);
         assert!(v.pop() == Some(val));
         assert!(v.is_empty());
@@ -427,10 +529,10 @@ mod kani_proofs {
 
     #[kani::proof]
     fn push_full_rejects() {
-        let mut v = PodVec::<u8, 2, 1>::default();
-        assert!(v.push(1));
-        assert!(v.push(2));
-        assert!(!v.push(3));
+        let mut v = PodVecRepr::<u8, 2, 1>::default();
+        assert!(v.try_push(1).is_ok());
+        assert!(v.try_push(2).is_ok());
+        assert!(v.try_push(3).is_err());
         assert!(v.len() == 2);
     }
 
@@ -438,9 +540,9 @@ mod kani_proofs {
     fn push_pop_lifo() {
         let a: u8 = kani::any();
         let b: u8 = kani::any();
-        let mut v = PodVec::<u8, 4, 1>::default();
-        assert!(v.push(a));
-        assert!(v.push(b));
+        let mut v = PodVecRepr::<u8, 4, 1>::default();
+        assert!(v.try_push(a).is_ok());
+        assert!(v.try_push(b).is_ok());
         assert!(v.pop() == Some(b));
         assert!(v.pop() == Some(a));
     }
@@ -450,10 +552,10 @@ mod kani_proofs {
         let a: u8 = kani::any();
         let b: u8 = kani::any();
         let c: u8 = kani::any();
-        let mut v = PodVec::<u8, 4, 1>::default();
-        assert!(v.push(a));
-        assert!(v.push(b));
-        assert!(v.push(c));
+        let mut v = PodVecRepr::<u8, 4, 1>::default();
+        assert!(v.try_push(a).is_ok());
+        assert!(v.try_push(b).is_ok());
+        assert!(v.try_push(c).is_ok());
         assert!(v.swap_remove(0) == Some(a));
         assert!(v.len() == 2);
         assert!(v.as_slice()[0] == c);
@@ -463,9 +565,9 @@ mod kani_proofs {
     #[kani::proof]
     fn swap_remove_oob() {
         let idx: usize = kani::any();
-        let mut v = PodVec::<u8, 4, 1>::default();
-        assert!(v.push(1));
-        assert!(v.push(2));
+        let mut v = PodVecRepr::<u8, 4, 1>::default();
+        assert!(v.try_push(1).is_ok());
+        assert!(v.try_push(2).is_ok());
         kani::assume(idx >= 2);
         kani::assume(idx <= 8);
         assert!(v.swap_remove(idx).is_none());
@@ -478,8 +580,8 @@ mod kani_proofs {
         kani::assume(count > 4);
         kani::assume(count <= 8);
         let data = [0u8; 8];
-        let mut v = PodVec::<u8, 4, 1>::default();
-        assert!(!v.set_from_slice(&data[..count]));
+        let mut v = PodVecRepr::<u8, 4, 1>::default();
+        assert!(v.try_set_from_slice(&data[..count]).is_err());
         assert!(v.is_empty());
     }
 }

@@ -131,7 +131,7 @@ jobs:
             exit 1
           fi
           for tag in "${release_tags[@]}"; do
-            [[ "$tag" == pina/v* ]] || { echo "::error::Unexpected release tag '$tag'." >&2; exit 1; }
+            [[ "$tag" == pinapod/v* ]] || { echo "::error::Unexpected release tag '$tag'." >&2; exit 1; }
             gh workflow run publish.yml --repo "$GITHUB_REPOSITORY" --ref main --field "tag=$tag"
           done
         shell: devenv shell -- bash -e {0}

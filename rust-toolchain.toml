@@ -1,5 +1,5 @@
 [toolchain]
-# Keep Pinapod on Pina's compiler so framework and storage-code diagnostics
+# Keep PinaPod on Pina's compiler so framework and storage-code diagnostics
 # remain identical.
 channel = "nightly-2026-02-20"
 components = ["rustfmt", "cargo", "clippy", "rust-analyzer", "llvm-tools", "rust-src", "miri"]

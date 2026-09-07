@@ -1,0 +1,12 @@
+error[E0603]: struct `JournalMut` is private
+  --> tests/ui/fail/compact_mut_not_exported.rs:11:40
+   |
+11 |     let _ = __pinapod_compact_Journal::JournalMut::new(&mut bytes);
+   |                                        ^^^^^^^^^^ private struct
+   |
+note: the struct `JournalMut` is defined here
+  --> tests/ui/fail/compact_mut_not_exported.rs:3:10
+   |
+ 3 | #[derive(PinaPod)]
+   |          ^^^^^^^
+   = note: this error originates in the derive macro `PinaPod` (in Nightly builds, run with -Z macro-backtrace for more info)

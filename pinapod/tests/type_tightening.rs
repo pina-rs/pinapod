@@ -1,11 +1,11 @@
 //! Acceptance tests for pinapod type tightening.
-//! Verifies ZcElem boundary, error specificity, and compact contract.
+//! Verifies the `ZcElem` boundary, error specificity, and compact contract.
 #![allow(
     unsafe_code,
     reason = "the derive macro emits audited zero-copy validation implementations"
 )]
 
-use pinapod::{pod::*, ZeroPod, ZeroPodError, ZeroPodFixed};
+use pinapod::{pod::*, PinaPod, PinaPodError};
 
 // --- ZcElem boundary: all pod types ---
 
@@ -32,7 +32,7 @@ fn zc_elem_for_all_pod_types() {
 
 // --- ZcElem for generated types ---
 
-#[derive(ZeroPod, Debug, PartialEq)]
+#[derive(PinaPod, Debug, PartialEq)]
 #[repr(u8)]
 enum Color {
     Red = 0,
@@ -41,7 +41,7 @@ enum Color {
 }
 
 #[allow(dead_code)]
-#[derive(ZeroPod)]
+#[derive(PinaPod)]
 struct Pixel {
     pub color: Color,
     pub alpha: u8,
@@ -58,9 +58,9 @@ fn generated_types_are_zc_elem() {
 
 #[test]
 fn pod_vec_of_enum_zc() {
-    let mut v = PodVec::<ColorZc, 5>::default();
-    v.try_push(Color::Red.into()).unwrap();
-    v.try_push(Color::Blue.into()).unwrap();
+    let mut v = PodVec::<Color, 5>::default();
+    v.try_push(Color::Red).unwrap();
+    v.try_push(Color::Blue).unwrap();
     assert_eq!(v.len(), 2);
     assert!(v.as_slice()[0] == Color::Red);
     assert!(v.as_slice()[1] == Color::Blue);
@@ -68,12 +68,12 @@ fn pod_vec_of_enum_zc() {
 
 #[test]
 fn pod_vec_of_fixed_struct_zc() {
-    let mut v = PodVec::<PixelZc, 3>::default();
+    let mut v = PodVec::<Pixel, 3>::default();
     // Create a PixelZc from bytes
     let mut buf = [0u8; 2]; // ColorZc(1) + u8(1)
     buf[0] = 1; // Green
     buf[1] = 128; // alpha
-    let pixel = unsafe { *(buf.as_ptr() as *const PixelZc) };
+    let pixel = unsafe { *buf.as_ptr().cast::<PixelZc>() };
     v.try_push(pixel).unwrap();
     assert_eq!(v.len(), 1);
 }
@@ -93,31 +93,31 @@ fn pod_vec_of_pod_option_zc_elem() {
 #[test]
 fn error_invalid_bool() {
     let buf = [2u8];
-    let val = unsafe { &*(buf.as_ptr() as *const PodBool) };
+    let val = unsafe { &*buf.as_ptr().cast::<PodBool>() };
     let err = <PodBool as pinapod::ZcValidate>::validate_ref(val);
-    assert_eq!(err, Err(ZeroPodError::InvalidBool));
+    assert_eq!(err, Err(PinaPodError::InvalidBool));
 }
 
 #[test]
 fn error_invalid_discriminant() {
     let buf = [99u8];
-    let err = Color::validate(&buf);
-    assert_eq!(err, Err(ZeroPodError::InvalidDiscriminant));
+    let err = Color::validate_exact(&buf);
+    assert_eq!(err, Err(PinaPodError::InvalidDiscriminant));
 }
 
 #[test]
 fn error_invalid_tag() {
     let buf = [5u8, 0u8];
-    let opt = unsafe { &*(buf.as_ptr() as *const PodOption<u8>) };
+    let opt = unsafe { &*buf.as_ptr().cast::<PodOption<u8>>() };
     let err = <PodOption<u8> as pinapod::ZcValidate>::validate_ref(opt);
-    assert_eq!(err, Err(ZeroPodError::InvalidTag));
+    assert_eq!(err, Err(PinaPodError::InvalidTag));
 }
 
 #[test]
 fn error_buffer_too_small() {
     let buf = [0u8; 0]; // empty buffer
-    let err = Color::validate(&buf);
-    assert_eq!(err, Err(ZeroPodError::BufferTooSmall));
+    let err = Color::validate_exact(&buf);
+    assert_eq!(err, Err(PinaPodError::BufferTooSmall));
 }
 
 #[test]
@@ -125,7 +125,7 @@ fn error_overflow_on_push() {
     let mut v = PodVec::<u8, 1>::default();
     v.try_push(1).unwrap();
     let err = v.try_push(2);
-    assert_eq!(err, Err(ZeroPodError::Overflow));
+    assert_eq!(err, Err(PinaPodError::Overflow));
 }
 
 // --- Trait taxonomy: relationships hold ---
@@ -133,7 +133,7 @@ fn error_overflow_on_push() {
 #[test]
 fn zc_elem_implies_zc_validate() {
     // ZcElem: Copy + ZcValidate, so any ZcElem can be validated
-    fn validate<T: pinapod::ZcElem>(val: &T) -> Result<(), ZeroPodError> {
+    fn validate<T: pinapod::ZcElem>(val: &T) -> Result<(), PinaPodError> {
         <T as pinapod::ZcValidate>::validate_ref(val)
     }
     let v = PodU64::from(42u64);

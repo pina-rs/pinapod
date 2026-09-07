@@ -1,0 +1,10 @@
+[package]
+name = "pinapod-renamed-dependency-test"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+pod_storage = { package = "pinapod", path = "../.." }

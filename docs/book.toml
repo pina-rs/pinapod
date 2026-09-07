@@ -1,0 +1,17 @@
+[book]
+title = "PinaPod Book"
+authors = ["pina-rs contributors"]
+language = "en"
+src = "src"
+description = "Design, usage, and verification documentation for PinaPod."
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/pina-rs/pinapod"
+edit-url-template = "https://github.com/pina-rs/pinapod/edit/main/docs/{path}"
+site-url = "/pinapod/"

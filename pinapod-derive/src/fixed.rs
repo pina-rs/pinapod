@@ -7,7 +7,7 @@
 )]
 
 use {
-    crate::{schema::Schema, type_map::map_to_pod_type},
+    crate::schema::Schema,
     proc_macro2::TokenStream,
     quote::{format_ident, quote},
     syn::Type,
@@ -19,38 +19,52 @@ pub fn generate(schema: &Schema) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let zc_name = format_ident!("{}Zc", struct_name);
 
-    // Build ZC struct fields: map each schema field to its pod type.
+    // Build ZC struct fields from the field's declared representation contract.
+    // A projection is intentional here: spelling alone must never make a
+    // caller-local lookalike such as `struct i8(bool)` use the primitive wire
+    // representation.
     let zc_fields: Vec<TokenStream> = schema
         .fields
         .iter()
         .map(|f| {
             let name = &f.name;
             let vis = &f.vis;
-            let pod_ty = map_to_pod_type(&f.ty);
+            let pod_ty = pod_projection(&f.ty);
             quote! { #vis #name: #pod_ty }
         })
         .collect();
 
     // Build ZcValidate field delegation.
     let field_names: Vec<&syn::Ident> = schema.fields.iter().map(|f| &f.name).collect();
+    let field_types: Vec<&Type> = schema.fields.iter().map(|field| &field.ty).collect();
     let pod_field_types: Vec<TokenStream> = schema
         .fields
         .iter()
-        .map(|f| map_to_pod_type(&f.ty))
+        .map(|field| pod_projection(&field.ty))
+        .collect();
+    let capacity_checks: Vec<TokenStream> = schema
+        .fields
+        .iter()
+        .flat_map(|field| fixed_capacity_checks(&field.ty))
         .collect();
     let where_clause_with_pod_bounds = {
-        let pod_bounds: Vec<_> = pod_field_types
+        let representation_bounds: Vec<_> = field_types
             .iter()
-            .map(|pod_ty| quote! { #pod_ty: pinapod::ZcValidate })
+            .map(|field_ty| {
+                quote! {
+                    #field_ty: pinapod::ZcField,
+                    <#field_ty as pinapod::ZcField>::Pod: pinapod::ZcElem
+                }
+            })
             .collect();
 
-        match (where_clause, pod_bounds.is_empty()) {
+        match (where_clause, representation_bounds.is_empty()) {
             (Some(existing), false) => {
                 let predicates = existing.predicates.iter();
-                quote! { where #(#predicates,)* #(#pod_bounds,)* }
+                quote! { where #(#predicates,)* #(#representation_bounds,)* }
             }
             (Some(existing), true) => quote! { #existing },
-            (None, false) => quote! { where #(#pod_bounds,)* },
+            (None, false) => quote! { where #(#representation_bounds,)* },
             (None, true) => quote! {},
         }
     };
@@ -59,10 +73,80 @@ pub fn generate(schema: &Schema) -> TokenStream {
 
     let align_assert = if schema.generics.params.is_empty() {
         quote! {
-            const _: () = assert!(core::mem::align_of::<#zc_name #ty_generics>() == 1);
+            const _: () = ::core::assert!(::core::mem::align_of::<#zc_name #ty_generics>() == 1);
         }
     } else {
         quote! {}
+    };
+
+    let inherent_helpers = if schema.no_inherent {
+        quote! {}
+    } else {
+        quote! {
+            impl #impl_generics #struct_name #ty_generics #where_clause_with_pod_bounds {
+                /// The exact number of bytes in this fixed representation.
+                pub const SIZE: ::core::primitive::usize = ::core::mem::size_of::<#zc_name #ty_generics>();
+
+                /// Read and validate exactly one encoded value.
+                #[inline(always)]
+                pub fn read_exact(
+                    data: &[::core::primitive::u8],
+                ) -> ::core::result::Result<&#zc_name #ty_generics, pinapod::PinaPodError> {
+                    <Self as pinapod::PinaPodFixed>::read_exact(data)
+                }
+
+                /// Mutably read and validate exactly one encoded value.
+                #[inline(always)]
+                pub fn read_exact_mut(
+                    data: &mut [::core::primitive::u8],
+                ) -> ::core::result::Result<&mut #zc_name #ty_generics, pinapod::PinaPodError> {
+                    <Self as pinapod::PinaPodFixed>::read_exact_mut(data)
+                }
+
+                /// Read one encoded value from the start of a containing buffer.
+                #[inline(always)]
+                pub fn read_prefix(
+                    data: &[::core::primitive::u8],
+                ) -> ::core::result::Result<&#zc_name #ty_generics, pinapod::PinaPodError> {
+                    <Self as pinapod::PinaPodFixed>::read_prefix(data)
+                }
+
+                /// Mutably read one value from the start of a containing buffer.
+                #[inline(always)]
+                pub fn read_prefix_mut(
+                    data: &mut [::core::primitive::u8],
+                ) -> ::core::result::Result<&mut #zc_name #ty_generics, pinapod::PinaPodError> {
+                    <Self as pinapod::PinaPodFixed>::read_prefix_mut(data)
+                }
+
+                /// Validate exactly one encoded value without constructing a view.
+                #[inline(always)]
+                pub fn validate_exact(
+                    data: &[::core::primitive::u8],
+                ) -> ::core::result::Result<(), pinapod::PinaPodError> {
+                    <Self as pinapod::PinaPodFixed>::validate_exact(data)
+                }
+
+                /// Validate one encoded value at the start of a containing buffer.
+                #[inline(always)]
+                pub fn validate_prefix(
+                    data: &[::core::primitive::u8],
+                ) -> ::core::result::Result<(), pinapod::PinaPodError> {
+                    <Self as pinapod::PinaPodFixed>::validate_prefix(data)
+                }
+
+                /// Initialize exactly one value and validate it once complete.
+                #[inline(always)]
+                pub fn initialize(
+                    data: &mut [::core::primitive::u8],
+                    initialize: impl ::core::ops::FnOnce(
+                        &mut #zc_name #ty_generics,
+                    ) -> ::core::result::Result<(), pinapod::PinaPodError>,
+                ) -> ::core::result::Result<&mut #zc_name #ty_generics, pinapod::PinaPodError> {
+                    <Self as pinapod::PinaPodFixed>::initialize(data, initialize)
+                }
+            }
+        }
     };
 
     quote! {
@@ -71,9 +155,9 @@ pub fn generate(schema: &Schema) -> TokenStream {
             #( #zc_fields ),*
         }
 
-        impl #impl_generics Copy for #zc_name #ty_generics #where_clause_with_pod_bounds {}
+        impl #impl_generics ::core::marker::Copy for #zc_name #ty_generics #where_clause_with_pod_bounds {}
 
-        impl #impl_generics Clone for #zc_name #ty_generics #where_clause_with_pod_bounds {
+        impl #impl_generics ::core::clone::Clone for #zc_name #ty_generics #where_clause_with_pod_bounds {
             fn clone(&self) -> Self {
                 *self
             }
@@ -83,48 +167,103 @@ pub fn generate(schema: &Schema) -> TokenStream {
 
         #accessors
 
+        #inherent_helpers
+
         impl #impl_generics pinapod::ZcValidate for #zc_name #ty_generics #where_clause_with_pod_bounds {
-            fn validate_ref(value: &Self) -> Result<(), pinapod::ZeroPodError> {
+            fn validate_ref(
+                value: &Self,
+            ) -> ::core::result::Result<(), pinapod::PinaPodError> {
+                #(#capacity_checks)*
                 #(<#pod_field_types as pinapod::ZcValidate>::validate_ref(&value.#field_names)?;)*
-                Ok(())
+                ::core::result::Result::Ok(())
             }
         }
 
-        impl #impl_generics pinapod::ZeroPodSchema for #struct_name #ty_generics #where_clause_with_pod_bounds {
-            const LAYOUT: pinapod::LayoutKind = pinapod::LayoutKind::Fixed;
-        }
+        impl #impl_generics pinapod::PinaPod for #struct_name #ty_generics #where_clause_with_pod_bounds {}
 
-        impl #impl_generics pinapod::ZeroPodFixed for #struct_name #ty_generics #where_clause_with_pod_bounds {
+        unsafe impl #impl_generics pinapod::PinaPodFixed for #struct_name #ty_generics #where_clause_with_pod_bounds {
             type Zc = #zc_name #ty_generics;
-            const SIZE: usize = core::mem::size_of::<#zc_name #ty_generics>();
-
-            fn from_bytes(data: &[u8]) -> Result<&Self::Zc, pinapod::ZeroPodError> {
-                Self::validate(data)?;
-                Ok(unsafe { &*(data.as_ptr() as *const Self::Zc) })
-            }
-
-            fn from_bytes_mut(data: &mut [u8]) -> Result<&mut Self::Zc, pinapod::ZeroPodError> {
-                Self::validate(data)?;
-                Ok(unsafe { &mut *(data.as_mut_ptr() as *mut Self::Zc) })
-            }
-
-            fn validate(data: &[u8]) -> Result<(), pinapod::ZeroPodError> {
-                if data.len() < core::mem::size_of::<#zc_name #ty_generics>() {
-                    return Err(pinapod::ZeroPodError::BufferTooSmall);
-                }
-                let __zc = unsafe { &*(data.as_ptr() as *const Self::Zc) };
-                <Self::Zc as pinapod::ZcValidate>::validate_ref(__zc)?;
-                Ok(())
-            }
         }
 
         unsafe impl #impl_generics pinapod::ZcField for #struct_name #ty_generics #where_clause_with_pod_bounds {
             type Pod = #zc_name #ty_generics;
-            const POD_SIZE: usize = core::mem::size_of::<#zc_name #ty_generics>();
         }
 
-        // SAFETY: #zc_name is #[repr(C)] with all align-1 fields, verified by const assert above.
+        // SAFETY: Every generated field is required to implement ZcElem. The
+        // companion is repr(C), and the non-generic case has an explicit
+        // alignment assertion above.
         unsafe impl #impl_generics pinapod::ZcElem for #zc_name #ty_generics #where_clause_with_pod_bounds {}
+    }
+}
+
+fn pod_projection(ty: &Type) -> TokenStream {
+    quote! { <#ty as pinapod::ZcField>::Pod }
+}
+
+fn fixed_capacity_checks(ty: &Type) -> Vec<TokenStream> {
+    let mut checks = Vec::new();
+    collect_fixed_capacity_checks(ty, &mut checks);
+    checks
+}
+
+fn collect_fixed_capacity_checks(ty: &Type, checks: &mut Vec<TokenStream>) {
+    let Type::Path(type_path) = ty else {
+        return;
+    };
+    if type_path.qself.is_some() {
+        return;
+    }
+    let segments: Vec<_> = type_path.path.segments.iter().collect();
+    let segment = match segments.as_slice() {
+        [name] => name,
+        [root, name] if root.ident == "pinapod" => name,
+        [root, module, name] if root.ident == "pinapod" && module.ident == "pod" => name,
+        [root, module, name]
+            if (root.ident == "core" || root.ident == "std") && module.ident == "option" =>
+        {
+            name
+        }
+        _ => return,
+    };
+    let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return;
+    };
+    let arguments: Vec<_> = arguments.args.iter().collect();
+
+    match segment.ident.to_string().as_str() {
+        "String" | "PodString" => {
+            let Some(capacity) = arguments.first() else {
+                return;
+            };
+            let prefix = arguments
+                .get(1)
+                .map_or_else(|| quote! { 1 }, |prefix| quote! { #prefix });
+
+            checks.push(quote! {
+                let _ = pinapod::pod::PodString::<#capacity, #prefix>::VALID;
+            });
+        }
+        "Vec" | "PodVec" => {
+            let (Some(syn::GenericArgument::Type(element)), Some(capacity)) =
+                (arguments.first(), arguments.get(1))
+            else {
+                return;
+            };
+            let prefix = arguments
+                .get(2)
+                .map_or_else(|| quote! { 2 }, |prefix| quote! { #prefix });
+
+            checks.push(quote! {
+                let _ = pinapod::pod::PodVec::<::core::primitive::u8, #capacity, #prefix>::VALID;
+            });
+            collect_fixed_capacity_checks(element, checks);
+        }
+        "Option" | "PodOption" => {
+            if let Some(syn::GenericArgument::Type(inner)) = arguments.first() {
+                collect_fixed_capacity_checks(inner, checks);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -136,13 +275,22 @@ enum AccessorKind {
     NativeViaFrom(TokenStream),
     /// `Address`, `[u8; N]` — borrow; return `&T`.
     Borrow,
-    /// `PodOption<T, 1>` — return `Option<T>` via `.get()`.
-    PodOptionGet,
-    /// `PodOption<T, PFX>` with an explicit non-default prefix — borrow via
-    /// `.get_ref()` to avoid copying wider COption-style payloads.
-    PodOptionRef,
+    /// Bounded UTF-8 storage — return `&str`.
+    String,
+    /// A bounded fixed vector — return its active representation slice.
+    Vec(TokenStream),
+    /// An optional fixed value — return the semantic shape of its payload.
+    Option(OptionAccessor),
     /// `#[pinapod(skip_accessor)]` — skip.
     Skip,
+}
+
+enum OptionAccessor {
+    CopyDirect(TokenStream),
+    NativeViaFrom(TokenStream),
+    String,
+    Vec(TokenStream),
+    Borrow(TokenStream),
 }
 
 fn classify_accessor(ty: &Type, skip: bool) -> AccessorKind {
@@ -155,34 +303,39 @@ fn classify_accessor(ty: &Type, skip: bool) -> AccessorKind {
             let name = seg.ident.to_string();
             match name.as_str() {
                 "u8" | "i8" => return AccessorKind::CopyDirect,
-                "u16" => return AccessorKind::NativeViaFrom(quote! { u16 }),
-                "u32" => return AccessorKind::NativeViaFrom(quote! { u32 }),
-                "u64" => return AccessorKind::NativeViaFrom(quote! { u64 }),
-                "u128" => return AccessorKind::NativeViaFrom(quote! { u128 }),
-                "i16" => return AccessorKind::NativeViaFrom(quote! { i16 }),
-                "i32" => return AccessorKind::NativeViaFrom(quote! { i32 }),
-                "i64" => return AccessorKind::NativeViaFrom(quote! { i64 }),
-                "i128" => return AccessorKind::NativeViaFrom(quote! { i128 }),
-                "bool" => return AccessorKind::NativeViaFrom(quote! { bool }),
-                "PodOption" => {
-                    if let syn::PathArguments::AngleBracketed(ab) = &seg.arguments {
-                        let mut iter = ab.args.iter();
-                        let _inner = iter.next(); // T
-                        match iter.next() {
-                            None => return AccessorKind::PodOptionGet, // default PFX=1
-                            Some(syn::GenericArgument::Const(syn::Expr::Lit(syn::ExprLit {
-                                lit: syn::Lit::Int(lit),
-                                ..
-                            }))) => {
-                                if lit.base10_parse::<usize>().ok() == Some(1) {
-                                    return AccessorKind::PodOptionGet;
-                                }
-                                return AccessorKind::PodOptionRef;
-                            }
-                            _ => return AccessorKind::PodOptionRef,
-                        }
-                    }
-                    return AccessorKind::PodOptionGet;
+                "u16" => {
+                    return AccessorKind::NativeViaFrom(quote! { ::core::primitive::u16 });
+                }
+                "u32" => {
+                    return AccessorKind::NativeViaFrom(quote! { ::core::primitive::u32 });
+                }
+                "u64" => {
+                    return AccessorKind::NativeViaFrom(quote! { ::core::primitive::u64 });
+                }
+                "u128" => {
+                    return AccessorKind::NativeViaFrom(quote! { ::core::primitive::u128 });
+                }
+                "i16" => {
+                    return AccessorKind::NativeViaFrom(quote! { ::core::primitive::i16 });
+                }
+                "i32" => {
+                    return AccessorKind::NativeViaFrom(quote! { ::core::primitive::i32 });
+                }
+                "i64" => {
+                    return AccessorKind::NativeViaFrom(quote! { ::core::primitive::i64 });
+                }
+                "i128" => {
+                    return AccessorKind::NativeViaFrom(quote! { ::core::primitive::i128 });
+                }
+                "bool" => {
+                    return AccessorKind::NativeViaFrom(quote! { ::core::primitive::bool });
+                }
+                "String" | "PodString" => return AccessorKind::String,
+                "Vec" | "PodVec" => {
+                    return AccessorKind::Vec(extract_container_inner(ty));
+                }
+                "Option" | "PodOption" => {
+                    return AccessorKind::Option(classify_option_accessor(ty));
                 }
                 _ => {}
             }
@@ -200,20 +353,90 @@ fn classify_accessor(ty: &Type, skip: bool) -> AccessorKind {
     AccessorKind::Borrow
 }
 
-/// Extract the inner type T from `PodOption<T>` or `PodOption<T, PFX>`.
-/// Maps the inner type through `map_to_pod_type` so native types become pod types.
-fn extract_pod_option_inner(ty: &Type) -> TokenStream {
+/// Extract and map the first type argument of a bounded container.
+fn extract_container_inner(ty: &Type) -> TokenStream {
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {
             if let syn::PathArguments::AngleBracketed(ab) = &seg.arguments {
                 if let Some(syn::GenericArgument::Type(inner)) = ab.args.first() {
-                    return map_to_pod_type(inner);
+                    return pod_projection(inner);
                 }
             }
         }
     }
     // Fallback — shouldn't happen since we only call this for PodOption fields.
     quote! { () }
+}
+
+fn classify_option_accessor(ty: &Type) -> OptionAccessor {
+    let Some(inner) = extract_inner_type(ty) else {
+        return OptionAccessor::Borrow(quote! { () });
+    };
+    let mapped_inner = pod_projection(inner);
+
+    if let Type::Path(type_path) = inner {
+        if let Some(segment) = type_path.path.segments.last() {
+            let name = segment.ident.to_string();
+
+            match name.as_str() {
+                "u8" => {
+                    return OptionAccessor::CopyDirect(quote! { ::core::primitive::u8 });
+                }
+                "i8" => {
+                    return OptionAccessor::CopyDirect(quote! { ::core::primitive::i8 });
+                }
+                "u16" => {
+                    return OptionAccessor::NativeViaFrom(quote! { ::core::primitive::u16 });
+                }
+                "u32" => {
+                    return OptionAccessor::NativeViaFrom(quote! { ::core::primitive::u32 });
+                }
+                "u64" => {
+                    return OptionAccessor::NativeViaFrom(quote! { ::core::primitive::u64 });
+                }
+                "u128" => {
+                    return OptionAccessor::NativeViaFrom(quote! { ::core::primitive::u128 });
+                }
+                "i16" => {
+                    return OptionAccessor::NativeViaFrom(quote! { ::core::primitive::i16 });
+                }
+                "i32" => {
+                    return OptionAccessor::NativeViaFrom(quote! { ::core::primitive::i32 });
+                }
+                "i64" => {
+                    return OptionAccessor::NativeViaFrom(quote! { ::core::primitive::i64 });
+                }
+                "i128" => {
+                    return OptionAccessor::NativeViaFrom(quote! { ::core::primitive::i128 });
+                }
+                "bool" => {
+                    return OptionAccessor::NativeViaFrom(quote! { ::core::primitive::bool });
+                }
+                "String" | "PodString" => return OptionAccessor::String,
+                "Vec" | "PodVec" => {
+                    return OptionAccessor::Vec(extract_container_inner(inner));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    OptionAccessor::Borrow(mapped_inner)
+}
+
+fn extract_inner_type(ty: &Type) -> Option<&Type> {
+    let Type::Path(type_path) = ty else {
+        return None;
+    };
+    let segment = type_path.path.segments.last()?;
+    let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return None;
+    };
+
+    arguments.args.iter().find_map(|argument| match argument {
+        syn::GenericArgument::Type(inner) => Some(inner),
+        _ => None,
+    })
 }
 
 fn generate_accessors(schema: &Schema) -> TokenStream {
@@ -229,7 +452,7 @@ fn generate_accessors(schema: &Schema) -> TokenStream {
         .iter()
         .filter_map(|f| {
             let name = &f.name;
-            let pod_ty = map_to_pod_type(&f.ty);
+            let pod_ty = pod_projection(&f.ty);
 
             match classify_accessor(&f.ty, f.skip_accessor) {
                 AccessorKind::CopyDirect => Some(quote! {
@@ -241,7 +464,7 @@ fn generate_accessors(schema: &Schema) -> TokenStream {
                 AccessorKind::NativeViaFrom(native_ty) => Some(quote! {
                     #[inline(always)]
                     pub fn #name(&self) -> #native_ty {
-                        #native_ty::from(self.#name)
+                        ::core::convert::From::from(self.#name)
                     }
                 }),
                 AccessorKind::Borrow => Some(quote! {
@@ -250,25 +473,50 @@ fn generate_accessors(schema: &Schema) -> TokenStream {
                         &self.#name
                     }
                 }),
-                AccessorKind::PodOptionGet => {
-                    // Extract the inner type T from PodOption<T> / PodOption<T, 1>.
-                    let inner_ty = extract_pod_option_inner(&f.ty);
-                    Some(quote! {
+                AccessorKind::String => Some(quote! {
+                    #[inline(always)]
+                    pub fn #name(&self) -> &::core::primitive::str {
+                        self.#name.as_str()
+                    }
+                }),
+                AccessorKind::Vec(element) => Some(quote! {
+                    #[inline(always)]
+                    pub fn #name(&self) -> &[#element] {
+                        self.#name.as_slice()
+                    }
+                }),
+                AccessorKind::Option(option) => Some(match option {
+                    OptionAccessor::CopyDirect(inner) => quote! {
                         #[inline(always)]
-                        pub fn #name(&self) -> Option<#inner_ty> {
+                        pub fn #name(&self) -> ::core::option::Option<#inner> {
                             self.#name.get()
                         }
-                    })
-                }
-                AccessorKind::PodOptionRef => {
-                    let inner_ty = extract_pod_option_inner(&f.ty);
-                    Some(quote! {
+                    },
+                    OptionAccessor::NativeViaFrom(inner) => quote! {
                         #[inline(always)]
-                        pub fn #name(&self) -> Option<&#inner_ty> {
+                        pub fn #name(&self) -> ::core::option::Option<#inner> {
+                            self.#name.get().map(::core::convert::From::from)
+                        }
+                    },
+                    OptionAccessor::String => quote! {
+                        #[inline(always)]
+                        pub fn #name(&self) -> ::core::option::Option<&::core::primitive::str> {
+                            self.#name.get_ref().map(|value| value.as_str())
+                        }
+                    },
+                    OptionAccessor::Vec(element) => quote! {
+                        #[inline(always)]
+                        pub fn #name(&self) -> ::core::option::Option<&[#element]> {
+                            self.#name.get_ref().map(|value| value.as_slice())
+                        }
+                    },
+                    OptionAccessor::Borrow(inner) => quote! {
+                        #[inline(always)]
+                        pub fn #name(&self) -> ::core::option::Option<&#inner> {
                             self.#name.get_ref()
                         }
-                    })
-                }
+                    },
+                }),
                 AccessorKind::Skip => None,
             }
         })
@@ -294,7 +542,7 @@ pub fn generate_enum(input: &syn::DeriveInput) -> TokenStream {
         Some(r) => r,
         None => {
             return quote! {
-                compile_error!("ZeroPod enums require #[repr(u8)], #[repr(u16)], #[repr(u32)], or #[repr(u64)]");
+                compile_error!("PinaPod enums require #[repr(u8)], #[repr(u16)], #[repr(u32)], or #[repr(u64)]");
             };
         }
     };
@@ -306,48 +554,67 @@ pub fn generate_enum(input: &syn::DeriveInput) -> TokenStream {
     };
 
     let mut variant_names = Vec::new();
-    let mut discriminant_values = Vec::new();
-
     for v in variants {
         if !v.fields.is_empty() {
             let msg = format!(
-                "ZeroPod enum variant `{}` must be a unit variant (no data fields)",
+                "PinaPod enum variant `{}` must be a unit variant (no data fields)",
                 v.ident
             );
             return quote! { compile_error!(#msg); };
         }
-        let disc = match &v.discriminant {
-            Some((_, expr)) => expr.clone(),
+        match &v.discriminant {
+            Some(_) => {}
             None => {
                 let msg = format!(
-                    "ZeroPod enum variant `{}` must have an explicit discriminant (e.g. `= 0`)",
+                    "PinaPod enum variant `{}` must have an explicit discriminant (e.g. `= 0`)",
                     v.ident
                 );
                 return quote! { compile_error!(#msg); };
             }
-        };
+        }
         variant_names.push(&v.ident);
-        discriminant_values.push(disc);
     }
 
     // 3. Map repr to types and sizes.
     let (native_ty, pod_ty, repr_size): (TokenStream, TokenStream, usize) = match repr.as_str() {
-        "u8" => (quote! { u8 }, quote! { u8 }, 1),
-        "u16" => (quote! { u16 }, quote! { pinapod::pod::PodU16 }, 2),
-        "u32" => (quote! { u32 }, quote! { pinapod::pod::PodU32 }, 4),
-        "u64" => (quote! { u64 }, quote! { pinapod::pod::PodU64 }, 8),
+        "u8" => (
+            quote! { ::core::primitive::u8 },
+            quote! { ::core::primitive::u8 },
+            1,
+        ),
+        "u16" => (
+            quote! { ::core::primitive::u16 },
+            quote! { pinapod::pod::PodU16 },
+            2,
+        ),
+        "u32" => (
+            quote! { ::core::primitive::u32 },
+            quote! { pinapod::pod::PodU32 },
+            4,
+        ),
+        "u64" => (
+            quote! { ::core::primitive::u64 },
+            quote! { pinapod::pod::PodU64 },
+            8,
+        ),
         _ => unreachable!(),
     };
 
     // 4. Build the valid discriminant set for validation.
-    let valid_arms: Vec<TokenStream> = discriminant_values.iter().map(|d| quote! { #d }).collect();
+    let valid_arms: Vec<TokenStream> = variant_names
+        .iter()
+        .map(|name| quote! { value if value == (#enum_name::#name as #native_ty) })
+        .collect();
 
     // 5. Build the From<Enum> -> PodType match arms.
     let from_arms: Vec<TokenStream> = variant_names
         .iter()
-        .zip(discriminant_values.iter())
-        .map(|(name, disc)| {
-            quote! { #enum_name::#name => (#disc as #native_ty).into() }
+        .map(|name| {
+            quote! {
+                #enum_name::#name => ::core::convert::Into::into(
+                    #enum_name::#name as #native_ty,
+                )
+            }
         })
         .collect();
 
@@ -361,8 +628,8 @@ pub fn generate_enum(input: &syn::DeriveInput) -> TokenStream {
 
     quote! {
         #[repr(transparent)]
-        #[derive(Clone, Copy)]
-        pub struct #zc_name([u8; #repr_size]);
+        #[derive(::core::clone::Clone, ::core::marker::Copy)]
+        pub struct #zc_name([::core::primitive::u8; #repr_size]);
 
         impl #zc_name {
             #[inline(always)]
@@ -373,44 +640,88 @@ pub fn generate_enum(input: &syn::DeriveInput) -> TokenStream {
 
         impl pinapod::ZcValidate for #zc_name {
             #[allow(clippy::manual_range_patterns)]
-            fn validate_ref(value: &Self) -> Result<(), pinapod::ZeroPodError> {
+            fn validate_ref(
+                value: &Self,
+            ) -> ::core::result::Result<(), pinapod::PinaPodError> {
                 let v = value.get();
                 match v {
-                    #( #valid_arms )|* => Ok(()),
-                    _ => Err(pinapod::ZeroPodError::InvalidDiscriminant),
+                    #( #valid_arms => ::core::result::Result::Ok(()), )*
+                    _ => ::core::result::Result::Err(pinapod::PinaPodError::InvalidDiscriminant),
                 }
             }
         }
 
-        impl pinapod::ZeroPodSchema for #enum_name {
-            const LAYOUT: pinapod::LayoutKind = pinapod::LayoutKind::Fixed;
-        }
+        impl pinapod::PinaPod for #enum_name {}
 
-        impl pinapod::ZeroPodFixed for #enum_name {
+        unsafe impl pinapod::PinaPodFixed for #enum_name {
             type Zc = #zc_name;
-            const SIZE: usize = #repr_size;
+        }
 
-            fn from_bytes(data: &[u8]) -> Result<&Self::Zc, pinapod::ZeroPodError> {
-                Self::validate(data)?;
-                Ok(unsafe { &*(data.as_ptr() as *const #zc_name) })
+        impl #enum_name {
+            /// The exact number of bytes in this fixed representation.
+            pub const SIZE: ::core::primitive::usize = ::core::mem::size_of::<#zc_name>();
+
+            /// Read and validate exactly one encoded value.
+            #[inline(always)]
+            pub fn read_exact(
+                data: &[::core::primitive::u8],
+            ) -> ::core::result::Result<&#zc_name, pinapod::PinaPodError> {
+                <Self as pinapod::PinaPodFixed>::read_exact(data)
             }
 
-            fn from_bytes_mut(data: &mut [u8]) -> Result<&mut Self::Zc, pinapod::ZeroPodError> {
-                Self::validate(data)?;
-                Ok(unsafe { &mut *(data.as_mut_ptr() as *mut #zc_name) })
+            /// Mutably read and validate exactly one encoded value.
+            #[inline(always)]
+            pub fn read_exact_mut(
+                data: &mut [::core::primitive::u8],
+            ) -> ::core::result::Result<&mut #zc_name, pinapod::PinaPodError> {
+                <Self as pinapod::PinaPodFixed>::read_exact_mut(data)
             }
 
-            fn validate(data: &[u8]) -> Result<(), pinapod::ZeroPodError> {
-                if data.len() < #repr_size {
-                    return Err(pinapod::ZeroPodError::BufferTooSmall);
-                }
-                let __zc = unsafe { &*(data.as_ptr() as *const #zc_name) };
-                <#zc_name as pinapod::ZcValidate>::validate_ref(__zc)?;
-                Ok(())
+            /// Read one encoded value from the start of a containing buffer.
+            #[inline(always)]
+            pub fn read_prefix(
+                data: &[::core::primitive::u8],
+            ) -> ::core::result::Result<&#zc_name, pinapod::PinaPodError> {
+                <Self as pinapod::PinaPodFixed>::read_prefix(data)
+            }
+
+            /// Mutably read one value from the start of a containing buffer.
+            #[inline(always)]
+            pub fn read_prefix_mut(
+                data: &mut [::core::primitive::u8],
+            ) -> ::core::result::Result<&mut #zc_name, pinapod::PinaPodError> {
+                <Self as pinapod::PinaPodFixed>::read_prefix_mut(data)
+            }
+
+            /// Validate exactly one encoded value without constructing a view.
+            #[inline(always)]
+            pub fn validate_exact(
+                data: &[::core::primitive::u8],
+            ) -> ::core::result::Result<(), pinapod::PinaPodError> {
+                <Self as pinapod::PinaPodFixed>::validate_exact(data)
+            }
+
+            /// Validate one encoded value at the start of a containing buffer.
+            #[inline(always)]
+            pub fn validate_prefix(
+                data: &[::core::primitive::u8],
+            ) -> ::core::result::Result<(), pinapod::PinaPodError> {
+                <Self as pinapod::PinaPodFixed>::validate_prefix(data)
+            }
+
+            /// Initialize exactly one value and validate it once complete.
+            #[inline(always)]
+            pub fn initialize(
+                data: &mut [::core::primitive::u8],
+                initialize: impl ::core::ops::FnOnce(
+                    &mut #zc_name,
+                ) -> ::core::result::Result<(), pinapod::PinaPodError>,
+            ) -> ::core::result::Result<&mut #zc_name, pinapod::PinaPodError> {
+                <Self as pinapod::PinaPodFixed>::initialize(data, initialize)
             }
         }
 
-        impl From<#enum_name> for #pod_ty {
+        impl ::core::convert::From<#enum_name> for #pod_ty {
             fn from(v: #enum_name) -> Self {
                 match v {
                     #( #from_arms ),*
@@ -420,24 +731,23 @@ pub fn generate_enum(input: &syn::DeriveInput) -> TokenStream {
 
         unsafe impl pinapod::ZcField for #enum_name {
             type Pod = #zc_name;
-            const POD_SIZE: usize = #repr_size;
         }
 
         // --- Enum ergonomics ---
 
-        impl From<#enum_name> for #zc_name {
+        impl ::core::convert::From<#enum_name> for #zc_name {
             fn from(v: #enum_name) -> Self {
                 let raw: #native_ty = match v {
-                    #( #enum_name::#variant_names => #discriminant_values as #native_ty ),*
+                    #( #enum_name::#variant_names => #enum_name::#variant_names as #native_ty ),*
                 };
                 Self(raw.to_le_bytes())
             }
         }
 
-        impl PartialEq<#enum_name> for #zc_name {
-            fn eq(&self, other: &#enum_name) -> bool {
+        impl ::core::cmp::PartialEq<#enum_name> for #zc_name {
+            fn eq(&self, other: &#enum_name) -> ::core::primitive::bool {
                 let other_raw: #native_ty = match other {
-                    #( #enum_name::#variant_names => #discriminant_values as #native_ty ),*
+                    #( #enum_name::#variant_names => #enum_name::#variant_names as #native_ty ),*
                 };
                 self.get() == other_raw
             }
@@ -446,46 +756,63 @@ pub fn generate_enum(input: &syn::DeriveInput) -> TokenStream {
         impl #zc_name {
             /// Try to convert the raw ZC value back to the enum.
             #[allow(clippy::manual_range_patterns)]
-            pub fn try_to_enum(&self) -> Result<#enum_name, pinapod::ZeroPodError> {
+            pub fn try_to_enum(
+                &self,
+            ) -> ::core::result::Result<#enum_name, pinapod::PinaPodError> {
                 let val = self.get();
                 match val {
-                    #( #valid_arms => Ok(#enum_name::#variant_names), )*
-                    _ => Err(pinapod::ZeroPodError::InvalidDiscriminant),
+                    #( #valid_arms => ::core::result::Result::Ok(#enum_name::#variant_names), )*
+                    _ => ::core::result::Result::Err(pinapod::PinaPodError::InvalidDiscriminant),
                 }
             }
 
-            pub fn is(&self, variant: #enum_name) -> bool {
-                let other: #zc_name = variant.into();
+            pub fn is(&self, variant: #enum_name) -> ::core::primitive::bool {
+                let other: #zc_name = ::core::convert::Into::into(variant);
                 self.get() == other.get()
             }
         }
 
-        impl core::fmt::Display for #zc_name {
-            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        impl ::core::fmt::Display for #zc_name {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 match self.get() {
-                    #( #discriminant_values => write!(f, stringify!(#variant_names)), )*
-                    other => write!(f, "{}(invalid: {})", stringify!(#enum_name), other),
+                    #( #valid_arms => ::core::write!(f, ::core::stringify!(#variant_names)), )*
+                    other => ::core::write!(
+                        f,
+                        "{}(invalid: {})",
+                        ::core::stringify!(#enum_name),
+                        other,
+                    ),
                 }
             }
         }
 
-        impl core::fmt::Debug for #zc_name {
-            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        impl ::core::fmt::Debug for #zc_name {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 match self.get() {
-                    #( #discriminant_values => write!(f, "{}Zc({})", stringify!(#enum_name), stringify!(#variant_names)), )*
-                    other => write!(f, "{}Zc(invalid: {})", stringify!(#enum_name), other),
+                    #( #valid_arms => ::core::write!(
+                        f,
+                        "{}Zc({})",
+                        ::core::stringify!(#enum_name),
+                        ::core::stringify!(#variant_names),
+                    ), )*
+                    other => ::core::write!(
+                        f,
+                        "{}Zc(invalid: {})",
+                        ::core::stringify!(#enum_name),
+                        other,
+                    ),
                 }
             }
         }
 
-        impl PartialEq for #zc_name {
-            fn eq(&self, other: &Self) -> bool {
+        impl ::core::cmp::PartialEq for #zc_name {
+            fn eq(&self, other: &Self) -> ::core::primitive::bool {
                 self.0 == other.0
             }
         }
 
-        impl PartialEq<#native_ty> for #zc_name {
-            fn eq(&self, other: &#native_ty) -> bool {
+        impl ::core::cmp::PartialEq<#native_ty> for #zc_name {
+            fn eq(&self, other: &#native_ty) -> ::core::primitive::bool {
                 self.get() == *other
             }
         }
@@ -522,6 +849,52 @@ fn parse_enum_repr(input: &syn::DeriveInput) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generated_struct_requires_the_original_field_mapping_and_zc_elem() {
+        let input: syn::DeriveInput = syn::parse_quote! {
+            struct ShadowedPrimitive {
+                value: i8,
+            }
+        };
+        let schema = Schema::parse(&input).unwrap();
+        let generated = generate(&schema).to_string();
+
+        assert!(generated.contains("value : < i8 as pinapod :: ZcField > :: Pod"));
+        assert!(generated.contains("i8 : pinapod :: ZcField"));
+        assert!(generated.contains("< i8 as pinapod :: ZcField > :: Pod : pinapod :: ZcElem"));
+    }
+
+    #[test]
+    fn no_inherent_omits_schema_helpers_but_keeps_the_trait_contract() {
+        let input: syn::DeriveInput = syn::parse_quote! {
+            #[pinapod(no_inherent)]
+            struct EmbeddedSchema {
+                value: u64,
+            }
+        };
+        let schema = Schema::parse(&input).unwrap();
+        let generated = generate(&schema).to_string();
+
+        assert!(!generated.contains("pub const SIZE"));
+        assert!(!generated.contains("pub fn read_exact"));
+        assert!(generated.contains("pinapod :: PinaPodFixed for EmbeddedSchema"));
+        assert!(generated.contains("pub struct EmbeddedSchemaZc"));
+    }
+
+    #[test]
+    fn fixed_containers_force_recursive_prefix_capacity_checks() {
+        let input: syn::DeriveInput = syn::parse_quote! {
+            struct NestedCapacity {
+                value: Option<Vec<Option<String<256>>, 4>>,
+            }
+        };
+        let schema = Schema::parse(&input).unwrap();
+        let generated = generate(&schema).to_string();
+
+        assert!(generated.contains("PodVec :: < :: core :: primitive :: u8 , 4 , 2 > :: VALID"));
+        assert!(generated.contains("PodString :: < 256 , 1 > :: VALID"));
+    }
 
     #[test]
     fn generates_u32_and_u64_enum_storage() {

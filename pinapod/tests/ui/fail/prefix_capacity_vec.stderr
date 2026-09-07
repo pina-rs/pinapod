@@ -1,0 +1,28 @@
+error[E0080]: evaluation panicked: PodVec<T, N, PFX>: N exceeds the maximum value representable by the PFX-byte length prefix
+ --> $RUST/core/src/panic.rs
+  |
+  |           $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+  |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `pinapod::pod::PodVecRepr::<u8, 256, 1>::_CAP_CHECK` failed here
+  |
+ ::: src/pod/vec.rs
+  |
+  | /         assert!(
+  | |             N <= max_n_for_pfx(PFX),
+  | |             "PodVec<T, N, PFX>: N exceeds the maximum value representable by the PFX-byte length \
+  | |              prefix"
+  | |         );
+  | |_________- in this macro invocation
+
+note: erroneous constant encountered
+ --> src/pod/vec.rs
+  |
+  |     pub const VALID: () = Self::_CAP_CHECK;
+  |                           ^^^^^^^^^^^^^^^^
+
+note: erroneous constant encountered
+ --> tests/ui/fail/prefix_capacity_vec.rs:3:10
+  |
+3 | #[derive(PinaPod)]
+  |          ^^^^^^^
+  |
+  = note: this note originates in the derive macro `PinaPod` (in Nightly builds, run with -Z macro-backtrace for more info)

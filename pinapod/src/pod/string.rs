@@ -1,4 +1,4 @@
-use {crate::error::ZeroPodError, core::mem::MaybeUninit};
+use {crate::error::PinaPodError, core::mem::MaybeUninit};
 
 /// Returns the maximum `N` value representable by a `PFX`-byte length prefix.
 ///
@@ -59,18 +59,28 @@ const _: () = assert!(core::mem::align_of::<PodString<0, 8>>() == 1);
 
 impl<const N: usize, const PFX: usize> PodString<N, PFX> {
     #[inline(always)]
-    pub fn decode_len(&self) -> usize {
+    pub(crate) fn try_decode_len(&self) -> Result<usize, PinaPodError> {
         #[allow(clippy::let_unit_value)]
         let _ = Self::_CAP_CHECK;
         match PFX {
-            1 => self.len[0] as usize,
-            2 => u16::from_le_bytes([self.len[0], self.len[1]]) as usize,
+            1 => Ok(self.len[0] as usize),
+            2 => Ok(u16::from_le_bytes([self.len[0], self.len[1]]) as usize),
             _ => {
                 let mut buf = [0u8; 8];
                 buf[..PFX].copy_from_slice(&self.len);
-                u64::from_le_bytes(buf) as usize
+                let raw = u64::from_le_bytes(buf);
+                if raw > usize::MAX as u64 {
+                    Err(PinaPodError::InvalidLength)
+                } else {
+                    Ok(raw as usize)
+                }
             }
         }
+    }
+
+    #[inline(always)]
+    pub fn decode_len(&self) -> usize {
+        self.try_decode_len().unwrap_or(usize::MAX)
     }
 
     #[inline(always)]
@@ -89,6 +99,11 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
                 self.len.copy_from_slice(&bytes[..PFX]);
             }
         }
+    }
+
+    #[inline(always)]
+    fn zero_range(&mut self, range: core::ops::Range<usize>) {
+        self.data[range].fill(MaybeUninit::zeroed());
     }
 
     #[inline(always)]
@@ -123,24 +138,38 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
         unsafe { core::slice::from_raw_parts(self.data.as_ptr() as *const u8, len) }
     }
 
-    pub fn try_set(&mut self, value: &str) -> Result<(), ZeroPodError> {
+    /// Replaces the string contents.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PinaPodError::Overflow`] when `value` exceeds the fixed capacity.
+    pub fn try_set(&mut self, value: &str) -> Result<(), PinaPodError> {
         let vlen = value.len();
         if vlen > N {
-            return Err(ZeroPodError::Overflow);
+            return Err(PinaPodError::Overflow);
         }
+        let old_len = self.len();
         unsafe {
             core::ptr::copy_nonoverlapping(value.as_ptr(), self.data.as_mut_ptr() as *mut u8, vlen);
+        }
+        if vlen < old_len {
+            self.zero_range(vlen..old_len);
         }
         self.encode_len(vlen);
         Ok(())
     }
 
-    pub fn try_push_str(&mut self, value: &str) -> Result<(), ZeroPodError> {
+    /// Appends a string slice.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PinaPodError::Overflow`] when the combined contents exceed the fixed capacity.
+    pub fn try_push_str(&mut self, value: &str) -> Result<(), PinaPodError> {
         let cur = self.len();
         let vlen = value.len();
-        let new_len = cur + vlen;
+        let new_len = cur.checked_add(vlen).ok_or(PinaPodError::Overflow)?;
         if new_len > N {
-            return Err(ZeroPodError::Overflow);
+            return Err(PinaPodError::Overflow);
         }
         unsafe {
             core::ptr::copy_nonoverlapping(
@@ -163,20 +192,6 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
         self.as_str().bytes()
     }
 
-    #[must_use = "returns false if value exceeds capacity — unhandled means the write was silently \
-                  skipped"]
-    #[inline(always)]
-    pub fn set(&mut self, value: &str) -> bool {
-        self.try_set(value).is_ok()
-    }
-
-    #[must_use = "returns false if appending would exceed capacity — unhandled means the append \
-                  was silently skipped"]
-    #[inline(always)]
-    pub fn push_str(&mut self, value: &str) -> bool {
-        self.try_push_str(value).is_ok()
-    }
-
     #[inline(always)]
     pub fn truncate(&mut self, new_len: usize) {
         if new_len >= self.len() {
@@ -187,20 +202,26 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
         while boundary > 0 && !s.is_char_boundary(boundary) {
             boundary -= 1;
         }
+        self.zero_range(boundary..self.len());
         self.encode_len(boundary);
     }
 
     #[inline(always)]
     pub fn clear(&mut self) {
+        self.zero_range(0..self.len());
         self.len = [0u8; PFX];
     }
 }
 
 impl<const N: usize, const PFX: usize> Default for PodString<N, PFX> {
     fn default() -> Self {
+        #[allow(clippy::let_unit_value)]
+        let _ = Self::_CAP_CHECK;
+
         Self {
             len: [0u8; PFX],
-            data: [MaybeUninit::uninit(); N],
+            // Typed assignments and compact copies include inactive capacity.
+            data: [MaybeUninit::zeroed(); N],
         }
     }
 }
@@ -270,7 +291,7 @@ impl<const N: usize, const PFX: usize> core::hash::Hash for PodString<N, PFX> {
 }
 
 impl<const N: usize, const PFX: usize> TryFrom<&str> for PodString<N, PFX> {
-    type Error = ZeroPodError;
+    type Error = PinaPodError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let mut pod_str = PodString::default();
@@ -319,7 +340,7 @@ mod kani_proofs {
         let raw: [u8; 1] = kani::any();
         let s = PodString::<8, 1> {
             len: raw,
-            data: [MaybeUninit::uninit(); 8],
+            data: [MaybeUninit::zeroed(); 8],
         };
         assert!(s.len() <= 8);
     }
@@ -329,7 +350,7 @@ mod kani_proofs {
         let raw: [u8; 2] = kani::any();
         let s = PodString::<8, 2> {
             len: raw,
-            data: [MaybeUninit::uninit(); 8],
+            data: [MaybeUninit::zeroed(); 8],
         };
         assert!(s.len() <= 8);
     }
@@ -341,8 +362,8 @@ mod kani_proofs {
         kani::assume(vlen <= 8);
         let content = [0x41u8; 8];
         let mut s = PodString::<8>::default();
-        let ok = s.set(unsafe { core::str::from_utf8_unchecked(&content[..vlen]) });
-        assert!(ok);
+        let result = s.try_set(unsafe { core::str::from_utf8_unchecked(&content[..vlen]) });
+        assert!(result.is_ok());
         assert!(s.len() == vlen);
         assert!(s.as_bytes().len() == vlen);
     }
@@ -354,7 +375,9 @@ mod kani_proofs {
         kani::assume(vlen <= 8);
         let content = [0x41u8; 8];
         let mut s = PodString::<4>::default();
-        assert!(!s.set(unsafe { core::str::from_utf8_unchecked(&content[..vlen]) }));
+        assert!(s
+            .try_set(unsafe { core::str::from_utf8_unchecked(&content[..vlen]) })
+            .is_err());
     }
 
     #[kani::proof]
@@ -368,8 +391,12 @@ mod kani_proofs {
 
         let buf = [0x41u8; 8];
         let mut s = PodString::<8>::default();
-        assert!(s.set(unsafe { core::str::from_utf8_unchecked(&buf[..a_len]) }));
-        assert!(s.push_str(unsafe { core::str::from_utf8_unchecked(&buf[..b_len]) }));
+        assert!(s
+            .try_set(unsafe { core::str::from_utf8_unchecked(&buf[..a_len]) })
+            .is_ok());
+        assert!(s
+            .try_push_str(unsafe { core::str::from_utf8_unchecked(&buf[..b_len]) })
+            .is_ok());
         assert!(s.len() == a_len + b_len);
     }
 
@@ -383,8 +410,12 @@ mod kani_proofs {
 
         let buf = [0x41u8; 8];
         let mut s = PodString::<4>::default();
-        assert!(s.set(unsafe { core::str::from_utf8_unchecked(&buf[..a_len]) }));
-        assert!(!s.push_str(unsafe { core::str::from_utf8_unchecked(&buf[..b_len]) }));
+        assert!(s
+            .try_set(unsafe { core::str::from_utf8_unchecked(&buf[..a_len]) })
+            .is_ok());
+        assert!(s
+            .try_push_str(unsafe { core::str::from_utf8_unchecked(&buf[..b_len]) })
+            .is_err());
         assert!(s.len() == a_len);
     }
 }

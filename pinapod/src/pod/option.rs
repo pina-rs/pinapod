@@ -11,6 +11,17 @@ use {crate::traits::ZcElem, core::mem::MaybeUninit};
 ///
 /// let _ = PodOption::<NonZeroU8>::none();
 /// ```
+///
+/// Inactive payloads may contain arbitrary account bytes. Borrow the payload
+/// through [`get_ref`](Self::get_ref), which returns `None` for an absent value.
+/// There is no safe accessor that exposes an inactive payload as `&T`:
+///
+/// ```compile_fail
+/// use pinapod::pod::PodOption;
+///
+/// let absent = PodOption::<u8>::none();
+/// let _ = absent.value_unchecked();
+/// ```
 pub struct PodOption<T: ZcElem, const PFX: usize = 1> {
     tag: [u8; PFX],
     value: MaybeUninit<T>,
@@ -100,19 +111,6 @@ impl<T: ZcElem, const PFX: usize> PodOption<T, PFX> {
         } else {
             None
         }
-    }
-
-    /// Borrow the inner value without checking the tag.
-    ///
-    /// This is safe to call when `T: ZcElem` (align-1, Copy) because the value
-    /// bytes are always initialized (zeroed by `none()`, written by `some()`).
-    /// Forming `&T` is sound. However, the `T` value may not pass `ZcValidate`
-    /// when tag == 0 — the caller must handle semantic validity.
-    #[inline(always)]
-    pub fn value_unchecked(&self) -> &T {
-        // SAFETY: MaybeUninit is zeroed (none) or written (some). T is Copy
-        // with align 1 (ZcElem). Forming &T over initialized memory is sound.
-        unsafe { self.value.assume_init_ref() }
     }
 
     #[inline(always)]
@@ -380,17 +378,17 @@ mod kani_proofs {
         }
     }
 
-    // value_unchecked: forming &T is sound when value bytes are initialized.
-    #[kani::proof]
-    fn value_unchecked_reference_sound() {
-        let v: u8 = kani::any();
-        let pod = PodOption::<u8, 1>::some(v);
-        let r = pod.value_unchecked();
-        assert!(*r == v, "value_unchecked on Some must return the value");
+    pfx_proofs!(inactive_string_payload_is_not_exposed, {
+        let mut bytes = [0u8; PFX + 2];
+        bytes[PFX] = kani::any();
+        bytes[PFX + 1] = kani::any();
 
-        // Also safe on None — bytes are zeroed, u8 is valid for all patterns.
-        let none_pod = PodOption::<u8, 1>::none();
-        let r2 = none_pod.value_unchecked();
-        assert!(*r2 == 0, "value_unchecked on None returns zeroed bytes");
-    }
+        // SAFETY: The complete representation is initialized and alignment one.
+        // Its zero tag makes the arbitrary string payload inactive.
+        let pod = unsafe { &*(bytes.as_ptr() as *const PodOption<crate::pod::PodString<1>, PFX>) };
+
+        assert!(crate::ZcValidate::validate_ref(pod).is_ok());
+        assert!(pod.get().is_none());
+        assert!(pod.get_ref().is_none());
+    });
 }

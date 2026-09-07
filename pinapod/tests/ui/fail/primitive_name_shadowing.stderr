@@ -1,0 +1,112 @@
+error[E0277]: the trait bound `u16: ZcField` is not satisfied
+ --> tests/ui/fail/primitive_name_shadowing.rs:6:10
+  |
+6 | #[derive(PinaPod)]
+  |          ^^^^^^^ unsatisfied trait bound
+  |
+help: the trait `ZcField` is not implemented for `u16`
+ --> tests/ui/fail/primitive_name_shadowing.rs:4:1
+  |
+4 | struct u16(bool);
+  | ^^^^^^^^^^
+  = help: the following other types implement trait `ZcField`:
+            Option<T>
+            PodBool
+            PodI128
+            PodI16
+            PodI32
+            PodI64
+            PodOption<T, PFX>
+            PodString<N, PFX>
+          and $N others
+  = help: see issue #48214
+  = note: this error originates in the derive macro `PinaPod` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: add `#![feature(trivial_bounds)]` to the crate attributes to enable
+  |
+1 + #![feature(trivial_bounds)]
+  |
+
+error[E0277]: the trait bound `u16: ZcField` is not satisfied
+ --> tests/ui/fail/primitive_name_shadowing.rs:8:8
+  |
+8 | struct ShadowedPrimitive {
+  |        ^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+  |
+help: the trait `ZcField` is not implemented for `u16`
+ --> tests/ui/fail/primitive_name_shadowing.rs:4:1
+  |
+4 | struct u16(bool);
+  | ^^^^^^^^^^
+  = help: the following other types implement trait `ZcField`:
+            Option<T>
+            PodBool
+            PodI128
+            PodI16
+            PodI32
+            PodI64
+            PodOption<T, PFX>
+            PodString<N, PFX>
+          and $N others
+note: required by a bound in `ShadowedPrimitiveZc`
+ --> tests/ui/fail/primitive_name_shadowing.rs:6:10
+  |
+6 | #[derive(PinaPod)]
+  |          ^^^^^^^ required by this bound in `ShadowedPrimitiveZc`
+7 | #[pinapod(crate = pinapod)]
+8 | struct ShadowedPrimitive {
+  |        ----------------- required by a bound in this struct
+  = note: this error originates in the derive macro `PinaPod` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `u16: ZcField` is not satisfied
+ --> tests/ui/fail/primitive_name_shadowing.rs:6:10
+  |
+6 | #[derive(PinaPod)]
+  |          ^^^^^^^ unsatisfied trait bound
+  |
+help: the trait `ZcField` is not implemented for `u16`
+ --> tests/ui/fail/primitive_name_shadowing.rs:4:1
+  |
+4 | struct u16(bool);
+  | ^^^^^^^^^^
+  = help: the following other types implement trait `ZcField`:
+            Option<T>
+            PodBool
+            PodI128
+            PodI16
+            PodI32
+            PodI64
+            PodOption<T, PFX>
+            PodString<N, PFX>
+          and $N others
+note: required by a bound in `ShadowedPrimitiveZc`
+ --> tests/ui/fail/primitive_name_shadowing.rs:6:10
+  |
+6 | #[derive(PinaPod)]
+  |          ^^^^^^^ required by this bound in `ShadowedPrimitiveZc`
+7 | #[pinapod(crate = pinapod)]
+8 | struct ShadowedPrimitive {
+  |        ----------------- required by a bound in this struct
+  = note: this error originates in the derive macro `PinaPod` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `u16: ZcField` is not satisfied
+ --> tests/ui/fail/primitive_name_shadowing.rs:6:10
+  |
+6 | #[derive(PinaPod)]
+  |          ^^^^^^^ unsatisfied trait bound
+  |
+help: the trait `ZcField` is not implemented for `u16`
+ --> tests/ui/fail/primitive_name_shadowing.rs:4:1
+  |
+4 | struct u16(bool);
+  | ^^^^^^^^^^
+  = help: the following other types implement trait `ZcField`:
+            Option<T>
+            PodBool
+            PodI128
+            PodI16
+            PodI32
+            PodI64
+            PodOption<T, PFX>
+            PodString<N, PFX>
+          and $N others
+  = note: this error originates in the derive macro `PinaPod` (in Nightly builds, run with -Z macro-backtrace for more info)
