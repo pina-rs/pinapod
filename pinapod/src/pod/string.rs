@@ -68,7 +68,12 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
             _ => {
                 let mut buf = [0u8; 8];
                 buf[..PFX].copy_from_slice(&self.len);
-                usize::try_from(u64::from_le_bytes(buf)).map_err(|_| PinaPodError::InvalidLength)
+                let raw = u64::from_le_bytes(buf);
+                if raw > usize::MAX as u64 {
+                    Err(PinaPodError::InvalidLength)
+                } else {
+                    Ok(raw as usize)
+                }
             }
         }
     }
