@@ -170,8 +170,35 @@ jobs:
         shell: devenv shell -c -- bash -e {0}
 
   kani:
+    name: kani (${{ matrix.shard.name }})
     timeout-minutes: 90
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - name: bool-option
+            harness: "bool::kani_proofs|option::kani_proofs"
+          - name: string
+            harness: "string::kani_proofs"
+          - name: vec
+            harness: "vec::kani_proofs"
+          - name: u16
+            harness: "u16_proofs"
+          - name: u32
+            harness: "u32_proofs"
+          - name: u64
+            harness: "u64_proofs"
+          - name: u128
+            harness: "u128_proofs"
+          - name: i16
+            harness: "i16_proofs"
+          - name: i32
+            harness: "i32_proofs"
+          - name: i64
+            harness: "i64_proofs"
+          - name: i128
+            harness: "i128_proofs"
     steps:
       - name: checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -182,7 +209,7 @@ jobs:
       - name: verify Pinapod
         uses: model-checking/kani-github-action@f838096619a707b0f6b2118cf435eaccfa33e51f # v1.1
         with:
-          command: cargo kani --manifest-path pinapod/Cargo.toml --features kani
+          command: cargo kani --manifest-path pinapod/Cargo.toml --features kani --output-format terse --harness "${{ matrix.shard.harness }}"
 
   release-preview:
     timeout-minutes: 60
