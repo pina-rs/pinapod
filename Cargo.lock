@@ -390,11 +390,19 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 [[package]]
 name = "pinapod"
 version = "0.1.0"
+source = "git+https://github.com/pina-rs/pinapod.git?rev=71ad8bee53e3e6939fe14760e539942d0f1bdd77#71ad8bee53e3e6939fe14760e539942d0f1bdd77"
+dependencies = [
+ "pinapod-derive 0.1.0",
+]
+
+[[package]]
+name = "pinapod"
+version = "0.2.0"
 dependencies = [
  "criterion",
  "fixed",
- "pinapod 0.1.0 (git+https://github.com/pina-rs/pinapod.git?rev=71ad8bee53e3e6939fe14760e539942d0f1bdd77)",
- "pinapod-derive 0.1.0",
+ "pinapod 0.1.0",
+ "pinapod-derive 0.2.0",
  "solana-address",
  "solana-program-error",
  "stats_alloc",
@@ -404,18 +412,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "pinapod"
+name = "pinapod-derive"
 version = "0.1.0"
 source = "git+https://github.com/pina-rs/pinapod.git?rev=71ad8bee53e3e6939fe14760e539942d0f1bdd77#71ad8bee53e3e6939fe14760e539942d0f1bdd77"
 dependencies = [
- "pinapod-derive 0.1.0 (git+https://github.com/pina-rs/pinapod.git?rev=71ad8bee53e3e6939fe14760e539942d0f1bdd77)",
-]
-
-[[package]]
-name = "pinapod-derive"
-version = "0.1.0"
-dependencies = [
- "proc-macro-crate",
  "proc-macro2",
  "quote",
  "syn 2.0.118",
@@ -423,9 +423,9 @@ dependencies = [
 
 [[package]]
 name = "pinapod-derive"
-version = "0.1.0"
-source = "git+https://github.com/pina-rs/pinapod.git?rev=71ad8bee53e3e6939fe14760e539942d0f1bdd77#71ad8bee53e3e6939fe14760e539942d0f1bdd77"
+version = "0.2.0"
 dependencies = [
+ "proc-macro-crate",
  "proc-macro2",
  "quote",
  "syn 2.0.118",
