@@ -1,6 +1,6 @@
-# Releasing Pinapod
+# Releasing PinaPod
 
-Pinapod uses monochange for changesets, release pull requests, version updates, tags, crates.io publication, and GitHub releases. Run every command through the repository's devenv shell.
+PinaPod uses monochange for changesets, release pull requests, version updates, tags, crates.io publication, and GitHub releases. The `pinapod-workspace` release group contains both `pinapod` and `pinapod-derive`. Its custom version format publishes `pinapod/v*` tags. Run every command through the repository's devenv shell.
 
 ```sh
 devenv shell
@@ -9,7 +9,25 @@ monochange step validate
 monochange step prepare-release --dry-run --format json
 ```
 
-Merging a feature pull request adds its changeset to `main`. The `release-pr.yml` workflow creates or refreshes—but never auto-merges—the `chore(release): prepare release` pull request. Merging that release pull request causes monochange to create the version tag and draft GitHub release, then dispatches `publish.yml` to publish both crates in dependency order and make the GitHub release public.
+Use the bump level required by the public API. Version 0.2 uses a minor bump from the pre-1.0 `0.1` line.
+
+Before merging a feature pull request, run:
+
+```sh
+devenv shell test:all
+devenv shell test:miri
+devenv shell lint:all
+devenv shell verify:security
+devenv shell bench:compare
+```
+
+CI also runs the Kani proof suite. For a performance-sensitive change, record the machine and target with the Criterion result. Compare the current implementation with both pinned historical implementations in the same run.
+
+Merging a feature pull request adds its changeset to `main`. The `release-pr.yml` workflow creates or refreshes the `chore(release): prepare release` pull request, but it never auto-merges that pull request. Merging the release pull request causes monochange to create the version tag and draft GitHub release. It then dispatches `publish.yml` to publish both crates in dependency order and make the GitHub release public.
+
+The documentation workflow builds the mdBook and Rust API docs for changes on `main` and for published `pinapod/v*` releases. It publishes the book to GitHub Pages only after both documentation builds pass.
+
+For a coordinated Pina migration, merge and publish PinaPod first. Then replace Pina's temporary path or git dependency with the released crate, regenerate its clients and docs, and merge the Pina pull request.
 
 ## First release bootstrap
 
