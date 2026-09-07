@@ -179,9 +179,9 @@ jobs:
       - name: install z3
         run: sudo apt-get install -y z3
       - name: verify Pinapod
-        uses: model-checking/kani-github-action@f838096619a707b0f6b2118cf435eaccfa33e51f # v1.1
-        with:
-          command: cargo kani -p pinapod --features kani
+  uses: model-checking/kani-github-action@f838096619a707b0f6b2118cf435eaccfa33e51f # v1.1
+  with:
+    command: cargo kani --manifest-path pinapod/Cargo.toml --features kani
 
   release-preview:
     timeout-minutes: 60
