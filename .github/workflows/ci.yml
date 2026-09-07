@@ -110,6 +110,48 @@ jobs:
         run: build:no-default
         shell: devenv shell -c -- bash -e {0}
 
+  msrv:
+    timeout-minutes: 60
+    runs-on: ubuntu-24.04
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: setup
+        uses: $/.github/actions/devenv
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: install minimum supported Rust
+        run: rustup toolchain install 1.89.0 --profile minimal
+        shell: devenv shell -c -- bash -e {0}
+      - name: check minimum supported Rust
+        run: cargo +1.89.0 check --workspace --all-features --locked
+        shell: devenv shell -c -- bash -e {0}
+
+  i686:
+    timeout-minutes: 60
+    runs-on: ubuntu-24.04
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: install 32-bit linker support
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib
+      - name: setup
+        uses: $/.github/actions/devenv
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: install 32-bit Rust target
+        run: rustup target add i686-unknown-linux-gnu
+        shell: devenv shell -c -- bash -e {0}
+      - name: run fixed-prefix regressions on 32-bit Rust
+        run: cargo test --manifest-path pinapod/Cargo.toml --all-features --locked --target i686-unknown-linux-gnu --test validation
+        shell: devenv shell -c -- bash -e {0}
+
   miri:
     timeout-minutes: 90
     runs-on: ubuntu-24.04
