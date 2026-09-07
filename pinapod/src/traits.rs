@@ -438,6 +438,40 @@ pub unsafe trait ZcField: Sized {
     type Pod: ZcElem;
 }
 
+/// Converts a compact patch argument for a native [`Option<T>`] field into
+/// its stored representation.
+///
+/// This trait is public only because generated code expands in downstream
+/// crates. It is not part of the hand-written PinaPod API.
+#[doc(hidden)]
+pub trait IntoPodOption<T: ZcField> {
+    fn into_pod_option(self) -> PodOption<T::Pod>;
+}
+
+impl<T> IntoPodOption<T> for Option<T>
+where
+    T: ZcField,
+    T::Pod: From<T>,
+{
+    #[inline(always)]
+    fn into_pod_option(self) -> PodOption<T::Pod> {
+        match self {
+            Some(value) => PodOption::some(value.into()),
+            None => PodOption::none(),
+        }
+    }
+}
+
+impl<T> IntoPodOption<T> for PodOption<T::Pod>
+where
+    T: ZcField,
+{
+    #[inline(always)]
+    fn into_pod_option(self) -> PodOption<T::Pod> {
+        self
+    }
+}
+
 // Built-in ZcField impls
 macro_rules! impl_zc_field {
     ($native:ty, $pod:ty) => {

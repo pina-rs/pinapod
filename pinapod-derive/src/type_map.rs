@@ -458,17 +458,30 @@ fn try_map_vec(ty: &Type) -> Option<TokenStream> {
 }
 
 fn try_map_option(ty: &Type) -> Option<TokenStream> {
+    let inner = option_inner_type(ty)?;
+    let mapped_inner = map_to_pod_type(inner);
+    Some(quote! { pinapod::pod::PodOption<#mapped_inner> })
+}
+
+/// Return the native payload of a recognized `Option<T>` schema field.
+pub fn option_inner_type(ty: &Type) -> Option<&Type> {
     if recognized_dynamic_name(ty) != Some(DynamicName::Option) {
         return None;
     }
-    let seg = last_path_segment(ty)?;
-    let args = angle_args(&seg.arguments)?;
-    let inner = match args.first()? {
-        GenericArgument::Type(t) => t,
+
+    let segment = last_path_segment(ty)?;
+    let arguments = angle_args(&segment.arguments)?;
+    let mut arguments = arguments.iter();
+    let inner = match arguments.next()? {
+        GenericArgument::Type(inner) => inner,
         _ => return None,
     };
-    let mapped_inner = map_to_pod_type(inner);
-    Some(quote! { pinapod::pod::PodOption<#mapped_inner> })
+
+    if arguments.next().is_some() {
+        return None;
+    }
+
+    Some(inner)
 }
 
 fn try_map_pod_option(ty: &Type) -> Option<TokenStream> {

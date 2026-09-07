@@ -209,6 +209,8 @@ Write the prefix width as `1`, `2`, `4`, or `8`, not as `u8`, `u16`, `u32`, or `
 
 Version 0.1 generated a mutable view, exposed inline header fields through mutable dereferencing, staged tail pointers with `set_*`, and changed bytes in `commit`. Version 0.2 uses a typed patch. The patch keeps dynamic metadata private and validates every requested value before writing.
 
+Inline semantic options accept ordinary Rust values: `.checkpoint(Some(13_u64))` sets the value and `.checkpoint(None)` clears it. When a custom fixed type does not convert directly to its stored representation, pass `PodOption<T::Pod>` to the same builder.
+
 For a resize, use the same patch for both phases:
 
 1. Read the current value and calculate the updated encoded length.

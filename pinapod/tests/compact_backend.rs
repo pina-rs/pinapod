@@ -66,6 +66,14 @@ struct FixedEventPayload {
 #[allow(dead_code)]
 #[derive(PinaPod)]
 #[pinapod(compact)]
+struct OptionalInlineProfile {
+    pub revision: Option<u64>,
+    pub event: Option<FixedEventPayload>,
+}
+
+#[allow(dead_code)]
+#[derive(PinaPod)]
+#[pinapod(compact)]
 #[repr(u8)]
 enum CompactEvent {
     Empty = 0,
@@ -116,6 +124,37 @@ fn compact_header_alignment() {
         core::mem::align_of::<<Profile as pinapod::PinaPodCompact>::Header>(),
         1
     );
+}
+
+#[test]
+fn compact_option_patch_accepts_native_options_and_stored_representations() {
+    let mut buf = [0_u8; OptionalInlineProfile::MAX_SIZE];
+    let event = FixedEventPayloadZc {
+        amount: 21_u64.into(),
+        enabled: true.into(),
+    };
+    let patch = OptionalInlineProfilePatch::new()
+        .revision(Some(13_u64))
+        .event(pinapod::pod::PodOption::some(event));
+
+    let encoded_len = OptionalInlineProfile::initialize(&mut buf, &patch).unwrap();
+    let profile = OptionalInlineProfile::read_prefix(&buf[..encoded_len]).unwrap();
+
+    assert_eq!(profile.revision.get().map(|value| value.get()), Some(13));
+    assert_eq!(
+        profile
+            .event
+            .get_ref()
+            .map(|value| (value.amount.get(), value.enabled.get())),
+        Some((21, true)),
+    );
+
+    let patch = OptionalInlineProfilePatch::new().revision(None);
+    OptionalInlineProfile::update(&mut buf, &patch).unwrap();
+    let profile = OptionalInlineProfile::read_prefix(&buf).unwrap();
+
+    assert!(profile.revision.is_none());
+    assert!(profile.event.is_some());
 }
 
 #[test]

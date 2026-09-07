@@ -9,7 +9,9 @@
 use {
     crate::{
         schema::Schema,
-        type_map::{map_to_pod_type, FieldKind, TailField, TailPayload, TailPresence},
+        type_map::{
+            map_to_pod_type, option_inner_type, FieldKind, TailField, TailPayload, TailPresence,
+        },
     },
     proc_macro2::TokenStream,
     quote::{format_ident, quote},
@@ -943,12 +945,26 @@ fn generate_patch(
             FieldKind::Inline => {
                 let pod_ty = map_to_pod_type(&field.ty);
                 fields.push(quote! { #name: Option<#pod_ty> });
-                builders.push(quote! {
-                    pub fn #name(mut self, value: impl Into<#pod_ty>) -> Self {
-                        self.#name = Some(value.into());
-                        self
-                    }
-                });
+                if let Some(inner) = option_inner_type(&field.ty) {
+                    builders.push(quote! {
+                        pub fn #name(
+                            mut self,
+                            value: impl pinapod::traits::IntoPodOption<#inner>,
+                        ) -> Self {
+                            self.#name = Some(
+                                pinapod::traits::IntoPodOption::into_pod_option(value),
+                            );
+                            self
+                        }
+                    });
+                } else {
+                    builders.push(quote! {
+                        pub fn #name(mut self, value: impl Into<#pod_ty>) -> Self {
+                            self.#name = Some(value.into());
+                            self
+                        }
+                    });
+                }
                 input_validations.push(quote! {
                     if let Some(value) = &self.#name {
                         <#pod_ty as pinapod::ZcValidate>::validate_ref(value)?;

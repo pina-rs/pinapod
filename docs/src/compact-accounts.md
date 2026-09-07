@@ -14,6 +14,7 @@ use pinapod::{PinaPod, String, Vec};
 struct Journal {
     authority: [u8; 32],
     revision: u64,
+    checkpoint: Option<u64>,
     entries: Vec<u64, 1024>,
     note: Option<String<128>>,
     labels: Vec<String<16>, 32>,
@@ -79,11 +80,12 @@ The derive generates `JournalPatch`. A new patch keeps every field unchanged unt
 ```rust
 let patch = JournalPatch::new()
 	.revision(next_revision)
+	.checkpoint(Some(13_u64))
 	.replace_entries(&entries)
 	.note(Some("Updated"));
 ```
 
-Fixed fields use their field name. A vector tail uses `replace_` because the slice replaces the complete active vector. An optional string accepts `Option<&str>`. `None` sets the field to absent, while omitting `.note(...)` keeps the current value.
+Fixed fields use their field name. An inline `Option<T>` accepts the native option, so `.checkpoint(Some(13_u64))` sets a value and `.checkpoint(None)` clears it. The same builder accepts `PodOption<T::Pod>` when a custom fixed type needs its stored representation supplied directly. A vector tail uses `replace_` because the slice replaces the complete active vector. An optional string accepts `Option<&str>`. `None` sets the field to absent, while omitting the builder call keeps the current value.
 
 A vector replacement borrows the mapped element representation. For `Vec<u64, N>`, `entries` is a slice of `PodU64`. Convert native values with `PodU64::from` or `.into()` before building the patch. This contract avoids a hidden allocation in a `no_std` program.
 

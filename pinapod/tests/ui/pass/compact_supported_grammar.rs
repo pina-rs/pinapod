@@ -12,4 +12,10 @@ struct SupportedCompactFields {
     summary: pinapod::String<16>,
 }
 
-fn main() {}
+fn main() {
+    let _ = SupportedCompactFieldsPatch::new().maybe_revision(Some(13_u64));
+    let _ = SupportedCompactFieldsPatch::new().maybe_revision(None);
+    let _ = SupportedCompactFieldsPatch::new().maybe_revision(pinapod::pod::PodOption::some(
+        pinapod::pod::PodU64::from(13_u64),
+    ));
+}
