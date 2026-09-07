@@ -70,12 +70,12 @@ jobs:
         shell: bash
       - name: configure Git authentication
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
         run: gh auth setup-git
       - name: refresh release pull request
         if: steps.release_record.outputs.is_release_commit != 'true' && steps.pending_changesets.outputs.has_changesets == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
         run: monochange run release
         shell: devenv shell -- bash -e {0}
 
