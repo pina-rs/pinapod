@@ -25,15 +25,15 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.target }}
-  cancel-in-progress: true
-
 jobs:
   fuzz:
     name: fuzz (${{ matrix.target }})
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    # The matrix context is only available at job level.
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.target }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
