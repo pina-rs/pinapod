@@ -53,12 +53,10 @@ jobs:
       # Surfaces the semantic semver evidence for the pull request: public API,
       # dependency, and metadata changes with a proposed bump per package.
       # This is the repository's semver check in place of cargo-semver-checks.
-      # The classification flags postdate the devenv-pinned monochange 0.10,
-      # so this action resolves its own compatible monochange release.
       - name: classify semantic changes
         uses: monochange/actions/change-classification@1fe45f5214577e78f6339e233c05fd429b1adaf7 # v0.9.0
         with:
-          setup-monochange: true
+          setup-monochange: false
           github-token: ${{ github.token }}
           detection-level: semantic
           dependency-propagation: public
