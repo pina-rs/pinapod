@@ -30,6 +30,11 @@ jobs:
         uses: $/.github/actions/devenv
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+      # The monochange actions run outside `devenv shell`, so expose the
+      # devenv-pinned monochange binary to the rest of the job.
+      - name: expose the devenv-pinned monochange
+        run: devenv shell -c -- bash -e -c 'command -v monochange | xargs dirname' >> "$GITHUB_PATH"
+        shell: bash
       - name: collect changed files
         id: changed
         uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6

@@ -81,10 +81,11 @@ fn initialize_builds_a_valid_view() {
     kani::assume(note_len <= 4);
 
     let mut data: [u8; STORAGE] = kani::any();
+    let values_pod = values.pod();
     let patch = BoundedPatch::new()
         .seq(seq)
         .label(&LABEL[..label_len])
-        .replace_values(&values.pod()[..values_len])
+        .replace_values(&values_pod[..values_len])
         .note(if note_present {
             Some(&NOTE[..note_len])
         } else {
@@ -98,7 +99,7 @@ fn initialize_builds_a_valid_view() {
     let view = Bounded::read_prefix(&data).expect("initialized bytes must validate");
     assert_eq!(view.seq, seq);
     assert_eq!(view.label(), &LABEL[..label_len]);
-    assert_eq!(view.values(), &values.pod()[..values_len]);
+    assert_eq!(view.values(), &values_pod[..values_len]);
     match (view.note(), note_present) {
         (Some(note), true) => assert_eq!(note, &NOTE[..note_len]),
         (None, false) => {}
@@ -112,10 +113,11 @@ fn initialize_builds_a_valid_view() {
 #[kani::unwind(25)]
 fn update_preserves_roundtrip() {
     let mut data: [u8; STORAGE] = kani::any();
+    let first_values = SymbolicValues::new().pod();
     let first = BoundedPatch::new()
         .seq(0)
         .label(&LABEL[..2])
-        .replace_values(&SymbolicValues::new().pod()[..2]);
+        .replace_values(&first_values[..2]);
     Bounded::initialize(&mut data, &first).expect("initialize with a valid patch must succeed");
 
     let seq: u8 = kani::any();
@@ -128,10 +130,11 @@ fn update_preserves_roundtrip() {
     let note_len: usize = kani::any();
     kani::assume(note_len <= 4);
 
+    let values_pod = values.pod();
     let second = BoundedPatch::new()
         .seq(seq)
         .label(&LABEL[..label_len])
-        .replace_values(&values.pod()[..values_len])
+        .replace_values(&values_pod[..values_len])
         .note(if note_present {
             Some(&NOTE[..note_len])
         } else {
@@ -145,7 +148,7 @@ fn update_preserves_roundtrip() {
     let view = Bounded::read_prefix(&data).expect("updated bytes must validate");
     assert_eq!(view.seq, seq);
     assert_eq!(view.label(), &LABEL[..label_len]);
-    assert_eq!(view.values(), &values.pod()[..values_len]);
+    assert_eq!(view.values(), &values_pod[..values_len]);
     match (view.note(), note_present) {
         (Some(note), true) => assert_eq!(note, &NOTE[..note_len]),
         (None, false) => {}
