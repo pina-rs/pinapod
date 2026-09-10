@@ -8,6 +8,7 @@ on:
       - .github/workflows/benchmark.yml
       - Cargo.lock
       - Cargo.toml
+      - devenv.lock
       - devenv.nix
       - rust-toolchain.toml
       - pinapod/Cargo.toml
