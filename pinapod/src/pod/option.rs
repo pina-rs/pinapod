@@ -29,22 +29,39 @@ pub struct PodOption<T: ZcElem, const PFX: usize = 1> {
 
 const _: () = assert!(core::mem::align_of::<PodOption<u8>>() == 1);
 const _: () = assert!(core::mem::align_of::<PodOption<u8, 4>>() == 1);
+const _: () = assert!(core::mem::align_of::<PodOption<u8, 8>>() == 1);
 const _: () = assert!(core::mem::size_of::<PodOption<[u8; 32], 4>>() == 36);
+const _: () = assert!(core::mem::size_of::<PodOption<u8, 8>>() == 9);
 
 impl<T: ZcElem, const PFX: usize> PodOption<T, PFX> {
     const _PFX_CHECK: () = assert!(
-        PFX == 1 || PFX == 2 || PFX == 4,
-        "PodOption<T, PFX>: PFX must be 1, 2, or 4"
+        PFX == 1 || PFX == 2 || PFX == 4 || PFX == 8,
+        "PodOption<T, PFX>: PFX must be 1, 2, 4, or 8"
     );
 
     #[inline(always)]
-    fn decode_tag(&self) -> u32 {
+    fn decode_tag(&self) -> u64 {
         #[allow(clippy::let_unit_value)]
         let _ = Self::_PFX_CHECK;
         match PFX {
-            1 => self.tag[0] as u32,
-            2 => u16::from_le_bytes([self.tag[0], self.tag[1]]) as u32,
-            _ => u32::from_le_bytes([self.tag[0], self.tag[1], self.tag[2], self.tag[3]]),
+            1 => u64::from(self.tag[0]),
+            2 => u64::from(u16::from_le_bytes([self.tag[0], self.tag[1]])),
+            4 => u64::from(u32::from_le_bytes([
+                self.tag[0],
+                self.tag[1],
+                self.tag[2],
+                self.tag[3],
+            ])),
+            _ => u64::from_le_bytes([
+                self.tag[0],
+                self.tag[1],
+                self.tag[2],
+                self.tag[3],
+                self.tag[4],
+                self.tag[5],
+                self.tag[6],
+                self.tag[7],
+            ]),
         }
     }
 
@@ -60,9 +77,13 @@ impl<T: ZcElem, const PFX: usize> PodOption<T, PFX> {
                 buf[0] = bytes[0];
                 buf[1] = bytes[1];
             }
-            _ => {
+            4 => {
                 let bytes = v.to_le_bytes();
                 buf[..4].copy_from_slice(&bytes);
+            }
+            _ => {
+                let bytes = u64::from(v).to_le_bytes();
+                buf.copy_from_slice(&bytes);
             }
         }
         buf
@@ -127,7 +148,12 @@ impl<T: ZcElem, const PFX: usize> PodOption<T, PFX> {
         }
     }
 
-    pub fn raw_tag(&self) -> u32 {
+    /// The raw decoded tag.
+    ///
+    /// This is the unvalidated prefix value. Tags are stored in `PFX` bytes,
+    /// so the decoded width is `u64`; only `0` and `1` are valid. Safe
+    /// accessors treat every other value as absent.
+    pub fn raw_tag(&self) -> u64 {
         self.decode_tag()
     }
 
@@ -219,7 +245,7 @@ impl<T: ZcElem + core::fmt::Debug, const PFX: usize> core::fmt::Debug for PodOpt
 mod kani_proofs {
     use super::*;
 
-    // Macro to generate a proof for each PFX value (1, 2, 4).
+    // Macro to generate a proof for each PFX value (1, 2, 4, 8).
     macro_rules! pfx_proofs {
         ($base:ident, $body:expr) => {
             mod $base {
@@ -238,6 +264,11 @@ mod kani_proofs {
                 #[kani::proof]
                 fn pfx4() {
                     const PFX: usize = 4;
+                    $body
+                }
+                #[kani::proof]
+                fn pfx8() {
+                    const PFX: usize = 8;
                     $body
                 }
             }

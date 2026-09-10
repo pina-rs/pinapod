@@ -33,11 +33,39 @@ fn pod_option_tag_valid_all_prefixes() {
     assert!(PodOption::<u8, 1>::some(1).tag_valid());
     assert!(PodOption::<u8, 2>::some(1).tag_valid());
     assert!(PodOption::<u8, 4>::some(1).tag_valid());
+    assert!(PodOption::<u8, 8>::some(1).tag_valid());
 
     let invalid = [2u8, 0, 0, 0, 0];
     let opt = unsafe { &*invalid.as_ptr().cast::<PodOption<u8, 4>>() };
     assert_eq!(opt.raw_tag(), 2);
     assert!(!opt.tag_valid());
+}
+
+#[test]
+fn pod_option_eight_byte_prefix_roundtrip_and_rejection() {
+    let mut buffer = [0u8; 9];
+    buffer[..8].copy_from_slice(&1u64.to_le_bytes());
+    buffer[8] = 7;
+    let opt = unsafe { &*buffer.as_ptr().cast::<PodOption<u8, 8>>() };
+    assert_eq!(opt.raw_tag(), 1);
+    assert_eq!(opt.get(), Some(7));
+    assert!(pinapod::ZcValidate::validate_ref(opt).is_ok());
+
+    // A tag above one must be rejected without truncation.
+    buffer[..8].copy_from_slice(&0x1_0000_0001u64.to_le_bytes());
+    let opt = unsafe { &*buffer.as_ptr().cast::<PodOption<u8, 8>>() };
+    assert_eq!(opt.raw_tag(), 0x1_0000_0001);
+    assert!(!opt.tag_valid());
+    assert!(opt.is_none());
+    assert_eq!(
+        pinapod::ZcValidate::validate_ref(opt),
+        Err(PinaPodError::InvalidTag)
+    );
+
+    let built = PodOption::<u8, 8>::some(7);
+    let built_bytes = unsafe { core::slice::from_raw_parts((&built as *const _) as *const u8, 9) };
+    assert_eq!(&built_bytes[..8], &1u64.to_le_bytes());
+    assert_eq!(built_bytes[8], 7);
 }
 
 #[test]

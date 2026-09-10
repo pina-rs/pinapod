@@ -94,6 +94,28 @@ jobs:
         run: test:all
         shell: devenv shell -c -- bash -e {0}
 
+  test-stable:
+    # Nightly is the development toolchain, so the pinned nightly job alone
+    # can hide stable breakage. The UI snapshots are recorded on nightly and
+    # are skipped here (PINAPOD_UI=skip).
+    timeout-minutes: 60
+    runs-on: ubuntu-24.04
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: setup
+        uses: $/.github/actions/devenv
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: install stable Rust
+        run: rustup toolchain install stable --profile minimal
+        shell: devenv shell -c -- bash -e {0}
+      - name: run tests on stable
+        run: PINAPOD_UI=skip cargo +stable test --workspace --all-features --locked
+        shell: devenv shell -c -- bash -e {0}
+
   no-default-features:
     timeout-minutes: 60
     runs-on: ubuntu-24.04
@@ -125,8 +147,8 @@ jobs:
       - name: install minimum supported Rust
         run: rustup toolchain install 1.89.0 --profile minimal
         shell: devenv shell -c -- bash -e {0}
-      - name: check minimum supported Rust
-        run: cargo +1.89.0 check --workspace --all-features --locked
+      - name: test on minimum supported Rust
+        run: PINAPOD_UI=skip cargo +1.89.0 test --workspace --all-features --locked
         shell: devenv shell -c -- bash -e {0}
 
   i686:
@@ -147,8 +169,14 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: install 32-bit Rust target
         run: rustup target add i686-unknown-linux-gnu
-      - name: run fixed-prefix regressions on 32-bit Rust
-        run: cargo test --manifest-path pinapod/Cargo.toml --all-features --locked --target i686-unknown-linux-gnu --test validation
+      - name: run fixed and compact regressions on 32-bit Rust
+        run: >
+          cargo test --manifest-path pinapod/Cargo.toml --all-features --locked
+          --target i686-unknown-linux-gnu
+          --test validation
+          --test fixed_pina_pod
+          --test compact_backend
+          --test compact_commit_shift
         env:
           CARGO_TARGET_I686_UNKNOWN_LINUX_GNU_LINKER: /usr/bin/gcc
           RUSTFLAGS: -C link-self-contained=no
@@ -201,6 +229,8 @@ jobs:
             harness: "i64_proofs"
           - name: i128
             harness: "i128_proofs"
+          - name: generated compact schemas
+            harness: "generated_proofs"
     steps:
       - name: checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

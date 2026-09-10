@@ -4,4 +4,4 @@ error: cannot construct `JournalRef<'_>` with struct literal syntax due to priva
 11 |     let _ = JournalRef { data: &bytes };
    |             ^^^^^^^^^^   ------------ private field
    |
-   = note: ...and other private field `encoded_len` that was not provided
+   = note: ...and other private fields `encoded_len` and `tail_offsets` that were not provided

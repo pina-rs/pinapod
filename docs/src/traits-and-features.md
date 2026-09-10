@@ -48,6 +48,17 @@ Numeric pods do not implement arithmetic, remainder, bitwise, shift, assignment,
 
 Pod-to-pod comparisons and pod-left comparisons with native integers remain available. Native-left reverse `PartialEq` and `PartialOrd` implementations do not.
 
+## How the derive recognizes container types
+
+The derive classifies a field as a dynamic string, vector, or option by its spelling: an unqualified `String`, `Vec`, or `Option`, a path through the resolved `pinapod` dependency (including a `pinapod::pod::` prefix), or a `pina::` re-export. Every other path is treated as a fixed inline type that must provide its own `ZcField` mapping.
+
+This has one consequence worth knowing: a module of yours that is literally named `pinapod` (or `pina`) containing its own `String`/`Vec`/`Option` types is classified as PinaPod's dynamic containers, because the derive matches the path segments rather than the resolved crate. The result stays memory-safe — the field is still validated before reference formation — but its wire meaning changes silently. Avoid module names that shadow the dependency, or spell such fields through an unambiguous path. Type names alone never grant a built-in representation: a caller-local `struct
+i8(bool)` lookalike still fails to compile as a schema field.
+
+## Errors and prefix widths
+
+`PinaPodError` implements `core::error::Error` and is `non_exhaustive`: match with a wildcard arm so new validation variants can arrive in minor releases. All three container families accept prefix widths of 1, 2, 4, or 8 bytes; `PodOption` reports its raw decoded tag as `u64` so an eight-byte tag can never truncate into a valid value.
+
 ## Compact storage bounds
 
 `PinaPodCompact` defines `MIN_SIZE`, `MAX_SIZE`, and `TAIL_ALIGNMENT`. `validate_storage_len` rejects an allocation outside the inclusive size bounds or whose growth beyond `MIN_SIZE` is not a multiple of `TAIL_ALIGNMENT`. Generated compact readers perform this check before they validate active fields and tails.

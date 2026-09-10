@@ -40,6 +40,16 @@ pub use {
     traits::{PinaPod, PinaPodCompact, PinaPodFixed, PinaPodPatch, ZcElem, ZcField, ZcValidate},
 };
 
+// Kani proofs over derive-generated schemas. The derive expands audited
+// unsafe readers inside this module, so the workspace unsafe denial is
+// lifted for it exactly like the handwritten pod modules.
+#[cfg(all(kani, feature = "kani"))]
+#[allow(
+    unsafe_code,
+    reason = "the derive expands PinaPod's audited byte-casting implementation inside the proof module"
+)]
+mod generated_proofs;
+
 // Schema-friendly aliases to pod storage types.
 // These are NOT a separate abstraction layer — they ARE PodString/PodVec
 // with default prefix sizes.

@@ -9,4 +9,5 @@
 - [Migrate from v0.1 to v0.2](./migration-v0.2.md)
 - [Safety model and regressions](./safety.md)
 - [Migrate Pina](./pina-integration.md)
+- [Supported toolchains and Solana versions](./support.md)
 - [API comparison benchmarks](./benchmarks.md)

@@ -89,7 +89,11 @@ tag = true
 version_format = "pinapod/v{{ version }}"
 changelog = { path = "CHANGELOG.md", format = "keep_a_changelog", include = "all" }
 versioned_files = [
-  { path = "Cargo.toml", type = "cargo", fields = ["workspace.package.version", "workspace.dependencies.pinapod-derive.version"] },
+  { path = "Cargo.toml", type = "cargo", fields = ["workspace.package.version"] },
+  # Internal dependency references carry the exact `=x.y.z` pin: generated
+  # code expands against the runtime crate's private contracts, so a mixed
+  # pinapod / pinapod-derive pair must never resolve.
+  { path = "Cargo.toml", type = "cargo", fields = ["workspace.dependencies.pinapod-derive.version"], prefix = "=" },
 ]
 
 [ecosystems.cargo]

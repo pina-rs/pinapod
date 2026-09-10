@@ -1,0 +1,73 @@
+name: fuzz
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/fuzz.yml
+      - Cargo.toml
+      - rust-toolchain.toml
+      - pinapod/Cargo.toml
+      - pinapod/src/**
+      - pinapod-derive/src/**
+      - fuzz/**
+  schedule:
+    # Every Monday at 06:00 UTC.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      max_total_time:
+        description: Seconds to fuzz each target
+        required: false
+        default: "600"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.target }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: fuzz (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - fixed_validate
+          - compact_validate
+          - compact_patch
+          - compact_enum_validate
+          - wincode_read
+          - pod_containers
+    env:
+      # Smoke budgets on pull requests; full budgets on the weekly run and
+      # manual dispatch.
+      MAX_TOTAL_TIME: ${{ github.event_name == 'pull_request' && '30' || (inputs.max_total_time || '600') }}
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: install cargo-fuzz
+        run: cargo install cargo-fuzz --version 0.13.2 --locked
+        shell: bash
+
+      - name: fuzz target
+        run: |
+          cargo fuzz run "${{ matrix.target }}" -- \
+            -max_total_time="$MAX_TOTAL_TIME" \
+            -rss_limit_mb=4096 \
+            -print_final_stats=1
+        shell: bash
+
+      - name: print crash artifacts
+        if: failure()
+        run: |
+          find fuzz/artifacts -type f -print -exec sh -c 'echo "-- $1"; od -A x -t x1z "$1"' _ {} \;
+        shell: bash

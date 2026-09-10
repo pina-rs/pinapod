@@ -11,7 +11,7 @@ PinaPod is the Pina-maintained fork of [ZeroPod](https://github.com/blueshift-gg
 pinapod = "0.2"
 ```
 
-PinaPod supports Rust 1.89 and newer. The runtime crate is `no_std`.
+PinaPod supports Rust 1.89 and newer. The MSRV follows the Rust versions supported by Solana's Agave releases; see the [supported toolchains page](https://pina-rs.github.io/pinapod/support.html) for the current alignment and policy. The runtime crate is `no_std`.
 
 ## Pick a layout
 
@@ -102,7 +102,7 @@ All representations have alignment one. Safe readers validate tags, lengths, UTF
 
 ## Documentation and verification
 
-The [PinaPod book](https://pina-rs.github.io/pinapod/) contains the API guide, the [v0.1 to v0.2 migration guide](https://pina-rs.github.io/pinapod/migration-v0.2.html), the safety model, and benchmark instructions. The repository runs native tests, Miri regressions, Kani proofs, wire-format fixtures, and a Criterion comparison against both PinaPod v0.1 and upstream ZeroPod.
+The [PinaPod book](https://pina-rs.github.io/pinapod/) contains the API guide, the [v0.1 to v0.2 migration guide](https://pina-rs.github.io/pinapod/migration-v0.2.html), the safety model, and benchmark instructions. The repository runs native tests on the pinned nightly, current stable, and the MSRV; Miri regressions; Kani proofs including derive-generated compact schemas; coverage-guided fuzzing over every untrusted-input reader (see [fuzz/README.md](fuzz/README.md)); wire-format fixtures; and a Criterion comparison against both PinaPod v0.1 and upstream ZeroPod. Versions and changelogs are managed by MonoChange, which also provides the semantic-version compatibility check for each release.
 
 Report a suspected soundness or security defect through GitHub private vulnerability reporting. See [SECURITY.md](SECURITY.md) for the required report details.
 

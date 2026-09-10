@@ -4,15 +4,29 @@
 
 The benchmark derives separate, wire-identical schemas for every implementation. It asserts equality of their fixed and compact encodings before collecting samples, including compact vector counts of 1, 4, 8, and 16. A mismatch therefore fails instead of producing a misleading performance comparison. The normal integration suite repeats this three-way wire check, so `cargo test` catches compatibility regressions without running Criterion. Criterion labels the three contenders as `pinapod-current`, `pinapod-previous-71ad8be`, and `zeropod-upstream-78e6e5f`.
 
-| Workload        | Wire bytes | What is timed                                                                                                |
-| --------------- | ---------: | ------------------------------------------------------------------------------------------------------------ |
-| Fixed           |         45 | Parse, validation-only, read four fields from a validated view, mutate a valid value, or initialize a value  |
-| Compact small   |         36 | Parse, validation-only, access a five-byte string and two `u64` values, update from a small record           |
-| Compact maximum |        207 | Parse, validation-only, access a 64-byte string and 16 `u64` values, grow a small record to maximum capacity |
+| Workload         | Wire bytes | What is timed                                                                                                |
+| ---------------- | ---------: | ------------------------------------------------------------------------------------------------------------ |
+| Fixed            |         45 | Parse, validation-only, read four fields from a validated view, mutate a valid value, or initialize a value  |
+| Compact small    |         36 | Parse, validation-only, access a five-byte string and two `u64` values, update from a small record           |
+| Compact maximum  |        207 | Parse, validation-only, access a 64-byte string and 16 `u64` values, grow a small record to maximum capacity |
+| Many-tail fields |        145 | Parse plus access of every field, or only the last field, on a six-tail compact schema                       |
+
+The many-tail fixture guards reader scaling with the number of tail fields rather than the number of elements. A compact `Ref` computes every tail offset once during construction and stores them, so each accessor is a constant-time slice regardless of how many tails precede it; the fixture times both a full six-field sweep and a last-field-only read so the scaling stays visible.
 
 The harness prints the fixed/header/encoded sizes, generated view sizes, and allocation counts for representative PinaPod writes and updates. It uses fixed stack buffers and prebuilt inputs, so any reported allocation comes from the implementation rather than benchmark-buffer setup.
 
 The compact writer types differ by API generation. The current fixture measures the generated `CompactPatch` and reports `current ref=.../patch=...`. The pinned previous and upstream fixtures measure their generated mutable views and report `ref=.../mut=...`. The workload and wire bytes remain the same; the labels make the compared API shapes explicit.
+
+## Deliberate costs that must not be optimized away
+
+Several PinaPod operations do more byte work than a naive implementation because the extra writes are load-bearing for security:
+
+- Shortening a string, vector, or compact tail zeroes the removed bytes.
+- Absent option payloads are zeroed when cleared and never serialized.
+- Compact updates zero the old suffix when the encoded value shrinks.
+- Fixed and compact initialization zero the destination before and after a failed attempt.
+
+These writes prevent stale account data from leaking through inactive capacity later, and they make repeated writes produce identical bytes. Stale-capacity disclosure is in the [SECURITY.md](../SECURITY.md) threat model. A performance change that removes a zero-fill is a security regression, not an optimization.
 
 ## v0.2 release-candidate results
 

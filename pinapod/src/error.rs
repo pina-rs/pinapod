@@ -1,4 +1,10 @@
+/// The error type returned by every `PinaPod` read, validation, and update.
+///
+/// The enum is `non_exhaustive` so new validation variants can be added in
+/// minor releases. Downstream code that inspects variants must keep a
+/// wildcard arm.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum PinaPodError {
     BufferTooSmall,
     Overflow,
@@ -22,6 +28,8 @@ impl core::fmt::Display for PinaPodError {
         }
     }
 }
+
+impl core::error::Error for PinaPodError {}
 
 #[cfg(feature = "solana-program-error")]
 impl From<PinaPodError> for solana_program_error::ProgramError {
