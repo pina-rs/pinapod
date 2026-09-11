@@ -926,7 +926,6 @@ fn generate_patch(
     let elided_lifetime: syn::Lifetime = syn::parse_quote!('_);
     let patch_elided_ty =
         type_with_leading_lifetime(patch_name, &schema.generics, &elided_lifetime);
-    let ref_elided_ty = type_with_leading_lifetime(ref_name, &schema.generics, &elided_lifetime);
     let mut_elided_ty = type_with_leading_lifetime(mut_name, &schema.generics, &elided_lifetime);
     let (marker_field, marker_init) = generic_marker_tokens(&schema.generics);
 
