@@ -43,7 +43,7 @@ jobs:
       # Fails the pull request when changed release-owned paths lack changeset
       # coverage and posts the remediation comment.
       - name: enforce changeset policy
-        uses: monochange/actions/changeset-policy@1fe45f5214577e78f6339e233c05fd429b1adaf7 # v0.9.0
+        uses: monochange/actions/changeset-policy@da3911fecf67478deb0ad60f717da5eca649caba # v0.9.1
         with:
           setup-monochange: false
           github-token: ${{ github.token }}
@@ -54,7 +54,7 @@ jobs:
       # dependency, and metadata changes with a proposed bump per package.
       # This is the repository's semver check in place of cargo-semver-checks.
       - name: classify semantic changes
-        uses: monochange/actions/change-classification@1fe45f5214577e78f6339e233c05fd429b1adaf7 # v0.9.0
+        uses: monochange/actions/change-classification@da3911fecf67478deb0ad60f717da5eca649caba # v0.9.1
         with:
           setup-monochange: false
           github-token: ${{ github.token }}

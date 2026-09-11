@@ -4,7 +4,7 @@ PinaPod maps validated Solana account and instruction bytes to alignment-one Rus
 
 Version 0.2 is a breaking API release with a stable wire format. It renames the derive and traits to `PinaPod`, adds bounded containers to fixed accounts, and replaces direct compact-header mutation with checked updates.
 
-Start with [Choose an account layout](./account-layouts.md). If you already use PinaPod v0.1, follow [Migrate from v0.1 to v0.2](./migration-v0.2.md).
+Start with [Choose an account layout](./account-layouts.md). If you already use PinaPod v0.1, follow [Migrate from v0.1 to v0.2](./migration-v0.2.md); v0.2 users follow [Migrate from v0.2 to v0.3](./migration-v0.3.md).
 
 ## What v0.2 guarantees
 
