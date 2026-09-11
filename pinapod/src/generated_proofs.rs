@@ -90,7 +90,10 @@ fn initialize_builds_a_valid_view() {
     let note_len: usize = kani::any();
     kani::assume(note_len <= 4);
 
-    let mut data: [u8; STORAGE] = kani::any();
+    // Concrete garbage start: `initialize` zeroes the destination before
+    // writing, so the prior content cannot influence the outcome, and the
+    // proof cost stays in the symbolic lengths where it belongs.
+    let mut data: [u8; STORAGE] = [0xFF; STORAGE];
     let values_pod = values.pod();
     let patch = BoundedPatch::new()
         .seq(seq)
@@ -122,7 +125,10 @@ fn initialize_builds_a_valid_view() {
 #[kani::proof]
 #[kani::unwind(25)]
 fn update_preserves_roundtrip() {
-    let mut data: [u8; STORAGE] = kani::any();
+    // Concrete start: only bytes written by the first `initialize` are read,
+    // so symbolic garbage would add solver state without strengthening the
+    // property.
+    let mut data: [u8; STORAGE] = [0x7F; STORAGE];
     let first_values = SymbolicValues::new().pod();
     let first = BoundedPatch::new()
         .seq(0)
