@@ -934,6 +934,8 @@ fn generate_patch(
     let mut field_inits = Vec::new();
     let mut builders = Vec::new();
     let mut input_validations = Vec::new();
+    let preflight_walk =
+        generate_preflight_walk(header_ty, &schema.tail_fields().collect::<Vec<_>>());
     let mut updated_steps = Vec::new();
     let mut initial_steps = Vec::new();
     let mut stage_steps = Vec::new();
@@ -1000,11 +1002,11 @@ fn generate_patch(
                         __pinapod_check_prefix(value.len(), #pfx)?;
                     }
                 });
+                let old_size = format_ident!("__old_encoded_{}", name);
                 updated_steps.push(quote! {
                     if let Some(value) = self.#name {
-                        let old_len = view.#name().len();
                         updated_len = updated_len
-                            .checked_sub(old_len)
+                            .checked_sub(#old_size)
                             .ok_or(pinapod::PinaPodError::Overflow)?;
                         updated_len = __pinapod_checked_add(updated_len, value.len())?;
                     }
@@ -1048,18 +1050,15 @@ fn generate_patch(
                         }
                     }
                 });
+                let old_size = format_ident!("__old_encoded_{}", name);
                 updated_steps.push(quote! {
                     if let Some(value) = self.#name {
-                        let old_len = __pinapod_checked_mul(
-                            view.#name().len(),
-                            core::mem::size_of::<#mapped_elem>(),
-                        )?;
                         let new_len = __pinapod_checked_mul(
                             value.len(),
                             core::mem::size_of::<#mapped_elem>(),
                         )?;
                         updated_len = updated_len
-                            .checked_sub(old_len)
+                            .checked_sub(#old_size)
                             .ok_or(pinapod::PinaPodError::Overflow)?;
                         updated_len = __pinapod_checked_add(updated_len, new_len)?;
                     }
@@ -1102,18 +1101,15 @@ fn generate_patch(
                         __pinapod_check_prefix(value.len(), #pfx)?;
                     }
                 });
+                let old_size = format_ident!("__old_encoded_{}", name);
                 updated_steps.push(quote! {
                     if let Some(value) = self.#name {
-                        let old_len = match view.#name() {
-                            Some(old) => __pinapod_checked_add(#pfx, old.len())?,
-                            None => 0,
-                        };
                         let new_len = match value {
                             Some(new) => __pinapod_checked_add(#pfx, new.len())?,
                             None => 0,
                         };
                         updated_len = updated_len
-                            .checked_sub(old_len)
+                            .checked_sub(#old_size)
                             .ok_or(pinapod::PinaPodError::Overflow)?;
                         updated_len = __pinapod_checked_add(updated_len, new_len)?;
                     }
@@ -1166,18 +1162,9 @@ fn generate_patch(
                         }
                     }
                 });
+                let old_size = format_ident!("__old_encoded_{}", name);
                 updated_steps.push(quote! {
                     if let Some(value) = self.#name {
-                        let old_len = match view.#name() {
-                            Some(old) => __pinapod_checked_add(
-                                #pfx,
-                                __pinapod_checked_mul(
-                                    old.len(),
-                                    core::mem::size_of::<#mapped_elem>(),
-                                )?,
-                            )?,
-                            None => 0,
-                        };
                         let new_len = match value {
                             Some(new) => __pinapod_checked_add(
                                 #pfx,
@@ -1189,7 +1176,7 @@ fn generate_patch(
                             None => 0,
                         };
                         updated_len = updated_len
-                            .checked_sub(old_len)
+                            .checked_sub(#old_size)
                             .ok_or(pinapod::PinaPodError::Overflow)?;
                         updated_len = __pinapod_checked_add(updated_len, new_len)?;
                     }
@@ -1293,8 +1280,18 @@ fn generate_patch(
 
             pub fn updated_len(&self, data: &[u8]) -> Result<usize, pinapod::PinaPodError> {
                 self.validate_inputs()?;
-                let view = <#ref_elided_ty>::new(data)?;
-                let mut updated_len = view.encoded_len();
+                <#struct_name #ty_generics as pinapod::PinaPodCompact>::validate(data)?;
+                // One uncached walk in field order. Each tail's old encoded
+                // size is a local, so this preflight performs no offset
+                // stores and builds no view; the cached-offset reader stays
+                // on the read paths where it pays for itself.
+                //
+                // SAFETY: `validate` proved this slice holds a readable
+                // header and consistent tails, and the header type is an
+                // alignment-one ZcElem.
+                let __hdr = unsafe { &*(data.as_ptr() as *const #header_ty) };
+                #preflight_walk
+                let mut updated_len = __offset;
                 #( #updated_steps )*
                 Ok(updated_len)
             }
@@ -2227,6 +2224,83 @@ fn compute_offset_tokens(
 /// The generated statements read `__hdr` (header prefixes) and `data` (tail
 /// prefixes for optional segments). Both are bounds-proven by the `validate`
 /// call that must precede this walk.
+/// One uncached preflight walk for the generated `updated_len`: emits, per
+/// tail in field order, the tail's old encoded size as a local
+/// `__old_encoded_<field>` and advances `__offset`. Reads `__hdr` and `data`,
+/// both bounds-proven by the `validate` call that must precede it.
+///
+/// This is the update-preflight shape: no `Ref` construction and no offset
+/// stores, so updating never pays for the read-path offset cache.
+fn generate_preflight_walk(
+    header_ty: &TokenStream,
+    tail_fields: &[&crate::schema::SchemaField],
+) -> TokenStream {
+    let header_size = quote! { core::mem::size_of::<#header_ty>() };
+    let mut steps = Vec::new();
+
+    for f in tail_fields {
+        let FieldKind::Tail(TailField::Segment { presence, payload }) = &f.kind else {
+            continue;
+        };
+        let len_name = format_ident!("__{}_len", f.name);
+        let old_size = format_ident!("__old_encoded_{}", f.name);
+        let pfx = payload.pfx();
+
+        steps.push(quote! { let #old_size: usize = });
+
+        match (presence, payload) {
+            (TailPresence::Always, TailPayload::String { .. }) => {
+                let read_len = read_len_expr(&len_name, pfx);
+                steps.push(quote! {
+                    #read_len;
+                });
+            }
+            (TailPresence::Always, TailPayload::Vec { elem, .. }) => {
+                let mapped_elem = map_to_pod_type(elem);
+                let read_len = read_len_expr(&len_name, pfx);
+                steps.push(quote! {
+                    __pinapod_checked_mul(#read_len, core::mem::size_of::<#mapped_elem>())?;
+                });
+            }
+            (TailPresence::OptionTag, TailPayload::String { .. }) => {
+                let tag_name = format_ident!("__{}_tag", f.name);
+                let read_len = read_data_len_expr(quote! { data }, quote! { __offset }, pfx);
+                steps.push(quote! {
+                    if __hdr.#tag_name[0] != 0 {
+                        __pinapod_checked_add(#pfx, #read_len)?
+                    } else {
+                        0
+                    };
+                });
+            }
+            (TailPresence::OptionTag, TailPayload::Vec { elem, .. }) => {
+                let tag_name = format_ident!("__{}_tag", f.name);
+                let mapped_elem = map_to_pod_type(elem);
+                let read_len = read_data_len_expr(quote! { data }, quote! { __offset }, pfx);
+                steps.push(quote! {
+                    if __hdr.#tag_name[0] != 0 {
+                        __pinapod_checked_add(
+                            #pfx,
+                            __pinapod_checked_mul(#read_len, core::mem::size_of::<#mapped_elem>())?,
+                        )?
+                    } else {
+                        0
+                    };
+                });
+            }
+        }
+
+        steps.push(quote! {
+            __offset = __pinapod_checked_add(__offset, #old_size)?;
+        });
+    }
+
+    quote! {
+        let mut __offset = #header_size;
+        #( #steps )*
+    }
+}
+
 fn compute_all_offsets_tokens(
     header_ty: &TokenStream,
     tail_fields: &[&crate::schema::SchemaField],
@@ -2293,6 +2367,29 @@ fn compute_all_offsets_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preflight_walk_skips_non_tail_fields_and_names_each_old_size() {
+        let input: syn::DeriveInput = syn::parse_quote! {
+            #[pinapod(compact)]
+            struct Mixed {
+                revision: u64,
+                label: pinapod::String<4>,
+                tags: Option<pinapod::Vec<u8, 4>>,
+            }
+        };
+        let schema = Schema::parse(&input).unwrap();
+        let fields: Vec<&crate::schema::SchemaField> = schema.fields.iter().collect();
+
+        let walk = generate_preflight_walk(&quote! { MixedHeader }, &fields).to_string();
+
+        // The inline field contributes no old-size local; every tail does.
+        assert!(!walk.contains("__old_encoded_revision"));
+        assert!(walk.contains("__old_encoded_label"));
+        assert!(walk.contains("__old_encoded_tags"));
+        // The walk advances the offset after each tail's old size.
+        assert!(walk.contains("__old_encoded_label"));
+    }
 
     #[test]
     fn offset_walk_skips_non_tail_fields() {
