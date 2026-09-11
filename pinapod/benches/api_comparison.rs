@@ -864,7 +864,7 @@ mod many_tail {
         view.encoded_len()
     }
 
-    pub fn access_last(view: &WideRef<'_>) -> Option<&str> {
+    pub fn access_last<'a>(view: &'a WideRef<'a>) -> Option<&'a str> {
         view.note()
     }
 }
