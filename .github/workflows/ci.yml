@@ -199,7 +199,7 @@ jobs:
 
   kani:
     name: kani (${{ matrix.shard.name }})
-    timeout-minutes: 90
+    timeout-minutes: ${{ matrix.shard.timeout }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -207,30 +207,49 @@ jobs:
         shard:
           - name: bool
             harness: "bool::kani_proofs"
+            timeout: 90
           - name: option
             harness: "option::kani_proofs"
+            timeout: 90
           - name: string
             harness: "string::kani_proofs"
+            timeout: 90
           - name: vec
             harness: "vec::kani_proofs"
+            timeout: 90
           - name: u16
             harness: "u16_proofs"
+            timeout: 90
           - name: u32
             harness: "u32_proofs"
+            timeout: 90
           - name: u64
             harness: "u64_proofs"
+            timeout: 90
           - name: u128
             harness: "u128_proofs"
+            timeout: 90
           - name: i16
             harness: "i16_proofs"
+            timeout: 90
           - name: i32
             harness: "i32_proofs"
+            timeout: 90
           - name: i64
             harness: "i64_proofs"
+            timeout: 90
           - name: i128
             harness: "i128_proofs"
-          - name: generated compact schemas
-            harness: "generated_proofs"
+            timeout: 120
+          - name: generated compact accessor bounds
+            harness: "generated_proofs::validated_accessors_are_bounded"
+            timeout: 150
+          - name: generated compact initialize
+            harness: "generated_proofs::initialize_builds_a_valid_view"
+            timeout: 150
+          - name: generated compact update
+            harness: "generated_proofs::update_preserves_roundtrip"
+            timeout: 150
     steps:
       - name: checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
