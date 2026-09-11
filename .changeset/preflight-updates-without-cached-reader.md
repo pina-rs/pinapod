@@ -5,6 +5,6 @@ pinapod:
   caused_by: ["pinapod-derive"]
 ---
 
-# preflight compact updates without building the cached reader
+# restore 0.2 compact update and read costs
 
-Generated `updated_len` now walks the current tails once with locals instead of constructing the caching `Ref`. The preflight performs no offset stores and builds no view, so compact update instructions no longer pay for the read-path offset cache: on the Pina example suite, `rename` and `write` instructions regained the 24 and 9 compute units that 0.3.0 cost them. Reads keep the cached constant-time accessors, and the preflight still validates every input value and the complete current representation before any bytes change.
+On-chain measurement against Pina's example programs showed 0.3.0's offset cache costing compact update instructions compute units (`rename` -24 CU, `write` -9 CU) while never reducing any measured read. Generated `updated_len` now walks the current tails once with locals instead of constructing a view, and generated readers return to the 0.2 shape where each accessor walks the preceding length prefixes. Measured result: `write` +3 CU and `resize` +75 CU improve on 0.2, and `rename` returns to its 0.2 baseline. Wire format, validation order, checked arithmetic, canonical zeroing, and every Kani proof are unchanged; only the generated performance shape changes.

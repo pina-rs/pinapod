@@ -54,9 +54,9 @@ Safe accessors such as `get`, `get_ref`, `is_some`, and `tag_valid` are unchange
 
 `PodString::is_empty` and `PodVec::is_empty` now report the capacity-clamped length, matching `len`. The difference is observable only on zero-capacity containers whose length prefix holds a corrupt non-zero value: `String<0>` and `Vec<T, 0>` now report `is_empty() == true` for such bytes. Readers rejected those bytes before and still reject them; only the pre-validation accessor changed.
 
-## Expect larger generated compact views
+## Compact update preflight and reader shape
 
-Generated compact `Ref` structs cache one tail offset per dynamic field, adding one machine word per tail to each view (the six-tail benchmark fixture stores six offsets). Schema code does not change, and accessors are now constant time regardless of how many tails precede the field. Code that asserts an exact `size_of` on a generated view must update the constant.
+The 0.3 line briefly cached one tail offset per dynamic field inside generated compact `Ref` structs. On-chain measurement showed the cache never reduced compute units on real programs while update instructions paid for it, so from 0.3.1 the reader keeps the 0.2 view shape (accessors walk preceding length prefixes) and the update preflight walks the current tails once with plain locals. Schema code does not change, update instructions get cheaper, and `size_of` assertions on generated views stay valid across 0.2 and 0.3.1.
 
 ## What did not change
 

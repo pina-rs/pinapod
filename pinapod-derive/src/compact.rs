@@ -422,14 +422,12 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
     let where_clause_with_bounds = where_clause_with_bounds(where_clause, bounds.iter());
     let (marker_field, marker_init) = generic_marker_tokens(&schema.generics);
     let tail_fields: Vec<_> = schema.tail_fields().collect();
-    let tail_count = tail_fields.len();
-    // One walk during construction fills every tail offset; accessors then
-    // read their slot instead of re-decoding every preceding length prefix.
-    let offset_walk = compute_all_offsets_tokens(header_ty, &tail_fields, "data");
+    let current_encoded_len = compute_offset_tokens(header_ty, &tail_fields, tail_fields.len());
     let mut accessors = Vec::new();
 
     for (i, f) in tail_fields.iter().enumerate() {
         let fname = &f.name;
+        let offset_computation = compute_offset_tokens(header_ty, &tail_fields, i);
 
         match &f.kind {
             FieldKind::Tail(TailField::Segment {
@@ -442,7 +440,7 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
                     pub fn #fname(&self) -> &#data_lifetime str {
                         let __hdr = self.header();
                         let __byte_len = #read_len;
-                        let __offset = self.tail_offsets[#i];
+                        #offset_computation
                         unsafe {
                             let __ptr = self.data.as_ptr().add(__offset);
                             let __slice = core::slice::from_raw_parts(__ptr, __byte_len);
@@ -462,7 +460,7 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
                     pub fn #fname(&self) -> &#data_lifetime [#mapped_elem] {
                         let __hdr = self.header();
                         let __count = #read_len;
-                        let __offset = self.tail_offsets[#i];
+                        #offset_computation
                         unsafe {
                             let __ptr = self.data.as_ptr().add(__offset) as *const #mapped_elem;
                             core::slice::from_raw_parts(__ptr, __count)
@@ -482,7 +480,7 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
                         if __hdr.#tag_name[0] == 0 {
                             return None;
                         }
-                        let __offset = self.tail_offsets[#i];
+                        #offset_computation
                         let __byte_len = #read_len;
                         let __payload_offset = __offset + #pfx;
                         unsafe {
@@ -506,7 +504,7 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
 						if __hdr.#tag_name[0] == 0 {
 							return None;
 						}
-						let __offset = self.tail_offsets[#i];
+						#offset_computation
 						let __count = #read_len;
 						let __payload_offset = __offset + #pfx;
 						unsafe {
@@ -524,7 +522,6 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
         pub struct #ref_name #ref_generics #where_clause_with_bounds {
             data: &#data_lifetime [u8],
             encoded_len: usize,
-            tail_offsets: [usize; #tail_count],
             #marker_field
         }
 
@@ -538,22 +535,23 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
         impl #ref_impl_generics #ref_name #ref_ty_generics #where_clause_with_bounds {
             pub fn new(data: &#data_lifetime [u8]) -> Result<Self, pinapod::PinaPodError> {
                 <#struct_name #struct_ty_generics as pinapod::PinaPodCompact>::validate(data)?;
-                // SAFETY: `validate` proved the header and every tail range for
-                // this exact slice, so the walk below only reads bytes that
-                // were checked, and ZcElem guarantees alignment one.
-                let __hdr = unsafe { &*(data.as_ptr() as *const #header_ty) };
-                let mut __tail_offsets = [0usize; #tail_count];
-                #offset_walk
-                Ok(Self {
+                let mut value = Self {
                     data,
-                    encoded_len: __offset,
-                    tail_offsets: __tail_offsets,
+                    encoded_len: 0,
                     #marker_init
-                })
+                };
+                value.encoded_len = value.current_encoded_len();
+                Ok(value)
             }
 
             fn header(&self) -> &#data_lifetime #header_ty {
                 unsafe { &*(self.data.as_ptr() as *const #header_ty) }
+            }
+
+            fn current_encoded_len(&self) -> usize {
+                let __hdr = self.header();
+                #current_encoded_len
+                __offset
             }
 
             pub fn encoded_len(&self) -> usize {
@@ -2300,69 +2298,6 @@ fn generate_preflight_walk(
     }
 }
 
-fn compute_all_offsets_tokens(
-    header_ty: &TokenStream,
-    tail_fields: &[&crate::schema::SchemaField],
-    data_expr: &str,
-) -> TokenStream {
-    let header_size = quote! { core::mem::size_of::<#header_ty>() };
-    let data = proc_macro2::Ident::new(data_expr, proc_macro2::Span::call_site());
-    let mut steps = Vec::new();
-
-    for (i, f) in tail_fields.iter().enumerate() {
-        let FieldKind::Tail(TailField::Segment { presence, payload }) = &f.kind else {
-            continue;
-        };
-        let len_name = format_ident!("__{}_len", f.name);
-        let pfx = tail_pfx(&f.kind);
-        let read_len = read_len_expr(&len_name, pfx);
-
-        steps.push(quote! { __tail_offsets[#i] = __offset; });
-
-        match (presence, payload) {
-            (TailPresence::Always, TailPayload::String { .. }) => {
-                steps.push(quote! {
-                    __offset += #read_len;
-                });
-            }
-            (TailPresence::Always, TailPayload::Vec { elem, .. }) => {
-                let count_name = format_ident!("__{}_walk_count", f.name);
-                let mapped_elem = map_to_pod_type(elem);
-                steps.push(quote! {
-                    let #count_name = #read_len;
-                    __offset += #count_name * core::mem::size_of::<#mapped_elem>();
-                });
-            }
-            (TailPresence::OptionTag, TailPayload::String { pfx, .. }) => {
-                let tag_name = format_ident!("__{}_tag", f.name);
-                let read_len = read_data_len_expr(quote! { #data }, quote! { __offset }, *pfx);
-                steps.push(quote! {
-                    if __hdr.#tag_name[0] != 0 {
-                        let __byte_len = #read_len;
-                        __offset += #pfx + __byte_len;
-                    }
-                });
-            }
-            (TailPresence::OptionTag, TailPayload::Vec { elem, pfx, .. }) => {
-                let tag_name = format_ident!("__{}_tag", f.name);
-                let mapped_elem = map_to_pod_type(elem);
-                let read_len = read_data_len_expr(quote! { #data }, quote! { __offset }, *pfx);
-                steps.push(quote! {
-                    if __hdr.#tag_name[0] != 0 {
-                        let __count = #read_len;
-                        __offset += #pfx + __count * core::mem::size_of::<#mapped_elem>();
-                    }
-                });
-            }
-        }
-    }
-
-    quote! {
-        let mut __offset = #header_size;
-        #( #steps )*
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2388,24 +2323,6 @@ mod tests {
         assert!(walk.contains("__old_encoded_tags"));
         // The walk advances the offset after each tail's old size.
         assert!(walk.contains("__old_encoded_label"));
-    }
-
-    #[test]
-    fn offset_walk_skips_non_tail_fields() {
-        let input: syn::DeriveInput = syn::parse_quote! {
-            #[pinapod(compact)]
-            struct InlineOnly {
-                revision: u64,
-            }
-        };
-        let schema = Schema::parse(&input).unwrap();
-        let fields: Vec<&crate::schema::SchemaField> = schema.fields.iter().collect();
-
-        let walk = compute_all_offsets_tokens(&quote! { InlineOnlyHeader }, &fields, "data");
-
-        // A non-tail field contributes no offset slot; the walk degenerates to
-        // the header offset alone.
-        assert!(!walk.to_string().contains("__tail_offsets[0]"));
     }
 
     #[test]
