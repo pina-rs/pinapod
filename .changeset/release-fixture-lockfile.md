@@ -1,6 +1,5 @@
 ---
-pinapod:
-  type: none
+pinapod: none
 pinapod-derive:
   type: none
   caused_by: ["pinapod"]
