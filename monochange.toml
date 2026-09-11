@@ -99,7 +99,12 @@ versioned_files = [
 [ecosystems.cargo]
 enabled = true
 versioned_files = ["Cargo.toml"]
-lockfile_commands = [{ command = "cargo update --workspace", cwd = ".", shell = "bash" }]
+lockfile_commands = [
+  { command = "cargo update --workspace", cwd = ".", shell = "bash" },
+  # The renamed-dependency compile fixture carries its own lock file that
+  # pins the path dependency's version; refresh it with every release bump.
+  { command = "cargo update", cwd = "pinapod/tests/renamed_dependency", shell = "bash" },
+]
 
 [ecosystems.cargo.publish]
 enabled = true
