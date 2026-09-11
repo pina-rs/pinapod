@@ -401,7 +401,10 @@ fn enum_support() -> TokenStream {
                 }
                 _ => return Err(pinapod::PinaPodError::InvalidLength),
             };
-            usize::try_from(value).map_err(|_| pinapod::PinaPodError::Overflow)
+            // A stored length wider than the target usize is an invalid
+            // representation, matching the handwritten runtime's
+            // `try_decode_len`, not caller-requested arithmetic overflow.
+            usize::try_from(value).map_err(|_| pinapod::PinaPodError::InvalidLength)
         }
     }
 }
