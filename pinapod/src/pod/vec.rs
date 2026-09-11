@@ -20,6 +20,13 @@ pub type PodVec<T, const N: usize, const PFX: usize = 2> = PodVecRepr<<T as ZcFi
 /// This backing type is public because it appears through [`PodVec`], but it
 /// is not the schema-facing API. Prefer [`PodVec`] so native element types map
 /// to their alignment-one PinaPod representation.
+///
+/// # Stability
+///
+/// `PodVecRepr` is part of the wire format and the generated-code contract:
+/// derives expand it into schema companions, and its field order is the stored
+/// layout. Its public surface changes only in breaking releases, in lockstep
+/// with [`PodVec`](self::PodVec).
 #[doc(hidden)]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -75,6 +82,12 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
         }
     }
 
+    /// The raw decoded length prefix.
+    ///
+    /// This is the unvalidated prefix value. On a prefix wider than `usize`
+    /// (eight-byte prefixes on 32-bit targets), the sentinel `usize::MAX` is
+    /// returned. Safe accessors such as [`len`](Self::len) clamp the value to
+    /// the capacity; readers reject it during validation.
     #[inline(always)]
     pub fn decode_len(&self) -> usize {
         self.try_decode_len().unwrap_or(usize::MAX)
@@ -103,6 +116,13 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
         self.data[range].fill(MaybeUninit::zeroed());
     }
 
+    /// The number of active elements, clamped to the fixed capacity `N`.
+    ///
+    /// A forged or corrupt prefix can decode above `N`; this accessor never
+    /// trusts it. Callers that need to distinguish a corrupt prefix from a
+    /// valid one must validate through a reader first (see [`ZcValidate`]).
+    ///
+    /// [`ZcValidate`]: crate::ZcValidate
     #[inline(always)]
     pub fn len(&self) -> usize {
         #[allow(clippy::let_unit_value)]
@@ -112,7 +132,7 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
 
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
-        self.decode_len() == 0
+        self.len() == 0
     }
 
     #[inline(always)]

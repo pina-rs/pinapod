@@ -442,7 +442,9 @@ pub unsafe trait ZcField: Sized {
 /// its stored representation.
 ///
 /// This trait is public only because generated code expands in downstream
-/// crates. It is not part of the hand-written PinaPod API.
+/// crates. It is not part of the hand-written PinaPod API. Its shape follows
+/// the generated compact patches and changes only in breaking releases, in
+/// lockstep with the derive.
 #[doc(hidden)]
 pub trait IntoPodOption<T: ZcField> {
     fn into_pod_option(self) -> PodOption<T::Pod>;

@@ -1,5 +1,7 @@
 [workspace]
 members = ["pinapod", "pinapod-derive"]
+# The fuzz suite is a standalone workspace managed by cargo-fuzz.
+exclude = ["fuzz"]
 resolver = "2"
 
 [workspace.package]
@@ -13,7 +15,10 @@ rust-version = "1.89.0"
 
 [workspace.dependencies]
 fixed = { version = "=1.30.0", default-features = false }
-pinapod-derive = { version = "0.2.0", path = "pinapod-derive" }
+# Exact pin: generated code expands against the runtime crate's private
+# contracts, so mixed versions are never compatible. Updated only by the
+# MonoChange release flow.
+pinapod-derive = { version = "=0.2.0", path = "pinapod-derive" }
 
 [workspace.lints.rust]
 # Group lints
@@ -37,6 +42,7 @@ edition_2024_expr_fragment_specifier = "allow"
 level = "warn"
 check-cfg = [
   'cfg(coverage)',
+  'cfg(fuzzing)',
   'cfg(kani)',
   'cfg(target_os, values("solana"))',
   'cfg(target_feature, values("static-syscalls"))',

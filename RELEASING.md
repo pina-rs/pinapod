@@ -11,6 +11,12 @@ monochange step prepare-release --dry-run --format json
 
 Use the bump level required by the public API. Version 0.2 uses a minor bump from the pre-1.0 `0.1` line.
 
+## Derive lockstep
+
+The runtime crate pins `pinapod-derive` to its exact released version (`=x.y.z`) because generated code expands against the runtime crate's private contracts. A mixed `pinapod`/`pinapod-derive` pair could emit code the runtime does not match. Both crates release together from the `pinapod-workspace` group, and the release writes the pin through a typed `versioned_files` entry with `prefix = "="` in `monochange.toml` — never by hand.
+
+MonoChange is also the project's semver gate in place of `cargo-semver-checks`: every pull request runs the `changeset-policy` workflow, which enforces changeset coverage and posts a semantic change classification (`detection-level: semantic`) with the proposed bump per package, and the release preview derives compatibility evidence from the semantic diff.
+
 Before merging a feature pull request, run:
 
 ```sh

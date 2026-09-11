@@ -1,4 +1,10 @@
+/// The error type returned by every `PinaPod` read, validation, and update.
+///
+/// The enum is `non_exhaustive` so new validation variants can be added in
+/// minor releases. Downstream code that inspects variants must keep a
+/// wildcard arm.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum PinaPodError {
     BufferTooSmall,
     Overflow,
@@ -15,13 +21,15 @@ impl core::fmt::Display for PinaPodError {
             Self::BufferTooSmall => write!(f, "buffer too small"),
             Self::Overflow => write!(f, "field value exceeds max capacity"),
             Self::InvalidBool => write!(f, "invalid bool: byte must be 0 or 1"),
-            Self::InvalidTag => write!(f, "invalid option tag: byte must be 0 or 1"),
+            Self::InvalidTag => write!(f, "invalid option tag: prefix must encode 0 or 1"),
             Self::InvalidDiscriminant => write!(f, "invalid enum discriminant"),
             Self::InvalidLength => write!(f, "stored length exceeds capacity"),
             Self::InvalidUtf8 => write!(f, "invalid UTF-8 in string field"),
         }
     }
 }
+
+impl core::error::Error for PinaPodError {}
 
 #[cfg(feature = "solana-program-error")]
 impl From<PinaPodError> for solana_program_error::ProgramError {

@@ -1,0 +1,61 @@
+[package]
+name = "pinapod-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+pinapod = { path = "../pinapod", features = ["wincode"] }
+# Direct dependency so wincode targets use the same crate instance that
+# pinapod's feature graph selects.
+wincode = { version = "0.5.5", default-features = false }
+
+# The fuzz suite is its own workspace so the release workspace never builds
+# fuzzing dependencies.
+[workspace]
+
+[[bin]]
+name = "fixed_validate"
+path = "fuzz_targets/fixed_validate.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "compact_validate"
+path = "fuzz_targets/compact_validate.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "compact_patch"
+path = "fuzz_targets/compact_patch.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "compact_enum_validate"
+path = "fuzz_targets/compact_enum_validate.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "wincode_read"
+path = "fuzz_targets/wincode_read.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pod_containers"
+path = "fuzz_targets/pod_containers.rs"
+test = false
+doc = false
+bench = false

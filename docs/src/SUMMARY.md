@@ -7,6 +7,8 @@
 - [Pod containers and prefixes](./containers.md)
 - [Traits, errors, and features](./traits-and-features.md)
 - [Migrate from v0.1 to v0.2](./migration-v0.2.md)
+- [Migrate from v0.2 to v0.3](./migration-v0.3.md)
 - [Safety model and regressions](./safety.md)
 - [Migrate Pina](./pina-integration.md)
+- [Supported toolchains and Solana versions](./support.md)
 - [API comparison benchmarks](./benchmarks.md)

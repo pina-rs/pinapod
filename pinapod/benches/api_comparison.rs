@@ -784,6 +784,116 @@ fn bench_compact_tail_scaling(c: &mut Criterion) {
     }
 }
 
+/// Measures how compact reader cost scales with the number of tail fields.
+///
+/// This schema carries six tails so the gap between re-decoding every prefix
+/// per accessor and reading one cached offset per accessor is visible. The
+/// comparison is current-only: it guards PinaPod's own scaling, not upstream
+/// parity.
+mod many_tail {
+    use criterion::black_box;
+
+    #[allow(dead_code)]
+    #[derive(pinapod::PinaPod)]
+    #[pinapod(compact)]
+    pub struct Wide {
+        pub sequence: u64,
+        pub label_a: pinapod::String<16>,
+        pub values_a: pinapod::Vec<u32, 8>,
+        pub label_b: pinapod::String<16>,
+        pub values_b: pinapod::Vec<u32, 8>,
+        pub label_c: pinapod::String<16>,
+        pub note: Option<pinapod::String<16>>,
+    }
+
+    const _: () = assert!(<Wide as pinapod::PinaPodCompact>::HEADER_SIZE == 16);
+    const _: () = assert!(<Wide as pinapod::PinaPodCompact>::MIN_SIZE == 16);
+    const _: () = assert!(<Wide as pinapod::PinaPodCompact>::MAX_SIZE == 145);
+    const _: () = assert!(<Wide as pinapod::PinaPodCompact>::TAIL_ALIGNMENT == 1);
+
+    const LABEL: &str = "aaaaaaaaaaaaaaaa";
+    const VALUES: [u32; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
+    const NOTE: &str = "nnnnnnnnnnnnnnnn";
+    pub const ENCODED_LEN: usize = 145;
+    pub const STORAGE_LEN: usize = 145;
+
+    pub fn write(data: &mut [u8]) -> usize {
+        let values: [pinapod::pod::PodU32; 8] = [
+            pinapod::pod::PodU32::from(VALUES[0]),
+            pinapod::pod::PodU32::from(VALUES[1]),
+            pinapod::pod::PodU32::from(VALUES[2]),
+            pinapod::pod::PodU32::from(VALUES[3]),
+            pinapod::pod::PodU32::from(VALUES[4]),
+            pinapod::pod::PodU32::from(VALUES[5]),
+            pinapod::pod::PodU32::from(VALUES[6]),
+            pinapod::pod::PodU32::from(VALUES[7]),
+        ];
+        let patch = WidePatch::new()
+            .sequence(1)
+            .label_a(LABEL)
+            .replace_values_a(&values)
+            .label_b(LABEL)
+            .replace_values_b(&values)
+            .label_c(LABEL)
+            .note(Some(NOTE));
+        Wide::initialize(data, &patch).expect("wide fixture must initialize")
+    }
+
+    /// Parses the fixture once. Benchmarks receive the prebuilt view so they
+    /// measure accessor cost without validation or offset-walk work.
+    pub fn view(data: &[u8]) -> WideRef<'_> {
+        Wide::read_prefix(data).expect("wide fixture must parse")
+    }
+
+    pub fn parse(data: &[u8]) -> usize {
+        Wide::read_prefix(data)
+            .expect("wide fixture must parse")
+            .encoded_len()
+    }
+
+    pub fn access_all(view: &WideRef<'_>) -> usize {
+        black_box((
+            view.sequence,
+            view.label_a(),
+            view.values_a(),
+            view.label_b(),
+            view.values_b(),
+            view.label_c(),
+            view.note(),
+        ));
+        view.encoded_len()
+    }
+
+    pub fn access_last<'a>(view: &'a WideRef<'a>) -> Option<&'a str> {
+        view.note()
+    }
+}
+
+fn bench_many_tail_fields(c: &mut Criterion) {
+    let mut data = [0u8; many_tail::STORAGE_LEN];
+    let encoded_len = many_tail::write(&mut data);
+    assert_eq!(encoded_len, many_tail::ENCODED_LEN);
+    let data = &data[..];
+    let view = many_tail::view(data);
+
+    let mut parse = c.benchmark_group("compact/many-tail-fields/parse");
+    parse.throughput(Throughput::Bytes(encoded_len as u64));
+    parse.bench_function("pinapod-current", |bench| {
+        bench.iter(|| black_box(many_tail::parse(black_box(data))));
+    });
+    parse.finish();
+
+    let mut access = c.benchmark_group("compact/many-tail-fields/access");
+    access.throughput(Throughput::Bytes(encoded_len as u64));
+    access.bench_function("pinapod-current-all-fields", |bench| {
+        bench.iter(|| black_box(many_tail::access_all(black_box(&view))));
+    });
+    access.bench_function("pinapod-current-last-field", |bench| {
+        bench.iter(|| black_box(many_tail::access_last(black_box(&view)).is_some()));
+    });
+    access.finish();
+}
+
 fn api_comparison(c: &mut Criterion) {
     let fixtures = fixtures();
 
@@ -819,6 +929,7 @@ fn api_comparison(c: &mut Criterion) {
         },
     );
     bench_compact_tail_scaling(c);
+    bench_many_tail_fields(c);
 }
 
 criterion_group!(benches, api_comparison);

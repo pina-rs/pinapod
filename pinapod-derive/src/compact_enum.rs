@@ -401,7 +401,10 @@ fn enum_support() -> TokenStream {
                 }
                 _ => return Err(pinapod::PinaPodError::InvalidLength),
             };
-            usize::try_from(value).map_err(|_| pinapod::PinaPodError::Overflow)
+            // A stored length wider than the target usize is an invalid
+            // representation, matching the handwritten runtime's
+            // `try_decode_len`, not caller-requested arithmetic overflow.
+            usize::try_from(value).map_err(|_| pinapod::PinaPodError::InvalidLength)
         }
     }
 }
@@ -793,12 +796,12 @@ fn validate_payload_tokens(payload: &VariantPayload, tag_size: usize) -> TokenSt
                 let __payload = data
                     .get(__payload_offset..__payload_end)
                     .ok_or(pinapod::PinaPodError::BufferTooSmall)?;
-                for __i in 0..__count {
-                    let __elem_offset = __pinapod_checked_mul(__i, __elem_size)?;
-                    let __elem_ptr = unsafe {
-                        &*(__payload.as_ptr().add(__elem_offset) as *const #mapped_elem)
-                    };
-                    <#mapped_elem as pinapod::ZcValidate>::validate_ref(__elem_ptr)?;
+                // SAFETY: `__byte_len` is bounds-proven against `__payload`
+                // above, so every chunk lies inside the slice and `ZcElem`
+                // guarantees alignment one for the cast.
+                for __chunk in __payload.chunks_exact(__elem_size) {
+                    let __elem = unsafe { &*(__chunk.as_ptr() as *const #mapped_elem) };
+                    <#mapped_elem as pinapod::ZcValidate>::validate_ref(__elem)?;
                 }
                 Ok(())
             }
