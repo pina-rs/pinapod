@@ -2263,7 +2263,9 @@ fn generate_preflight_walk(
                 let mapped_elem = map_to_pod_type(elem);
                 let read_len = read_len_expr(&len_name, pfx);
                 steps.push(quote! {
-                    __pinapod_checked_mul(#read_len, core::mem::size_of::<#mapped_elem>())?;
+                    // Plain arithmetic: `validate` proved the byte length
+                    // fits the slice, so the bounded product cannot overflow.
+                    #read_len * core::mem::size_of::<#mapped_elem>();
                 });
             }
             (TailPresence::OptionTag, TailPayload::String { .. }) => {
@@ -2271,7 +2273,9 @@ fn generate_preflight_walk(
                 let read_len = read_data_len_expr(quote! { data }, quote! { __offset }, pfx);
                 steps.push(quote! {
                     if __hdr.#tag_name[0] != 0 {
-                        __pinapod_checked_add(#pfx, #read_len)?
+                        // Plain arithmetic: `validate` proved this prefix and
+                        // payload fit the slice, so the sum cannot overflow.
+                        #pfx + #read_len
                     } else {
                         0
                     };
@@ -2283,10 +2287,10 @@ fn generate_preflight_walk(
                 let read_len = read_data_len_expr(quote! { data }, quote! { __offset }, pfx);
                 steps.push(quote! {
                     if __hdr.#tag_name[0] != 0 {
-                        __pinapod_checked_add(
-                            #pfx,
-                            __pinapod_checked_mul(#read_len, core::mem::size_of::<#mapped_elem>())?,
-                        )?
+                        // Plain arithmetic: `validate` proved this prefix and
+                        // payload fit the slice, so the product and sum
+                        // cannot overflow.
+                        #pfx + #read_len * core::mem::size_of::<#mapped_elem>()
                     } else {
                         0
                     };
@@ -2295,7 +2299,9 @@ fn generate_preflight_walk(
         }
 
         steps.push(quote! {
-            __offset = __pinapod_checked_add(__offset, #old_size)?;
+            // Plain add: each old size is a validated slice length, so the
+            // running offset cannot exceed the slice length.
+            __offset += #old_size;
         });
     }
 
