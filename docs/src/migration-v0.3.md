@@ -1,6 +1,6 @@
 # Migrate from v0.2 to v0.3
 
-Version 0.3 preserves v0.2 account and instruction bytes exactly. Wire compatibility needs no on-chain data migration. The source changes are small and localized to error matching and option-tag inspection.
+Version 0.3 preserves v0.2 account and instruction bytes exactly. Wire compatibility needs no on-chain data migration. The source changes are small, but callers must also review zero-capacity emptiness behavior and generated compact `Ref` size assertions.
 
 ## Update the dependency
 
@@ -56,7 +56,7 @@ Safe accessors such as `get`, `get_ref`, `is_some`, and `tag_valid` are unchange
 
 ## Expect larger generated compact views
 
-Generated compact `Ref` structs cache every tail offset, adding two machine words to each view. Schema code does not change, and accessors are now constant time regardless of how many tails precede the field. Code that asserts an exact `size_of` on a generated view must update the constant.
+Generated compact `Ref` structs cache one tail offset per dynamic field, adding one machine word per tail to each view (the six-tail benchmark fixture stores six offsets). Schema code does not change, and accessors are now constant time regardless of how many tails precede the field. Code that asserts an exact `size_of` on a generated view must update the constant.
 
 ## What did not change
 

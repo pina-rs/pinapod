@@ -21,7 +21,7 @@ impl core::fmt::Display for PinaPodError {
             Self::BufferTooSmall => write!(f, "buffer too small"),
             Self::Overflow => write!(f, "field value exceeds max capacity"),
             Self::InvalidBool => write!(f, "invalid bool: byte must be 0 or 1"),
-            Self::InvalidTag => write!(f, "invalid option tag: byte must be 0 or 1"),
+            Self::InvalidTag => write!(f, "invalid option tag: prefix must encode 0 or 1"),
             Self::InvalidDiscriminant => write!(f, "invalid enum discriminant"),
             Self::InvalidLength => write!(f, "stored length exceeds capacity"),
             Self::InvalidUtf8 => write!(f, "invalid UTF-8 in string field"),

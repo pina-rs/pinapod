@@ -58,6 +58,13 @@ struct WidePrefixProfile {
 
 #[allow(dead_code)]
 #[derive(PinaPod)]
+#[pinapod(compact)]
+struct WidePrefixOptionalProfile {
+    pub note: Option<pinapod::PodString<8, 8>>,
+}
+
+#[allow(dead_code)]
+#[derive(PinaPod)]
 struct FixedEventPayload {
     pub amount: u64,
     pub enabled: bool,
@@ -562,6 +569,25 @@ fn compact_enum_rejects_malicious_eight_byte_prefix() {
         WidePrefixCompactEvent::read_prefix(&data),
         Err(pinapod::PinaPodError::InvalidLength)
     ));
+}
+
+#[test]
+fn compact_optional_tail_with_eight_byte_prefix_roundtrips() {
+    // tag (1) + length prefix (8) + string capacity (8)
+    let mut buffer = vec![0u8; 17];
+    let patch = WidePrefixOptionalProfilePatch::new().note(Some("hello"));
+    let encoded = WidePrefixOptionalProfile::initialize(&mut buffer, &patch).unwrap();
+    assert_eq!(encoded, 1 + 8 + 5);
+
+    let view = WidePrefixOptionalProfile::read_prefix(&buffer).unwrap();
+    assert_eq!(view.note(), Some("hello"));
+
+    let cleared = WidePrefixOptionalProfilePatch::new().note(None);
+    let encoded = WidePrefixOptionalProfile::update(&mut buffer, &cleared).unwrap();
+    assert_eq!(encoded, 1);
+
+    let view = WidePrefixOptionalProfile::read_prefix(&buffer).unwrap();
+    assert_eq!(view.note(), None);
 }
 
 // --- Patch tests ---

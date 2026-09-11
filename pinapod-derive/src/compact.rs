@@ -2237,25 +2237,22 @@ fn compute_all_offsets_tokens(
     let mut steps = Vec::new();
 
     for (i, f) in tail_fields.iter().enumerate() {
+        let FieldKind::Tail(TailField::Segment { presence, payload }) = &f.kind else {
+            continue;
+        };
         let len_name = format_ident!("__{}_len", f.name);
         let pfx = tail_pfx(&f.kind);
         let read_len = read_len_expr(&len_name, pfx);
 
         steps.push(quote! { __tail_offsets[#i] = __offset; });
 
-        match &f.kind {
-            FieldKind::Tail(TailField::Segment {
-                presence: TailPresence::Always,
-                payload: TailPayload::String { .. },
-            }) => {
+        match (presence, payload) {
+            (TailPresence::Always, TailPayload::String { .. }) => {
                 steps.push(quote! {
                     __offset += #read_len;
                 });
             }
-            FieldKind::Tail(TailField::Segment {
-                presence: TailPresence::Always,
-                payload: TailPayload::Vec { elem, .. },
-            }) => {
+            (TailPresence::Always, TailPayload::Vec { elem, .. }) => {
                 let count_name = format_ident!("__{}_walk_count", f.name);
                 let mapped_elem = map_to_pod_type(elem);
                 steps.push(quote! {
@@ -2263,10 +2260,7 @@ fn compute_all_offsets_tokens(
                     __offset += #count_name * core::mem::size_of::<#mapped_elem>();
                 });
             }
-            FieldKind::Tail(TailField::Segment {
-                presence: TailPresence::OptionTag,
-                payload: TailPayload::String { pfx, .. },
-            }) => {
+            (TailPresence::OptionTag, TailPayload::String { pfx, .. }) => {
                 let tag_name = format_ident!("__{}_tag", f.name);
                 let read_len = read_data_len_expr(quote! { #data }, quote! { __offset }, *pfx);
                 steps.push(quote! {
@@ -2276,10 +2270,7 @@ fn compute_all_offsets_tokens(
                     }
                 });
             }
-            FieldKind::Tail(TailField::Segment {
-                presence: TailPresence::OptionTag,
-                payload: TailPayload::Vec { elem, pfx, .. },
-            }) => {
+            (TailPresence::OptionTag, TailPayload::Vec { elem, pfx, .. }) => {
                 let tag_name = format_ident!("__{}_tag", f.name);
                 let mapped_elem = map_to_pod_type(elem);
                 let read_len = read_data_len_expr(quote! { #data }, quote! { __offset }, *pfx);
@@ -2290,7 +2281,6 @@ fn compute_all_offsets_tokens(
                     }
                 });
             }
-            _ => unreachable!(),
         }
     }
 
@@ -2303,6 +2293,24 @@ fn compute_all_offsets_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn offset_walk_skips_non_tail_fields() {
+        let input: syn::DeriveInput = syn::parse_quote! {
+            #[pinapod(compact)]
+            struct InlineOnly {
+                revision: u64,
+            }
+        };
+        let schema = Schema::parse(&input).unwrap();
+        let fields: Vec<&crate::schema::SchemaField> = schema.fields.iter().collect();
+
+        let walk = compute_all_offsets_tokens(&quote! { InlineOnlyHeader }, &fields, "data");
+
+        // A non-tail field contributes no offset slot; the walk degenerates to
+        // the header offset alone.
+        assert!(!walk.to_string().contains("__tail_offsets[0]"));
+    }
 
     #[test]
     fn generic_markers_cover_lifetimes_and_types_without_const_layout_changes() {

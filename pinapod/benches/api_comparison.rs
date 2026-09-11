@@ -839,8 +839,19 @@ mod many_tail {
         Wide::initialize(data, &patch).expect("wide fixture must initialize")
     }
 
-    pub fn access_all(data: &[u8]) -> usize {
-        let view = Wide::read_prefix(data).expect("wide fixture must parse");
+    /// Parses the fixture once. Benchmarks receive the prebuilt view so they
+    /// measure accessor cost without validation or offset-walk work.
+    pub fn view(data: &[u8]) -> WideRef<'_> {
+        Wide::read_prefix(data).expect("wide fixture must parse")
+    }
+
+    pub fn parse(data: &[u8]) -> usize {
+        Wide::read_prefix(data)
+            .expect("wide fixture must parse")
+            .encoded_len()
+    }
+
+    pub fn access_all(view: &WideRef<'_>) -> usize {
         black_box((
             view.sequence,
             view.label_a(),
@@ -853,8 +864,7 @@ mod many_tail {
         view.encoded_len()
     }
 
-    pub fn access_last(data: &[u8]) -> Option<&str> {
-        let view = Wide::read_prefix(data).expect("wide fixture must parse");
+    pub fn access_last(view: &WideRef<'_>) -> Option<&str> {
         view.note()
     }
 }
@@ -864,18 +874,22 @@ fn bench_many_tail_fields(c: &mut Criterion) {
     let encoded_len = many_tail::write(&mut data);
     assert_eq!(encoded_len, many_tail::ENCODED_LEN);
     let data = &data[..];
+    let view = many_tail::view(data);
 
     let mut parse = c.benchmark_group("compact/many-tail-fields/parse");
     parse.throughput(Throughput::Bytes(encoded_len as u64));
     parse.bench_function("pinapod-current", |bench| {
-        bench.iter(|| black_box(many_tail::access_last(black_box(data)).is_some()));
+        bench.iter(|| black_box(many_tail::parse(black_box(data))));
     });
     parse.finish();
 
     let mut access = c.benchmark_group("compact/many-tail-fields/access");
     access.throughput(Throughput::Bytes(encoded_len as u64));
     access.bench_function("pinapod-current-all-fields", |bench| {
-        bench.iter(|| black_box(many_tail::access_all(black_box(data))));
+        bench.iter(|| black_box(many_tail::access_all(black_box(&view))));
+    });
+    access.bench_function("pinapod-current-last-field", |bench| {
+        bench.iter(|| black_box(many_tail::access_last(black_box(&view)).is_some()));
     });
     access.finish();
 }
