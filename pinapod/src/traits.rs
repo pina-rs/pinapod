@@ -287,15 +287,18 @@ pub unsafe trait PinaPodFixed: PinaPod {
     fn validate_exact(data: &[u8]) -> Result<(), PinaPodError> {
         let size = core::mem::size_of::<Self::Zc>();
 
-        if data.len() < size {
-            return Err(PinaPodError::BufferTooSmall);
-        }
-
         if data.len() != size {
+            if data.len() < size {
+                return Err(PinaPodError::BufferTooSmall);
+            }
             return Err(PinaPodError::InvalidLength);
         }
 
-        Self::validate_prefix(data)
+        // SAFETY: the length check proves a complete representation is present
+        // and ZcElem permits forming a reference from initialized bytes before
+        // semantic validation.
+        let value = unsafe { &*data.as_ptr().cast::<Self::Zc>() };
+        <Self::Zc as ZcValidate>::validate_ref(value)
     }
 
     /// Validate the first fixed value in a larger containing byte sequence.

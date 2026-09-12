@@ -266,15 +266,17 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
         match &f.kind {
             FieldKind::Tail(TailField::Segment {
                 presence: TailPresence::Always,
-                payload: TailPayload::String { max, pfx: _ },
+                payload: TailPayload::String { max, pfx },
             }) => {
                 let len_name = format_ident!("__{}_len", f.name);
+                let tail_end =
+                    bounded_tail_end_expr(quote! { __tail_offset }, quote! { #len_name }, *pfx);
                 tail_validations.push(quote! {
                     let #len_name = __pinapod_decode_prefix(&__hdr.#len_name)?;
                     if #len_name > #max {
                         return Err(pinapod::PinaPodError::InvalidLength);
                     }
-                    let __tail_end = __pinapod_checked_add(__tail_offset, #len_name)?;
+                    let __tail_end = #tail_end;
                     let __tail = data
                         .get(__tail_offset..__tail_end)
                         .ok_or(pinapod::PinaPodError::BufferTooSmall)?;
@@ -286,10 +288,13 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
             }
             FieldKind::Tail(TailField::Segment {
                 presence: TailPresence::Always,
-                payload: TailPayload::Vec { elem, max, pfx: _ },
+                payload: TailPayload::Vec { elem, max, pfx },
             }) => {
                 let len_name = format_ident!("__{}_len", f.name);
                 let mapped_elem = map_to_pod_type(elem);
+                let byte_len = bounded_byte_len_expr(quote! { #len_name }, &mapped_elem, *pfx);
+                let tail_end =
+                    bounded_tail_end_expr(quote! { __tail_offset }, quote! { __byte_len }, *pfx);
                 tail_validations.push(quote! {
                     let #len_name = __pinapod_decode_prefix(&__hdr.#len_name)?;
                     if #len_name > #max {
@@ -299,19 +304,19 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
                     if __elem_size == 0 {
                         return Err(pinapod::PinaPodError::InvalidLength);
                     }
-                    let __byte_len = __pinapod_checked_mul(#len_name, __elem_size)?;
-                    let __tail_end = __pinapod_checked_add(__tail_offset, __byte_len)?;
+                    let __byte_len = #byte_len;
+                    let __tail_end = #tail_end;
                     let __tail = data
                         .get(__tail_offset..__tail_end)
                         .ok_or(pinapod::PinaPodError::BufferTooSmall)?;
-                    for __i in 0..#len_name {
-                        let __elem_offset = __pinapod_checked_mul(__i, __elem_size)?;
-                        // SAFETY: `__byte_len` is bounds-proven against
-                        // `__tail` above, so every indexed element lies inside
-                        // the slice, and `ZcElem` guarantees alignment one.
-                        let __elem = unsafe {
-                            &*(__tail.as_ptr().add(__elem_offset) as *const #mapped_elem)
-                        };
+                    // SAFETY: `__byte_len` is `#len_name * __elem_size`, which
+                    // the bounds check above proved fits `__tail`, so the first
+                    // `#len_name` elements lie inside the slice, and `ZcElem`
+                    // guarantees alignment one and bit-pattern validity.
+                    let __elems = unsafe {
+                        core::slice::from_raw_parts(__tail.as_ptr() as *const #mapped_elem, #len_name)
+                    };
+                    for __elem in __elems {
                         <#mapped_elem as pinapod::ZcValidate>::validate_ref(__elem)?;
                     }
                     __tail_offset = __tail_end;
@@ -322,27 +327,33 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
                 payload: TailPayload::String { max, pfx },
             }) => {
                 let tag_name = format_ident!("__{}_tag", f.name);
+                let read_len =
+                    bounded_read_prefix_stmt(quote! { __tail_offset }, quote! { __byte_len }, *pfx);
+                let payload_offset =
+                    bounded_tail_end_expr(quote! { __tail_offset }, quote! { #pfx }, *pfx);
+                let payload_end =
+                    bounded_tail_end_expr(quote! { __payload_offset }, quote! { __byte_len }, *pfx);
                 tail_validations.push(quote! {
-					match __hdr.#tag_name[0] {
-						0 => {}
-						1 => {
-							let __byte_len = __pinapod_read_prefix(data, __tail_offset, #pfx)?;
-							if __byte_len > #max {
-								return Err(pinapod::PinaPodError::InvalidLength);
-							}
-							let __payload_offset = __pinapod_checked_add(__tail_offset, #pfx)?;
-							let __payload_end = __pinapod_checked_add(__payload_offset, __byte_len)?;
-							let __payload = data
-								.get(__payload_offset..__payload_end)
-								.ok_or(pinapod::PinaPodError::BufferTooSmall)?;
-							if core::str::from_utf8(__payload).is_err() {
-								return Err(pinapod::PinaPodError::InvalidUtf8);
-							}
-							__tail_offset = __payload_end;
-						}
-						_ => return Err(pinapod::PinaPodError::InvalidTag),
-					}
-				});
+                    match __hdr.#tag_name[0] {
+                        0 => {}
+                        1 => {
+                            #read_len
+                            if __byte_len > #max {
+                                return Err(pinapod::PinaPodError::InvalidLength);
+                            }
+                            let __payload_offset = #payload_offset;
+                            let __payload_end = #payload_end;
+                            let __payload = data
+                                .get(__payload_offset..__payload_end)
+                                .ok_or(pinapod::PinaPodError::BufferTooSmall)?;
+                            if core::str::from_utf8(__payload).is_err() {
+                                return Err(pinapod::PinaPodError::InvalidUtf8);
+                            }
+                            __tail_offset = __payload_end;
+                        }
+                        _ => return Err(pinapod::PinaPodError::InvalidTag),
+                    }
+                });
             }
             FieldKind::Tail(TailField::Segment {
                 presence: TailPresence::OptionTag,
@@ -350,40 +361,50 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
             }) => {
                 let tag_name = format_ident!("__{}_tag", f.name);
                 let mapped_elem = map_to_pod_type(elem);
+                let read_count =
+                    bounded_read_prefix_stmt(quote! { __tail_offset }, quote! { __count }, *pfx);
+                let payload_offset =
+                    bounded_tail_end_expr(quote! { __tail_offset }, quote! { #pfx }, *pfx);
+                let payload_end =
+                    bounded_tail_end_expr(quote! { __payload_offset }, quote! { __byte_len }, *pfx);
+                let byte_len = bounded_byte_len_expr(quote! { __count }, &mapped_elem, *pfx);
                 tail_validations.push(quote! {
-					match __hdr.#tag_name[0] {
-						0 => {}
-						1 => {
-							let __count = __pinapod_read_prefix(data, __tail_offset, #pfx)?;
-							if __count > #max {
-								return Err(pinapod::PinaPodError::InvalidLength);
-							}
-							let __payload_offset = __pinapod_checked_add(__tail_offset, #pfx)?;
-							let __elem_size = core::mem::size_of::<#mapped_elem>();
-							if __elem_size == 0 {
-								return Err(pinapod::PinaPodError::InvalidLength);
-							}
-							let __byte_len = __pinapod_checked_mul(__count, __elem_size)?;
-							let __payload_end = __pinapod_checked_add(__payload_offset, __byte_len)?;
-							let __payload = data
-								.get(__payload_offset..__payload_end)
-								.ok_or(pinapod::PinaPodError::BufferTooSmall)?;
-							for __i in 0..__count {
-								let __elem_offset = __pinapod_checked_mul(__i, __elem_size)?;
-								// SAFETY: `__byte_len` is bounds-proven against
-								// `__payload` above, so every indexed element
-								// lies inside the slice, and `ZcElem` guarantees
-								// alignment one.
-								let __elem = unsafe {
-									&*(__payload.as_ptr().add(__elem_offset) as *const #mapped_elem)
-								};
-								<#mapped_elem as pinapod::ZcValidate>::validate_ref(__elem)?;
-							}
-							__tail_offset = __payload_end;
-						}
-						_ => return Err(pinapod::PinaPodError::InvalidTag),
-					}
-				});
+                    match __hdr.#tag_name[0] {
+                        0 => {}
+                        1 => {
+                            #read_count
+                            if __count > #max {
+                                return Err(pinapod::PinaPodError::InvalidLength);
+                            }
+                            let __payload_offset = #payload_offset;
+                            let __elem_size = core::mem::size_of::<#mapped_elem>();
+                            if __elem_size == 0 {
+                                return Err(pinapod::PinaPodError::InvalidLength);
+                            }
+                            let __byte_len = #byte_len;
+                            let __payload_end = #payload_end;
+                            let __payload = data
+                                .get(__payload_offset..__payload_end)
+                                .ok_or(pinapod::PinaPodError::BufferTooSmall)?;
+                            // SAFETY: `__byte_len` is `__count * __elem_size`,
+                            // which the bounds check above proved fits
+                            // `__payload`, so the first `__count` elements lie
+                            // inside the slice, and `ZcElem` guarantees
+                            // alignment one and bit-pattern validity.
+                            let __elems = unsafe {
+                                core::slice::from_raw_parts(
+                                    __payload.as_ptr() as *const #mapped_elem,
+                                    __count,
+                                )
+                            };
+                            for __elem in __elems {
+                                <#mapped_elem as pinapod::ZcValidate>::validate_ref(__elem)?;
+                            }
+                            __tail_offset = __payload_end;
+                        }
+                        _ => return Err(pinapod::PinaPodError::InvalidTag),
+                    }
+                });
             }
             _ => unreachable!(),
         }
@@ -401,10 +422,9 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 
             fn validate(data: &[u8]) -> Result<(), pinapod::PinaPodError> {
                 #( #schema_proofs )*
+                // `MIN_SIZE` equals `HEADER_SIZE`, so this also proves the
+                // header cast below is in bounds.
                 Self::validate_storage_len(data.len())?;
-                if data.len() < core::mem::size_of::<#header_ty>() {
-                    return Err(pinapod::PinaPodError::BufferTooSmall);
-                }
                 let __hdr = unsafe { &*(data.as_ptr() as *const #header_ty) };
                 <#header_ty as pinapod::ZcValidate>::validate_ref(__hdr)?;
                 let mut __tail_offset = core::mem::size_of::<#header_ty>();
@@ -1951,6 +1971,22 @@ fn compact_capacity_checks(field: &crate::schema::SchemaField) -> TokenStream {
         },
         TailPayload::Vec { elem, max, pfx } => {
             let mapped_elem = map_to_pod_type(elem);
+            let bounded_size_assert = if *pfx < 8 {
+                // Licenses the un-checked `count * size_of::<T>()` in
+                // validation: `count` is rejected above `max` first, so the
+                // product cannot exceed `isize::MAX`.
+                quote! {
+                    let _ = const {
+                        assert!(
+                            #max as usize * core::mem::size_of::<#mapped_elem>()
+                                <= isize::MAX as usize,
+                            "compact vector maximum byte size must fit isize",
+                        );
+                    };
+                }
+            } else {
+                TokenStream::new()
+            };
             quote! {
                 let _ = pinapod::pod::PodVec::<u8, #max, #pfx>::VALID;
                 let _ = const {
@@ -1959,6 +1995,7 @@ fn compact_capacity_checks(field: &crate::schema::SchemaField) -> TokenStream {
                         "compact vector elements must not be zero-sized",
                     );
                 };
+                #bounded_size_assert
             }
         }
     }
@@ -2062,6 +2099,61 @@ fn read_len_expr(len_name: &syn::Ident, pfx: usize) -> TokenStream {
         4 => quote! { u32::from_le_bytes(__hdr.#len_name) as usize },
         8 => quote! { u64::from_le_bytes(__hdr.#len_name) as usize },
         _ => unreachable!("invalid PFX: {}", pfx),
+    }
+}
+
+/// Emits the tail-end sum `offset + len` without an overflow check when the
+/// prefix width makes the sum provably total.
+///
+/// For prefixes of at most four bytes the stored length is bounded by
+/// `u32::MAX`, and the running offset is bounded by the account slice length,
+/// which Rust guarantees is at most `isize::MAX`, so the sum stays below
+/// `usize::MAX` mathematically. The subsequent slice `get` still enforces the
+/// offset-plus-length bound. Eight-byte prefixes keep the checked form because
+/// the stored length may approach `usize::MAX`.
+fn bounded_tail_end_expr(offset: TokenStream, len: TokenStream, pfx: usize) -> TokenStream {
+    if pfx < 8 {
+        quote! { #offset + #len }
+    } else {
+        quote! { __pinapod_checked_add(#offset, #len)? }
+    }
+}
+
+/// Emits `count * size_of::<T>()` without an overflow check for narrow
+/// prefixes.
+///
+/// The emitted capacity check for the tail proves
+/// `max * size_of::<T>() <= isize::MAX` at compile time and every caller
+/// rejects `count > max` before this expression, so the product cannot
+/// overflow. Eight-byte prefixes keep the checked form.
+fn bounded_byte_len_expr(count: TokenStream, mapped_elem: &TokenStream, pfx: usize) -> TokenStream {
+    if pfx < 8 {
+        quote! { #count * core::mem::size_of::<#mapped_elem>() }
+    } else {
+        quote! { __pinapod_checked_mul(#count, core::mem::size_of::<#mapped_elem>())? }
+    }
+}
+
+/// Emits statements binding `target` to the length prefix stored in `data` at
+/// `offset` without the runtime-width helper.
+///
+/// For prefixes of at most four bytes a single compare proves the prefix is in
+/// bounds (the running offset is bounded by the account slice, so the sum
+/// cannot overflow), after which the constant-width decode reads bytes
+/// directly. Eight-byte prefixes keep `__pinapod_read_prefix`, whose
+/// `usize::try_from` rejection of lengths wider than `usize` remains
+/// load-bearing.
+fn bounded_read_prefix_stmt(offset: TokenStream, target: TokenStream, pfx: usize) -> TokenStream {
+    if pfx == 8 {
+        quote! { let #target = __pinapod_read_prefix(data, #offset, #pfx)?; }
+    } else {
+        let read = read_data_len_expr(quote! { data }, offset.clone(), pfx);
+        quote! {
+            if #offset + #pfx > data.len() {
+                return Err(pinapod::PinaPodError::BufferTooSmall);
+            }
+            let #target = #read;
+        }
     }
 }
 
