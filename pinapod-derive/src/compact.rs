@@ -2334,8 +2334,9 @@ mod tests {
         assert!(!walk.contains("__old_encoded_revision"));
         assert!(walk.contains("__old_encoded_label"));
         assert!(walk.contains("__old_encoded_tags"));
-        // The walk advances the offset after each tail's old size.
-        assert!(walk.contains("__old_encoded_label"));
+        // The walk advances the offset after each tail's old size, so the two
+        // updates cannot collapse into one duplicated reference.
+        assert_eq!(walk.matches("__offset +=").count(), 2);
     }
 
     #[test]
