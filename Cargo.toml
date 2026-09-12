@@ -5,7 +5,7 @@ exclude = ["fuzz"]
 resolver = "2"
 
 [workspace.package]
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 homepage = "https://github.com/pina-rs/pinapod"
 keywords = ["no-std", "pod", "serialization", "zero-copy"]
@@ -18,7 +18,7 @@ fixed = { version = "=1.30.0", default-features = false }
 # Exact pin: generated code expands against the runtime crate's private
 # contracts, so mixed versions are never compatible. Updated only by the
 # MonoChange release flow.
-pinapod-derive = { version = "=0.3.0", path = "pinapod-derive" }
+pinapod-derive = { version = "=0.3.1", path = "pinapod-derive" }
 
 [workspace.lints.rust]
 # Group lints
