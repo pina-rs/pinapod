@@ -304,11 +304,14 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
                     let __tail = data
                         .get(__tail_offset..__tail_end)
                         .ok_or(pinapod::PinaPodError::BufferTooSmall)?;
-                    // SAFETY: `__byte_len` is bounds-proven against `__tail`
-                    // above, so every chunk lies inside the slice and
-                    // `ZcElem` guarantees alignment one for the cast.
-                    for __chunk in __tail.chunks_exact(__elem_size) {
-                        let __elem = unsafe { &*(__chunk.as_ptr() as *const #mapped_elem) };
+                    for __i in 0..#len_name {
+                        let __elem_offset = __pinapod_checked_mul(__i, __elem_size)?;
+                        // SAFETY: `__byte_len` is bounds-proven against
+                        // `__tail` above, so every indexed element lies inside
+                        // the slice, and `ZcElem` guarantees alignment one.
+                        let __elem = unsafe {
+                            &*(__tail.as_ptr().add(__elem_offset) as *const #mapped_elem)
+                        };
                         <#mapped_elem as pinapod::ZcValidate>::validate_ref(__elem)?;
                     }
                     __tail_offset = __tail_end;
@@ -365,11 +368,15 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 							let __payload = data
 								.get(__payload_offset..__payload_end)
 								.ok_or(pinapod::PinaPodError::BufferTooSmall)?;
-							// SAFETY: `__byte_len` is bounds-proven against
-							// `__payload` above, so every chunk lies inside the
-							// slice and `ZcElem` guarantees alignment one.
-							for __chunk in __payload.chunks_exact(__elem_size) {
-								let __elem = unsafe { &*(__chunk.as_ptr() as *const #mapped_elem) };
+							for __i in 0..__count {
+								let __elem_offset = __pinapod_checked_mul(__i, __elem_size)?;
+								// SAFETY: `__byte_len` is bounds-proven against
+								// `__payload` above, so every indexed element
+								// lies inside the slice, and `ZcElem` guarantees
+								// alignment one.
+								let __elem = unsafe {
+									&*(__payload.as_ptr().add(__elem_offset) as *const #mapped_elem)
+								};
 								<#mapped_elem as pinapod::ZcValidate>::validate_ref(__elem)?;
 							}
 							__tail_offset = __payload_end;
@@ -422,14 +429,12 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
     let where_clause_with_bounds = where_clause_with_bounds(where_clause, bounds.iter());
     let (marker_field, marker_init) = generic_marker_tokens(&schema.generics);
     let tail_fields: Vec<_> = schema.tail_fields().collect();
-    let tail_count = tail_fields.len();
-    // One walk during construction fills every tail offset; accessors then
-    // read their slot instead of re-decoding every preceding length prefix.
-    let offset_walk = compute_all_offsets_tokens(header_ty, &tail_fields, "data");
+    let current_encoded_len = compute_offset_tokens(header_ty, &tail_fields, tail_fields.len());
     let mut accessors = Vec::new();
 
     for (i, f) in tail_fields.iter().enumerate() {
         let fname = &f.name;
+        let offset_computation = compute_offset_tokens(header_ty, &tail_fields, i);
 
         match &f.kind {
             FieldKind::Tail(TailField::Segment {
@@ -442,7 +447,7 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
                     pub fn #fname(&self) -> &#data_lifetime str {
                         let __hdr = self.header();
                         let __byte_len = #read_len;
-                        let __offset = self.tail_offsets[#i];
+                        #offset_computation
                         unsafe {
                             let __ptr = self.data.as_ptr().add(__offset);
                             let __slice = core::slice::from_raw_parts(__ptr, __byte_len);
@@ -462,7 +467,7 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
                     pub fn #fname(&self) -> &#data_lifetime [#mapped_elem] {
                         let __hdr = self.header();
                         let __count = #read_len;
-                        let __offset = self.tail_offsets[#i];
+                        #offset_computation
                         unsafe {
                             let __ptr = self.data.as_ptr().add(__offset) as *const #mapped_elem;
                             core::slice::from_raw_parts(__ptr, __count)
@@ -482,7 +487,7 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
                         if __hdr.#tag_name[0] == 0 {
                             return None;
                         }
-                        let __offset = self.tail_offsets[#i];
+                        #offset_computation
                         let __byte_len = #read_len;
                         let __payload_offset = __offset + #pfx;
                         unsafe {
@@ -506,7 +511,7 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
 						if __hdr.#tag_name[0] == 0 {
 							return None;
 						}
-						let __offset = self.tail_offsets[#i];
+						#offset_computation
 						let __count = #read_len;
 						let __payload_offset = __offset + #pfx;
 						unsafe {
@@ -524,7 +529,6 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
         pub struct #ref_name #ref_generics #where_clause_with_bounds {
             data: &#data_lifetime [u8],
             encoded_len: usize,
-            tail_offsets: [usize; #tail_count],
             #marker_field
         }
 
@@ -538,22 +542,23 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
         impl #ref_impl_generics #ref_name #ref_ty_generics #where_clause_with_bounds {
             pub fn new(data: &#data_lifetime [u8]) -> Result<Self, pinapod::PinaPodError> {
                 <#struct_name #struct_ty_generics as pinapod::PinaPodCompact>::validate(data)?;
-                // SAFETY: `validate` proved the header and every tail range for
-                // this exact slice, so the walk below only reads bytes that
-                // were checked, and ZcElem guarantees alignment one.
-                let __hdr = unsafe { &*(data.as_ptr() as *const #header_ty) };
-                let mut __tail_offsets = [0usize; #tail_count];
-                #offset_walk
-                Ok(Self {
+                let mut value = Self {
                     data,
-                    encoded_len: __offset,
-                    tail_offsets: __tail_offsets,
+                    encoded_len: 0,
                     #marker_init
-                })
+                };
+                value.encoded_len = value.current_encoded_len();
+                Ok(value)
             }
 
             fn header(&self) -> &#data_lifetime #header_ty {
                 unsafe { &*(self.data.as_ptr() as *const #header_ty) }
+            }
+
+            fn current_encoded_len(&self) -> usize {
+                let __hdr = self.header();
+                #current_encoded_len
+                __offset
             }
 
             pub fn encoded_len(&self) -> usize {
@@ -926,7 +931,6 @@ fn generate_patch(
     let elided_lifetime: syn::Lifetime = syn::parse_quote!('_);
     let patch_elided_ty =
         type_with_leading_lifetime(patch_name, &schema.generics, &elided_lifetime);
-    let ref_elided_ty = type_with_leading_lifetime(ref_name, &schema.generics, &elided_lifetime);
     let mut_elided_ty = type_with_leading_lifetime(mut_name, &schema.generics, &elided_lifetime);
     let (marker_field, marker_init) = generic_marker_tokens(&schema.generics);
 
@@ -934,6 +938,8 @@ fn generate_patch(
     let mut field_inits = Vec::new();
     let mut builders = Vec::new();
     let mut input_validations = Vec::new();
+    let preflight_walk =
+        generate_preflight_walk(header_ty, &schema.tail_fields().collect::<Vec<_>>());
     let mut updated_steps = Vec::new();
     let mut initial_steps = Vec::new();
     let mut stage_steps = Vec::new();
@@ -1000,11 +1006,11 @@ fn generate_patch(
                         __pinapod_check_prefix(value.len(), #pfx)?;
                     }
                 });
+                let old_size = format_ident!("__old_encoded_{}", name);
                 updated_steps.push(quote! {
                     if let Some(value) = self.#name {
-                        let old_len = view.#name().len();
                         updated_len = updated_len
-                            .checked_sub(old_len)
+                            .checked_sub(#old_size)
                             .ok_or(pinapod::PinaPodError::Overflow)?;
                         updated_len = __pinapod_checked_add(updated_len, value.len())?;
                     }
@@ -1048,18 +1054,15 @@ fn generate_patch(
                         }
                     }
                 });
+                let old_size = format_ident!("__old_encoded_{}", name);
                 updated_steps.push(quote! {
                     if let Some(value) = self.#name {
-                        let old_len = __pinapod_checked_mul(
-                            view.#name().len(),
-                            core::mem::size_of::<#mapped_elem>(),
-                        )?;
                         let new_len = __pinapod_checked_mul(
                             value.len(),
                             core::mem::size_of::<#mapped_elem>(),
                         )?;
                         updated_len = updated_len
-                            .checked_sub(old_len)
+                            .checked_sub(#old_size)
                             .ok_or(pinapod::PinaPodError::Overflow)?;
                         updated_len = __pinapod_checked_add(updated_len, new_len)?;
                     }
@@ -1102,18 +1105,15 @@ fn generate_patch(
                         __pinapod_check_prefix(value.len(), #pfx)?;
                     }
                 });
+                let old_size = format_ident!("__old_encoded_{}", name);
                 updated_steps.push(quote! {
                     if let Some(value) = self.#name {
-                        let old_len = match view.#name() {
-                            Some(old) => __pinapod_checked_add(#pfx, old.len())?,
-                            None => 0,
-                        };
                         let new_len = match value {
                             Some(new) => __pinapod_checked_add(#pfx, new.len())?,
                             None => 0,
                         };
                         updated_len = updated_len
-                            .checked_sub(old_len)
+                            .checked_sub(#old_size)
                             .ok_or(pinapod::PinaPodError::Overflow)?;
                         updated_len = __pinapod_checked_add(updated_len, new_len)?;
                     }
@@ -1166,18 +1166,9 @@ fn generate_patch(
                         }
                     }
                 });
+                let old_size = format_ident!("__old_encoded_{}", name);
                 updated_steps.push(quote! {
                     if let Some(value) = self.#name {
-                        let old_len = match view.#name() {
-                            Some(old) => __pinapod_checked_add(
-                                #pfx,
-                                __pinapod_checked_mul(
-                                    old.len(),
-                                    core::mem::size_of::<#mapped_elem>(),
-                                )?,
-                            )?,
-                            None => 0,
-                        };
                         let new_len = match value {
                             Some(new) => __pinapod_checked_add(
                                 #pfx,
@@ -1189,7 +1180,7 @@ fn generate_patch(
                             None => 0,
                         };
                         updated_len = updated_len
-                            .checked_sub(old_len)
+                            .checked_sub(#old_size)
                             .ok_or(pinapod::PinaPodError::Overflow)?;
                         updated_len = __pinapod_checked_add(updated_len, new_len)?;
                     }
@@ -1293,8 +1284,18 @@ fn generate_patch(
 
             pub fn updated_len(&self, data: &[u8]) -> Result<usize, pinapod::PinaPodError> {
                 self.validate_inputs()?;
-                let view = <#ref_elided_ty>::new(data)?;
-                let mut updated_len = view.encoded_len();
+                <#struct_name #ty_generics as pinapod::PinaPodCompact>::validate(data)?;
+                // One uncached walk in field order. Each tail's old encoded
+                // size is a local, so this preflight performs no offset
+                // stores and builds no view; the cached-offset reader stays
+                // on the read paths where it pays for itself.
+                //
+                // SAFETY: `validate` proved this slice holds a readable
+                // header and consistent tails, and the header type is an
+                // alignment-one ZcElem.
+                let __hdr = unsafe { &*(data.as_ptr() as *const #header_ty) };
+                #preflight_walk
+                let mut updated_len = __offset;
                 #( #updated_steps )*
                 Ok(updated_len)
             }
@@ -2227,61 +2228,81 @@ fn compute_offset_tokens(
 /// The generated statements read `__hdr` (header prefixes) and `data` (tail
 /// prefixes for optional segments). Both are bounds-proven by the `validate`
 /// call that must precede this walk.
-fn compute_all_offsets_tokens(
+/// One uncached preflight walk for the generated `updated_len`: emits, per
+/// tail in field order, the tail's old encoded size as a local
+/// `__old_encoded_<field>` and advances `__offset`. Reads `__hdr` and `data`,
+/// both bounds-proven by the `validate` call that must precede it.
+///
+/// This is the update-preflight shape: no `Ref` construction and no offset
+/// stores, so updating never pays for the read-path offset cache.
+fn generate_preflight_walk(
     header_ty: &TokenStream,
     tail_fields: &[&crate::schema::SchemaField],
-    data_expr: &str,
 ) -> TokenStream {
     let header_size = quote! { core::mem::size_of::<#header_ty>() };
-    let data = proc_macro2::Ident::new(data_expr, proc_macro2::Span::call_site());
     let mut steps = Vec::new();
 
-    for (i, f) in tail_fields.iter().enumerate() {
+    for f in tail_fields {
         let FieldKind::Tail(TailField::Segment { presence, payload }) = &f.kind else {
             continue;
         };
         let len_name = format_ident!("__{}_len", f.name);
-        let pfx = tail_pfx(&f.kind);
-        let read_len = read_len_expr(&len_name, pfx);
+        let old_size = format_ident!("__old_encoded_{}", f.name);
+        let pfx = payload.pfx();
 
-        steps.push(quote! { __tail_offsets[#i] = __offset; });
+        steps.push(quote! { let #old_size: usize = });
 
         match (presence, payload) {
             (TailPresence::Always, TailPayload::String { .. }) => {
+                let read_len = read_len_expr(&len_name, pfx);
                 steps.push(quote! {
-                    __offset += #read_len;
+                    #read_len;
                 });
             }
             (TailPresence::Always, TailPayload::Vec { elem, .. }) => {
-                let count_name = format_ident!("__{}_walk_count", f.name);
                 let mapped_elem = map_to_pod_type(elem);
+                let read_len = read_len_expr(&len_name, pfx);
                 steps.push(quote! {
-                    let #count_name = #read_len;
-                    __offset += #count_name * core::mem::size_of::<#mapped_elem>();
+                    // Plain arithmetic: `validate` proved the byte length
+                    // fits the slice, so the bounded product cannot overflow.
+                    #read_len * core::mem::size_of::<#mapped_elem>();
                 });
             }
-            (TailPresence::OptionTag, TailPayload::String { pfx, .. }) => {
+            (TailPresence::OptionTag, TailPayload::String { .. }) => {
                 let tag_name = format_ident!("__{}_tag", f.name);
-                let read_len = read_data_len_expr(quote! { #data }, quote! { __offset }, *pfx);
+                let read_len = read_data_len_expr(quote! { data }, quote! { __offset }, pfx);
                 steps.push(quote! {
                     if __hdr.#tag_name[0] != 0 {
-                        let __byte_len = #read_len;
-                        __offset += #pfx + __byte_len;
-                    }
+                        // Plain arithmetic: `validate` proved this prefix and
+                        // payload fit the slice, so the sum cannot overflow.
+                        #pfx + #read_len
+                    } else {
+                        0
+                    };
                 });
             }
-            (TailPresence::OptionTag, TailPayload::Vec { elem, pfx, .. }) => {
+            (TailPresence::OptionTag, TailPayload::Vec { elem, .. }) => {
                 let tag_name = format_ident!("__{}_tag", f.name);
                 let mapped_elem = map_to_pod_type(elem);
-                let read_len = read_data_len_expr(quote! { #data }, quote! { __offset }, *pfx);
+                let read_len = read_data_len_expr(quote! { data }, quote! { __offset }, pfx);
                 steps.push(quote! {
                     if __hdr.#tag_name[0] != 0 {
-                        let __count = #read_len;
-                        __offset += #pfx + __count * core::mem::size_of::<#mapped_elem>();
-                    }
+                        // Plain arithmetic: `validate` proved this prefix and
+                        // payload fit the slice, so the product and sum
+                        // cannot overflow.
+                        #pfx + #read_len * core::mem::size_of::<#mapped_elem>()
+                    } else {
+                        0
+                    };
                 });
             }
         }
+
+        steps.push(quote! {
+            // Plain add: each old size is a validated slice length, so the
+            // running offset cannot exceed the slice length.
+            __offset += #old_size;
+        });
     }
 
     quote! {
@@ -2295,21 +2316,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn offset_walk_skips_non_tail_fields() {
+    fn preflight_walk_skips_non_tail_fields_and_names_each_old_size() {
         let input: syn::DeriveInput = syn::parse_quote! {
             #[pinapod(compact)]
-            struct InlineOnly {
+            struct Mixed {
                 revision: u64,
+                label: pinapod::String<4>,
+                tags: Option<pinapod::Vec<u8, 4>>,
             }
         };
         let schema = Schema::parse(&input).unwrap();
         let fields: Vec<&crate::schema::SchemaField> = schema.fields.iter().collect();
 
-        let walk = compute_all_offsets_tokens(&quote! { InlineOnlyHeader }, &fields, "data");
+        let walk = generate_preflight_walk(&quote! { MixedHeader }, &fields).to_string();
 
-        // A non-tail field contributes no offset slot; the walk degenerates to
-        // the header offset alone.
-        assert!(!walk.to_string().contains("__tail_offsets[0]"));
+        // The inline field contributes no old-size local; every tail does.
+        assert!(!walk.contains("__old_encoded_revision"));
+        assert!(walk.contains("__old_encoded_label"));
+        assert!(walk.contains("__old_encoded_tags"));
+        // The walk advances the offset after each tail's old size, so the two
+        // updates cannot collapse into one duplicated reference.
+        assert_eq!(walk.matches("__offset +=").count(), 2);
     }
 
     #[test]

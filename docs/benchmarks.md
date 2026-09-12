@@ -11,7 +11,7 @@ The benchmark derives separate, wire-identical schemas for every implementation.
 | Compact maximum  |        207 | Parse, validation-only, access a 64-byte string and 16 `u64` values, grow a small record to maximum capacity |
 | Many-tail fields |        145 | Parse plus access of every field, or only the last field, on a six-tail compact schema                       |
 
-The many-tail fixture guards reader scaling with the number of tail fields rather than the number of elements. A compact `Ref` computes every tail offset once during construction and stores them, so each accessor is a constant-time slice regardless of how many tails precede it; the fixture times both a full six-field sweep and a last-field-only read so the scaling stays visible.
+The many-tail fixture guards reader and update scaling with the number of tail fields rather than the number of elements. Each accessor walks the preceding length prefixes, and the update preflight walks the current tails once with locals — measured on-chain (SBF), per-accessor offset caching cost more compute than it returned, so 0.3.1 keeps accessors uncached and the preflight flat. The fixture times parse, a full six-field sweep, and a last-field-only read so the scaling stays visible.
 
 The harness prints the fixed/header/encoded sizes, generated view sizes, and allocation counts for representative PinaPod writes and updates. It uses fixed stack buffers and prebuilt inputs, so any reported allocation comes from the implementation rather than benchmark-buffer setup.
 
