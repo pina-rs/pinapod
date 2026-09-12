@@ -1971,15 +1971,19 @@ fn compact_capacity_checks(field: &crate::schema::SchemaField) -> TokenStream {
         },
         TailPayload::Vec { elem, max, pfx } => {
             let mapped_elem = map_to_pod_type(elem);
-            let bounded_size_assert = if *pfx < 8 {
+            let bounded_size_assert = if *pfx <= 2 {
                 // Licenses the un-checked `count * size_of::<T>()` in
-                // validation: `count` is rejected above `max` first, so the
-                // product cannot exceed `isize::MAX`.
+                // validation: `count` is rejected above `max` first. The
+                // division form keeps const evaluation overflow-free even
+                // when `max` saturates `usize` on 32-bit targets. Wider
+                // prefixes use the checked multiply, so no bound is needed.
                 quote! {
                     let _ = const {
                         assert!(
-                            #max as usize * core::mem::size_of::<#mapped_elem>()
-                                <= isize::MAX as usize,
+                            core::mem::size_of::<#mapped_elem>() == 0
+                                || #max as usize
+                                    <= isize::MAX as usize
+                                        / core::mem::size_of::<#mapped_elem>(),
                             "compact vector maximum byte size must fit isize",
                         );
                     };
@@ -2103,31 +2107,35 @@ fn read_len_expr(len_name: &syn::Ident, pfx: usize) -> TokenStream {
 }
 
 /// Emits the tail-end sum `offset + len` without an overflow check when the
-/// prefix width makes the sum provably total.
+/// prefix width makes the sum provably total on every pointer width.
 ///
-/// For prefixes of at most four bytes the stored length is bounded by
-/// `u32::MAX`, and the running offset is bounded by the account slice length,
-/// which Rust guarantees is at most `isize::MAX`, so the sum stays below
-/// `usize::MAX` mathematically. The subsequent slice `get` still enforces the
-/// offset-plus-length bound. Eight-byte prefixes keep the checked form because
-/// the stored length may approach `usize::MAX`.
+/// For one- and two-byte prefixes the stored length is bounded by `u16::MAX`,
+/// and the running offset is bounded by the account slice length, which Rust
+/// guarantees is at most `isize::MAX`, so the sum cannot wrap. The subsequent
+/// slice `get` still enforces the offset-plus-length bound. Four-byte prefixes
+/// keep the checked form: on 32-bit targets the stored length may decode to
+/// `u32::MAX`, which exceeds `isize::MAX`, so a plain sum could wrap before
+/// `get` runs. Eight-byte prefixes keep the checked form because the stored
+/// length may approach `usize::MAX`.
 fn bounded_tail_end_expr(offset: TokenStream, len: TokenStream, pfx: usize) -> TokenStream {
-    if pfx < 8 {
+    if pfx <= 2 {
         quote! { #offset + #len }
     } else {
         quote! { __pinapod_checked_add(#offset, #len)? }
     }
 }
 
-/// Emits `count * size_of::<T>()` without an overflow check for narrow
-/// prefixes.
+/// Emits `count * size_of::<T>()` without an overflow check for one- and
+/// two-byte prefixes.
 ///
 /// The emitted capacity check for the tail proves
-/// `max * size_of::<T>() <= isize::MAX` at compile time and every caller
-/// rejects `count > max` before this expression, so the product cannot
-/// overflow. Eight-byte prefixes keep the checked form.
+/// `max <= isize::MAX / size_of::<T>()` at compile time (division form, so
+/// const evaluation cannot overflow even where `max` saturates `usize`), and
+/// every caller rejects `count > max` before this expression, so the product
+/// cannot overflow. Wider prefixes keep the checked form because their stored
+/// lengths may saturate `usize` (or exceed it on 32-bit targets).
 fn bounded_byte_len_expr(count: TokenStream, mapped_elem: &TokenStream, pfx: usize) -> TokenStream {
-    if pfx < 8 {
+    if pfx <= 2 {
         quote! { #count * core::mem::size_of::<#mapped_elem>() }
     } else {
         quote! { __pinapod_checked_mul(#count, core::mem::size_of::<#mapped_elem>())? }
@@ -2137,16 +2145,14 @@ fn bounded_byte_len_expr(count: TokenStream, mapped_elem: &TokenStream, pfx: usi
 /// Emits statements binding `target` to the length prefix stored in `data` at
 /// `offset` without the runtime-width helper.
 ///
-/// For prefixes of at most four bytes a single compare proves the prefix is in
+/// For one- and two-byte prefixes a single compare proves the prefix is in
 /// bounds (the running offset is bounded by the account slice, so the sum
 /// cannot overflow), after which the constant-width decode reads bytes
-/// directly. Eight-byte prefixes keep `__pinapod_read_prefix`, whose
-/// `usize::try_from` rejection of lengths wider than `usize` remains
-/// load-bearing.
+/// directly. Four- and eight-byte prefixes keep `__pinapod_read_prefix`,
+/// whose checked bounds and `usize::try_from` rejection of lengths wider
+/// than `usize` remain load-bearing.
 fn bounded_read_prefix_stmt(offset: TokenStream, target: TokenStream, pfx: usize) -> TokenStream {
-    if pfx == 8 {
-        quote! { let #target = __pinapod_read_prefix(data, #offset, #pfx)?; }
-    } else {
+    if pfx <= 2 {
         let read = read_data_len_expr(quote! { data }, offset.clone(), pfx);
         quote! {
             if #offset + #pfx > data.len() {
@@ -2154,6 +2160,8 @@ fn bounded_read_prefix_stmt(offset: TokenStream, target: TokenStream, pfx: usize
             }
             let #target = #read;
         }
+    } else {
+        quote! { let #target = __pinapod_read_prefix(data, #offset, #pfx)?; }
     }
 }
 
