@@ -98,6 +98,45 @@ assert_eq!(mark, I16F16::from_num(10.25));
 
 Fixed-point storage contains only the raw little-endian bits. The scale comes from the Rust field type, not from extra wire metadata.
 
+## IEEE-754 float values
+
+Enable `floats` to add `PodF32` and `PodF64` and map the native `f32` and `f64` primitives to them. A schema field declared as `f32` or `f64` is accepted directly, and the generated accessor decodes back to the native float.
+
+```toml
+[dependencies]
+pinapod = { version = "0.3", features = ["floats"] }
+```
+
+```rust
+use pinapod::PinaPod;
+
+#[derive(PinaPod)]
+struct Reading {
+	temperature: f32,
+	depth: f64,
+}
+
+let mut data = [0_u8; Reading::SIZE];
+Reading::initialize(&mut data, |reading| {
+	reading.temperature.set(-12.5);
+	reading.depth.set(3.125);
+	Ok(())
+})?;
+
+let reading = Reading::read_exact(&data)?;
+assert_eq!(reading.temperature(), -12.5);
+assert_eq!(reading.depth(), 3.125);
+# Ok::<(), pinapod::PinaPodError>(())
+```
+
+Storage is the complete IEEE-754 bit pattern little-endian: `f32` in four bytes and `f64` in eight. `get` and `set` convert to and from the native float; `to_bits` and `set_bits` expose the raw pattern. Every bit pattern is a valid value, so validation never rejects a NaN, an infinity, or the sign of zero, and an all-zero field decodes as `+0.0`.
+
+Pod equality is bitwise rather than float-valued. That keeps `Eq` sound in the presence of NaN payloads and preserves the distinction between `+0.0` and `-0.0`. The pods deliberately implement no `PartialOrd` or `Ord`: bitwise equality and float ordering cannot both hold, because ordering would have to rank NaN payloads and separate `+0.0` from `-0.0`. Decode with `get` and compare the natives when an ordering is needed.
+
+`PodF32` and `PodF64` are byte containers, not arithmetic types: they provide no operators, so multi-step float math belongs at the call site on the decoded natives.
+
+For fractional values that carry economic meaning, prefer fixed-point storage. Fixed-point arithmetic is exact integer math, while native float operations round at every step and have no hardware accelerated unit on the SBF target.
+
 ## Other optional integrations
 
 The `solana-address` feature maps `solana_address::Address` to its alignment-one 32-byte representation.

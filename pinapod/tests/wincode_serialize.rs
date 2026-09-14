@@ -10,6 +10,9 @@ use pinapod::{
     PinaPodError,
 };
 
+#[cfg(feature = "floats")]
+use pinapod::pod::{PodF32, PodF64};
+
 #[test]
 fn pod_bool_deserialization_validates_its_stored_byte() {
     let value = PodBool::from(true);
@@ -277,4 +280,34 @@ fn option_writer_rejects_an_invalid_tag() {
         error,
         wincode::WriteError::Custom("PinaPod option has an invalid tag")
     ));
+}
+
+#[cfg(feature = "floats")]
+#[test]
+fn float_pods_serialize_their_little_endian_bits() {
+    let value = PodF32::from(1.5);
+    assert_eq!(wincode::serialized_size(&value).unwrap(), 4);
+    let stored = serialize::<4, _>(&value);
+    assert_eq!(stored, 1.5_f32.to_bits().to_le_bytes());
+    assert_eq!(wincode::deserialize::<PodF32>(&stored).unwrap().get(), 1.5);
+
+    let wide = PodF64::from(-2.25);
+    assert_eq!(wincode::serialized_size(&wide).unwrap(), 8);
+    let stored = serialize::<8, _>(&wide);
+    assert_eq!(stored, (-2.25_f64).to_bits().to_le_bytes());
+    assert_eq!(
+        wincode::deserialize::<PodF64>(&stored).unwrap().get(),
+        -2.25
+    );
+}
+
+#[cfg(feature = "floats")]
+#[test]
+fn float_pods_roundtrip_nan_payloads_through_wincode() {
+    let mut value = PodF32::ZERO;
+    value.set_bits(0x7fc0_0001);
+    let stored = serialize::<4, _>(&value);
+
+    let decoded = wincode::deserialize::<PodF32>(&stored).unwrap();
+    assert_eq!(decoded.to_bits(), 0x7fc0_0001);
 }
