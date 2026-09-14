@@ -1,0 +1,220 @@
+{
+  "schema_version": "0.6",
+  "kind": "monochange.releaseRecord",
+  "created_at": "2026-09-14T09:47:48Z",
+  "command": "release",
+  "version": "0.3.3",
+  "versions": {
+    "pinapod-workspace": "0.3.3"
+  },
+  "release_targets": [
+    {
+      "id": "pinapod-workspace",
+      "kind": "group",
+      "version": "0.3.3",
+      "version_format": "pinapod/v{{ version }}",
+      "tag": true,
+      "release": true,
+      "tag_name": "pinapod/v0.3.3",
+      "members": [
+        "pinapod",
+        "pinapod-derive"
+      ]
+    }
+  ],
+  "released_packages": [
+    "pinapod",
+    "pinapod-derive"
+  ],
+  "changed_files": [
+    "CHANGELOG.md",
+    "Cargo.lock",
+    "Cargo.toml",
+    "pinapod/Cargo.toml",
+    "pinapod/tests/renamed_dependency/Cargo.lock",
+    "pinapod-derive/Cargo.toml"
+  ],
+  "package_publications": [
+    {
+      "package": "pinapod",
+      "ecosystem": "cargo",
+      "registry": "crates_io",
+      "version": "0.3.3",
+      "mode": "builtin",
+      "trusted_publishing": {
+        "enabled": true,
+        "mode": "required",
+        "repository": "pina-rs/pinapod",
+        "workflow": "publish.yml",
+        "environment": "publisher"
+      }
+    },
+    {
+      "package": "pinapod-derive",
+      "ecosystem": "cargo",
+      "registry": "crates_io",
+      "version": "0.3.3",
+      "mode": "builtin",
+      "trusted_publishing": {
+        "enabled": true,
+        "mode": "required",
+        "repository": "pina-rs/pinapod",
+        "workflow": "publish.yml",
+        "environment": "publisher"
+      }
+    }
+  ],
+  "updated_changelogs": [
+    "CHANGELOG.md"
+  ],
+  "deleted_changesets": [
+    ".changeset/ieee754-float-pods.md"
+  ],
+  "changesets": [
+    {
+      "path": ".changeset/ieee754-float-pods.md",
+      "summary": "add IEEE-754 float pods behind the `floats` feature",
+      "details": "The new `floats` feature adds `PodF32` and `PodF64`, alignment-one storage for IEEE-754 `f32` and `f64` values, and implements `ZcField` for the native primitives so a schema can declare `f32` or `f64` fields directly instead of spelling a pod type. Generated accessors decode back to the native float, so `field.get()` and the generated accessor both return `f32`/`f64` the same way the integer pods return `u16`/`u64`.\n\nStorage is the complete bit pattern of the value, little-endian: four bytes for `f32` and eight for `f64`. `get`/`set` convert through the bit pattern while `to_bits`/`set_bits` expose it directly. Every bit pattern is a valid stored value, so `ZcValidate` accepts any bytes, validation cannot reject a NaN, infinity, or the sign of zero, and an all-zero field decodes as `+0.0`. Pod equality is bitwise rather than float-valued, which keeps `Eq` sound with NaN payloads and preserves the distinction between `+0.0` and `-0.0`; decode with `get` to compare with float semantics. The pods are byte containers and provide no arithmetic operators.\n\nThe pods deliberately implement no `PartialOrd` or `Ord`. Bitwise equality and float ordering cannot both hold, because an ordering that satisfied `PartialOrd`'s consistency contract would have to rank NaN payloads and separate `+0.0` from `-0.0`. Decode with `get` and compare the natives when an ordering is needed.\n\n`PodF32` and `PodF64` compose with every container: they work as `PodOption` payloads, `PodVec` elements, compact inline header fields, and compact tails, and they implement canonical `wincode` serialization under that feature. The new mapping is additive — no existing wire format, validation order, or error variant changes, and `f32`/`f64` remain unmapped when the feature is disabled.",
+      "targets": [
+        {
+          "id": "pinapod",
+          "kind": "package",
+          "bump": "minor",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "feat"
+        },
+        {
+          "id": "pinapod-derive",
+          "kind": "package",
+          "bump": "minor",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "feat"
+        }
+      ],
+      "context": {
+        "provider": "github",
+        "host": "github.com",
+        "capabilities": {
+          "commit_web_urls": true,
+          "actor_profiles": true,
+          "review_request_lookup": true,
+          "related_issues": true,
+          "issue_comments": true
+        },
+        "introduced": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "e1cb574854db954ad241c871647f41096e8e4316",
+            "short_sha": "e1cb574",
+            "url": "https://github.com/pina-rs/pinapod/commit/e1cb574854db954ad241c871647f41096e8e4316",
+            "authored_at": "2026-09-14T10:46:01+01:00",
+            "committed_at": "2026-09-14T10:46:01+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#20",
+            "title": "feat(pod): add IEEE-754 float pods behind the `floats` feature",
+            "url": "https://github.com/pina-rs/pinapod/pull/20",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "last_updated": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "e1cb574854db954ad241c871647f41096e8e4316",
+            "short_sha": "e1cb574",
+            "url": "https://github.com/pina-rs/pinapod/commit/e1cb574854db954ad241c871647f41096e8e4316",
+            "authored_at": "2026-09-14T10:46:01+01:00",
+            "committed_at": "2026-09-14T10:46:01+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#20",
+            "title": "feat(pod): add IEEE-754 float pods behind the `floats` feature",
+            "url": "https://github.com/pina-rs/pinapod/pull/20",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "related_issues": []
+      }
+    }
+  ],
+  "changelogs": [
+    {
+      "owner_id": "pinapod-workspace",
+      "owner_kind": "group",
+      "output": "default",
+      "stream": "default",
+      "path": "CHANGELOG.md",
+      "format": "keep_a_changelog",
+      "notes": {
+        "title": "[0.3.3](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.3.3) (2026-09-14)",
+        "summary": [
+          "Grouped release for `pinapod-workspace`."
+        ],
+        "sections": [
+          {
+            "title": "Features",
+            "collapsed": false,
+            "entries": [
+              "#### add IEEE-754 float pods behind the `floats` feature\n\n_Packages:_ _pinapod_, _pinapod-derive_\n\nThe new `floats` feature adds `PodF32` and `PodF64`, alignment-one storage for IEEE-754 `f32` and `f64` values, and implements `ZcField` for the native primitives so a schema can declare `f32` or `f64` fields directly instead of spelling a pod type. Generated accessors decode back to the native float, so `field.get()` and the generated accessor both return `f32`/`f64` the same way the integer pods return `u16`/`u64`.\n\nStorage is the complete bit pattern of the value, little-endian: four bytes for `f32` and eight for `f64`. `get`/`set` convert through the bit pattern while `to_bits`/`set_bits` expose it directly. Every bit pattern is a valid stored value, so `ZcValidate` accepts any bytes, validation cannot reject a NaN, infinity, or the sign of zero, and an all-zero field decodes as `+0.0`. Pod equality is bitwise rather than float-valued, which keeps `Eq` sound with NaN payloads and preserves the distinction between `+0.0` and `-0.0`; decode with `get` to compare with float semantics. The pods are byte containers and provide no arithmetic operators.\n\nThe pods deliberately implement no `PartialOrd` or `Ord`. Bitwise equality and float ordering cannot both hold, because an ordering that satisfied `PartialOrd`'s consistency contract would have to rank NaN payloads and separate `+0.0` from `-0.0`. Decode with `get` and compare the natives when an ordering is needed.\n\n`PodF32` and `PodF64` compose with every container: they work as `PodOption` payloads, `PodVec` elements, compact inline header fields, and compact tails, and they implement canonical `wincode` serialization under that feature. The new mapping is additive — no existing wire format, validation order, or error variant changes, and `f32`/`f64` remain unmapped when the feature is disabled.\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #20](https://github.com/pina-rs/pinapod/pull/20)"
+            ]
+          }
+        ]
+      },
+      "rendered": "## [0.3.3](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.3.3) (2026-09-14)\n\nGrouped release for `pinapod-workspace`.\n\n### Features\n\n#### add IEEE-754 float pods behind the `floats` feature\n\n_Packages:_ _pinapod_, _pinapod-derive_\n\nThe new `floats` feature adds `PodF32` and `PodF64`, alignment-one storage for IEEE-754 `f32` and `f64` values, and implements `ZcField` for the native primitives so a schema can declare `f32` or `f64` fields directly instead of spelling a pod type. Generated accessors decode back to the native float, so `field.get()` and the generated accessor both return `f32`/`f64` the same way the integer pods return `u16`/`u64`.\n\nStorage is the complete bit pattern of the value, little-endian: four bytes for `f32` and eight for `f64`. `get`/`set` convert through the bit pattern while `to_bits`/`set_bits` expose it directly. Every bit pattern is a valid stored value, so `ZcValidate` accepts any bytes, validation cannot reject a NaN, infinity, or the sign of zero, and an all-zero field decodes as `+0.0`. Pod equality is bitwise rather than float-valued, which keeps `Eq` sound with NaN payloads and preserves the distinction between `+0.0` and `-0.0`; decode with `get` to compare with float semantics. The pods are byte containers and provide no arithmetic operators.\n\nThe pods deliberately implement no `PartialOrd` or `Ord`. Bitwise equality and float ordering cannot both hold, because an ordering that satisfied `PartialOrd`'s consistency contract would have to rank NaN payloads and separate `+0.0` from `-0.0`. Decode with `get` and compare the natives when an ordering is needed.\n\n`PodF32` and `PodF64` compose with every container: they work as `PodOption` payloads, `PodVec` elements, compact inline header fields, and compact tails, and they implement canonical `wincode` serialization under that feature. The new mapping is additive — no existing wire format, validation order, or error variant changes, and `f32`/`f64` remain unmapped when the feature is disabled.\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #20](https://github.com/pina-rs/pinapod/pull/20)"
+    }
+  ],
+  "provider": {
+    "kind": "github",
+    "owner": "pina-rs",
+    "repo": "pinapod",
+    "host": null
+  }
+}
