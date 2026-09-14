@@ -88,8 +88,15 @@ fn equality_is_bitwise_not_float_valued() {
     assert!(PodF32::ZERO.is_zero());
     assert!(!PodF32::from(-0.0).is_zero());
 
-    assert!(PodF32::from(1.0) < PodF32::from(2.0));
-    assert!(PodF32::from(f32::NAN).partial_cmp(&PodF32::ZERO).is_none());
+    // Ordering is intentionally absent: bitwise `Eq` and float ordering
+    // cannot both hold (NaN payloads, `+0.0` vs `-0.0`). Decode with `get`
+    // and compare the natives instead.
+    assert_eq!(
+        PodF32::from(1.0)
+            .get()
+            .partial_cmp(&PodF32::from(2.0).get()),
+        Some(core::cmp::Ordering::Less)
+    );
 }
 
 #[test]
@@ -251,8 +258,8 @@ fn float_pods_expose_formatting_hashing_and_constants() {
     assert_eq!(PodF32::MAX.to_bits(), f32::MAX.to_bits());
     assert_eq!(PodF64::MAX.to_bits(), f64::MAX.to_bits());
 
-    // No `Ord`/`max`: NaN is unordered, so only partial ordering is sound.
-    assert!(PodF32::from(1.0) < PodF32::from(2.0));
+    // No `Ord`/`PartialOrd`/`max` on the pods themselves.
+    assert!(PodF32::from(1.0).get() < PodF32::from(2.0).get());
 }
 
 #[test]

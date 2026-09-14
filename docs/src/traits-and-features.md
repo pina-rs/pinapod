@@ -131,7 +131,7 @@ assert_eq!(reading.depth(), 3.125);
 
 Storage is the complete IEEE-754 bit pattern little-endian: `f32` in four bytes and `f64` in eight. `get` and `set` convert to and from the native float; `to_bits` and `set_bits` expose the raw pattern. Every bit pattern is a valid value, so validation never rejects a NaN, an infinity, or the sign of zero, and an all-zero field decodes as `+0.0`.
 
-Pod equality is bitwise rather than float-valued. That keeps `Eq` sound in the presence of NaN payloads and preserves the distinction between `+0.0` and `-0.0`. Decode with `get` before comparing with float semantics.
+Pod equality is bitwise rather than float-valued. That keeps `Eq` sound in the presence of NaN payloads and preserves the distinction between `+0.0` and `-0.0`. The pods deliberately implement no `PartialOrd` or `Ord`: bitwise equality and float ordering cannot both hold, because ordering would have to rank NaN payloads and separate `+0.0` from `-0.0`. Decode with `get` and compare the natives when an ordering is needed.
 
 `PodF32` and `PodF64` are byte containers, not arithmetic types: they provide no operators, so multi-step float math belongs at the call site on the decoded natives.
 

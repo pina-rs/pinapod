@@ -99,12 +99,10 @@ macro_rules! define_pod_float {
 
         impl Eq for $name {}
 
-        impl PartialOrd for $name {
-            #[inline(always)]
-            fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-                self.get().partial_cmp(&other.get())
-            }
-        }
+        // Deliberately no `PartialOrd`/`Ord`: bitwise equality and float
+        // ordering cannot both hold, because ordering would have to rank NaN
+        // payloads and separate `+0.0` from `-0.0`. Decode with `get` and
+        // compare the natives when an ordering is needed.
 
         impl core::hash::Hash for $name {
             fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
