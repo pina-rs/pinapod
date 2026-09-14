@@ -330,6 +330,14 @@ fn classify_accessor(ty: &Type, skip: bool) -> AccessorKind {
                 "bool" => {
                     return AccessorKind::NativeViaFrom(quote! { ::core::primitive::bool });
                 }
+                // IEEE-754 fields are stored as their bit pattern, so the
+                // accessor decodes back to the native float.
+                "f32" => {
+                    return AccessorKind::NativeViaFrom(quote! { ::core::primitive::f32 });
+                }
+                "f64" => {
+                    return AccessorKind::NativeViaFrom(quote! { ::core::primitive::f64 });
+                }
                 "String" | "PodString" => return AccessorKind::String,
                 "Vec" | "PodVec" => {
                     return AccessorKind::Vec(extract_container_inner(ty));
@@ -411,6 +419,13 @@ fn classify_option_accessor(ty: &Type) -> OptionAccessor {
                 }
                 "bool" => {
                     return OptionAccessor::NativeViaFrom(quote! { ::core::primitive::bool });
+                }
+                // Optional IEEE-754 fields decode to the native float too.
+                "f32" => {
+                    return OptionAccessor::NativeViaFrom(quote! { ::core::primitive::f32 });
+                }
+                "f64" => {
+                    return OptionAccessor::NativeViaFrom(quote! { ::core::primitive::f64 });
                 }
                 "String" | "PodString" => return OptionAccessor::String,
                 "Vec" | "PodVec" => {

@@ -85,6 +85,8 @@ Do not use `#[pinapod(prefix = u16)]`. Prefix width belongs in the field type, s
 | `PodU16` through `PodU128` |              2 through 16 bytes | Unsigned, little-endian integer             |
 | `PodI16` through `PodI128` |              2 through 16 bytes | Signed, little-endian integer               |
 | `PodBool`                  |                          1 byte | Boolean with a `0` or `1` byte              |
+| `PodF32`                   |                         4 bytes | IEEE-754 binary32 stored as its bit pattern |
+| `PodF64`                   |                         8 bytes | IEEE-754 binary64 stored as its bit pattern |
 | `PodOption<T, PFX>`        |          `PFX + size_of::<T>()` | Optional fixed representation               |
 | `PodString<N, PFX>`        |                       `PFX + N` | UTF-8 string with at most `N` bytes         |
 | `PodVec<T, N, PFX>`        | `PFX + N * mapped element size` | Vector with at most `N` mapped pod elements |
@@ -96,6 +98,7 @@ All representations have alignment one. Safe readers validate tags, lengths, UTF
 | Feature                | Adds                                                     |
 | ---------------------- | -------------------------------------------------------- |
 | `fixed`                | Mappings for signed and unsigned `fixed` 1.30.0 values   |
+| `floats`               | `PodF32`/`PodF64` and mappings for native `f32`/`f64`    |
 | `solana-address`       | A mapping for `solana_address::Address`                  |
 | `solana-program-error` | Conversion from `PinaPodError` to `ProgramError`         |
 | `wincode`              | Canonical `SchemaRead` and `SchemaWrite` implementations |
