@@ -416,9 +416,13 @@ pub fn map_to_pod_type(ty: &Type) -> TokenStream {
         return ts;
     }
 
-    // 5. Array types → keep as-is
-    if matches!(ty, Type::Array(_)) {
-        return quote! { #ty };
+    // 5. Array types map element-wise through the same representation
+    // contract, so `[u64; 4]` becomes `[PodU64; 4]` while `[u8; N]` maps to
+    // itself.
+    if let Type::Array(array) = ty {
+        let element = map_to_pod_type(&array.elem);
+        let length = &array.len;
+        return quote! { [#element; #length] };
     }
 
     // 6. Delegate scalar and custom types through their representation

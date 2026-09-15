@@ -36,9 +36,14 @@ macro_rules! impl_zc_validate_trivial {
 
 impl_zc_validate_trivial!(PodU16, PodU32, PodU64, PodU128, PodI16, PodI32, PodI64, PodI128);
 
-impl<const N: usize> ZcValidate for [u8; N] {
+// Arrays validate per element; for pods whose every bit pattern is valid the
+// loop optimizes away entirely after monomorphization.
+impl<T: ZcValidate, const N: usize> ZcValidate for [T; N] {
     #[inline(always)]
-    fn validate_ref(_: &Self) -> Result<(), PinaPodError> {
+    fn validate_ref(value: &Self) -> Result<(), PinaPodError> {
+        for item in value {
+            T::validate_ref(item)?;
+        }
         Ok(())
     }
 }
@@ -170,8 +175,13 @@ unsafe impl ZcElem for PodI128 {}
 // SAFETY: PodBool is #[repr(transparent)] over [u8; 1], align 1.
 unsafe impl ZcElem for PodBool {}
 
-// SAFETY: [u8; N] is align 1, all bit patterns valid.
-unsafe impl<const N: usize> ZcElem for [u8; N] {}
+// SAFETY: `[T; N]` inherits alignment 1 from `T: ZcElem` —
+// `align_of::<[T; N]>() == align_of::<T>() == 1` — and its size is exactly
+// `N * size_of::<T>()`, so no padding bytes can exist between elements and
+// every element boundary falls on a valid byte offset. Element bit validity
+// composes: forming `&[T; N]` from any `N * size_of::<T>()` initialized bytes
+// is sound before `validate_ref` runs, and validation recurses per element.
+unsafe impl<T: ZcElem, const N: usize> ZcElem for [T; N] {}
 
 // SAFETY: PodOption<T: ZcElem, PFX> is #[repr(C)] with tag: [u8; PFX] + MaybeUninit<T>.
 // T: ZcElem guarantees T is align 1, so PodOption<T, PFX> is also align 1.
@@ -526,8 +536,39 @@ mod fixed_impls {
     impl_fixed_zc_field!(FixedU128, PodU128);
 }
 
-unsafe impl<const N: usize> ZcField for [u8; N] {
-    type Pod = [u8; N];
+// SAFETY: The pod of an array is the array of its element pods. `[T::Pod; N]`
+// is an alignment-one `ZcElem` whose validation recurses into `T`'s, so the
+// representation contract carries through unchanged. `[u8; N]` keeps its
+// identity mapping via `<u8 as ZcField>::Pod = u8`.
+unsafe impl<T: ZcField, const N: usize> ZcField for [T; N] {
+    type Pod = [<T as ZcField>::Pod; N];
+}
+
+/// Converts a native or pod-spelled array into its stored representation,
+/// element-wise.
+///
+/// This trait is public only because generated code expands in downstream
+/// crates. It is not part of the hand-written PinaPod API. Its shape follows
+/// the generated compact patches and changes only in breaking releases, in
+/// lockstep with the derive.
+///
+/// The blanket impl covers both spellings: `[u64; N]` resolves through
+/// `PodU64: From<u64>`, while `[PodU64; N]` resolves through the reflexive
+/// `From`.
+#[doc(hidden)]
+pub trait IntoPodArray<T: ZcField, const N: usize> {
+    fn into_pod_array(self) -> [<T as ZcField>::Pod; N];
+}
+
+impl<T, U, const N: usize> IntoPodArray<T, N> for [U; N]
+where
+    T: ZcField,
+    T::Pod: From<U>,
+{
+    #[inline(always)]
+    fn into_pod_array(self) -> [T::Pod; N] {
+        self.map(<T::Pod as From<U>>::from)
+    }
 }
 
 macro_rules! impl_zc_field_identity {
