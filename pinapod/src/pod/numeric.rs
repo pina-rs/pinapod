@@ -293,9 +293,15 @@ mod kani_proofs {
                     assert!($pod::from(value).is_zero() == (value == 0));
                 }
 
+                // Addition and subtraction share one harness; they are cheap
+                // relative to multiplication and division, whose solver cost
+                // grows far faster than the number of assertions. Splitting the
+                // expensive operations into their own harnesses keeps each
+                // verification condition small, so the wide integer proofs stay
+                // solvable instead of accumulating one large formula.
                 #[kani::proof]
-                #[kani::solver(z3)]
-                fn checked_arithmetic_matches_native() {
+                #[kani::solver(cvc5)]
+                fn checked_add_sub_matches_native() {
                     let left: $native = kani::any();
                     let right: $native = kani::any();
                     let pod = $pod::from(left);
@@ -306,35 +312,71 @@ mod kani_proofs {
                     assert!(
                         pod.checked_sub(right).map(|value| value.get()) == left.checked_sub(right)
                     );
+                }
+
+                #[kani::proof]
+                #[kani::solver(cvc5)]
+                fn checked_mul_matches_native() {
+                    let left: $native = kani::any();
+                    let right: $native = kani::any();
+                    let pod = $pod::from(left);
+
                     assert!(
                         pod.checked_mul(right).map(|value| value.get()) == left.checked_mul(right)
                     );
+                }
+
+                #[kani::proof]
+                #[kani::solver(cvc5)]
+                fn checked_div_matches_native() {
+                    let left: $native = kani::any();
+                    let right: $native = kani::any();
+                    let pod = $pod::from(left);
+
                     assert!(
                         pod.checked_div(right).map(|value| value.get()) == left.checked_div(right)
                     );
                 }
 
                 #[kani::proof]
-                #[kani::solver(z3)]
-                fn wrapping_arithmetic_matches_native() {
+                #[kani::solver(cvc5)]
+                fn wrapping_add_sub_matches_native() {
                     let left: $native = kani::any();
                     let right: $native = kani::any();
                     let pod = $pod::from(left);
 
                     assert!(pod.wrapping_add(right).get() == left.wrapping_add(right));
                     assert!(pod.wrapping_sub(right).get() == left.wrapping_sub(right));
+                }
+
+                #[kani::proof]
+                #[kani::solver(cvc5)]
+                fn wrapping_mul_matches_native() {
+                    let left: $native = kani::any();
+                    let right: $native = kani::any();
+                    let pod = $pod::from(left);
+
                     assert!(pod.wrapping_mul(right).get() == left.wrapping_mul(right));
                 }
 
                 #[kani::proof]
-                #[kani::solver(z3)]
-                fn saturating_arithmetic_matches_native() {
+                #[kani::solver(cvc5)]
+                fn saturating_add_sub_matches_native() {
                     let left: $native = kani::any();
                     let right: $native = kani::any();
                     let pod = $pod::from(left);
 
                     assert!(pod.saturating_add(right).get() == left.saturating_add(right));
                     assert!(pod.saturating_sub(right).get() == left.saturating_sub(right));
+                }
+
+                #[kani::proof]
+                #[kani::solver(cvc5)]
+                fn saturating_mul_matches_native() {
+                    let left: $native = kani::any();
+                    let right: $native = kani::any();
+                    let pod = $pod::from(left);
+
                     assert!(pod.saturating_mul(right).get() == left.saturating_mul(right));
                 }
             }
