@@ -6,7 +6,7 @@ struct u16(bool);
 #[derive(PinaPod)]
 #[pinapod(crate = pinapod)]
 struct ShadowedPrimitive {
-    value: u16,
+	value: u16,
 }
 
 fn main() {}

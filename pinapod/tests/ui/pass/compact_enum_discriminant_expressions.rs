@@ -6,11 +6,11 @@ const LAST: u8 = 9;
 #[pinapod(compact, crate = pinapod)]
 #[repr(u8)]
 enum CompactKind {
-    First = 1,
-    Second = Self::First as u8 + 1,
-    Last = LAST,
+	First = 1,
+	Second = Self::First as u8 + 1,
+	Last = LAST,
 }
 
 fn main() {
-    let _ = CompactKind::Second;
+	let _ = CompactKind::Second;
 }

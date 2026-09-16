@@ -218,25 +218,25 @@ macro_rules! define_pod_integer {
 }
 
 macro_rules! define_pod_signed {
-    ($name:ident, $native:ty, $size:expr) => {
-        define_pod_integer!($name, $native, $size);
+	($name:ident, $native:ty, $size:expr) => {
+		define_pod_integer!($name, $native, $size);
 
-        impl $name {
-            /// Negates the value, returning `None` if the result is not representable.
-            #[must_use]
-            #[inline(always)]
-            pub fn checked_neg(self) -> Option<Self> {
-                self.get().checked_neg().map(Self::from)
-            }
+		impl $name {
+			/// Negates the value, returning `None` if the result is not representable.
+			#[must_use]
+			#[inline(always)]
+			pub fn checked_neg(self) -> Option<Self> {
+				self.get().checked_neg().map(Self::from)
+			}
 
-            /// Negates the value with modular arithmetic.
-            #[must_use]
-            #[inline(always)]
-            pub fn wrapping_neg(self) -> Self {
-                Self::from(self.get().wrapping_neg())
-            }
-        }
-    };
+			/// Negates the value with modular arithmetic.
+			#[must_use]
+			#[inline(always)]
+			pub fn wrapping_neg(self) -> Self {
+				Self::from(self.get().wrapping_neg())
+			}
+		}
+	};
 }
 
 define_pod_integer!(PodU128, u128, 16);
@@ -249,10 +249,10 @@ define_pod_signed!(PodI32, i32, 4);
 define_pod_signed!(PodI16, i16, 2);
 
 macro_rules! assert_pod_layout {
-    ($name:ident, $size:expr) => {
-        const _: () = assert!(core::mem::align_of::<$name>() == 1);
-        const _: () = assert!(core::mem::size_of::<$name>() == $size);
-    };
+	($name:ident, $size:expr) => {
+		const _: () = assert!(core::mem::align_of::<$name>() == 1);
+		const _: () = assert!(core::mem::size_of::<$name>() == $size);
+	};
 }
 
 assert_pod_layout!(PodU128, 16);
@@ -266,156 +266,156 @@ assert_pod_layout!(PodI16, 2);
 
 #[cfg(all(kani, feature = "kani"))]
 mod kani_proofs {
-    macro_rules! prove_pod_integer {
-        ($pod:ident, $native:ty, $module:ident) => {
-            mod $module {
-                use super::super::*;
+	macro_rules! prove_pod_integer {
+		($pod:ident, $native:ty, $module:ident) => {
+			mod $module {
+				use super::super::*;
 
-                #[kani::proof]
-                fn roundtrip() {
-                    let value: $native = kani::any();
-                    let pod = $pod::from(value);
+				#[kani::proof]
+				fn roundtrip() {
+					let value: $native = kani::any();
+					let pod = $pod::from(value);
 
-                    assert!(pod.get() == value);
-                    assert!(<$native>::from(pod) == value);
-                }
+					assert!(pod.get() == value);
+					assert!(<$native>::from(pod) == value);
+				}
 
-                #[kani::proof]
-                fn ordering_matches_native() {
-                    let left: $native = kani::any();
-                    let right: $native = kani::any();
-                    let pod_left = $pod::from(left);
-                    let pod_right = $pod::from(right);
+				#[kani::proof]
+				fn ordering_matches_native() {
+					let left: $native = kani::any();
+					let right: $native = kani::any();
+					let pod_left = $pod::from(left);
+					let pod_right = $pod::from(right);
 
-                    assert!(pod_left.cmp(&pod_right) == left.cmp(&right));
-                    assert!((pod_left == right) == (left == right));
-                }
+					assert!(pod_left.cmp(&pod_right) == left.cmp(&right));
+					assert!((pod_left == right) == (left == right));
+				}
 
-                #[kani::proof]
-                fn zero_matches_native() {
-                    let value: $native = kani::any();
+				#[kani::proof]
+				fn zero_matches_native() {
+					let value: $native = kani::any();
 
-                    assert!($pod::from(value).is_zero() == (value == 0));
-                }
+					assert!($pod::from(value).is_zero() == (value == 0));
+				}
 
-                // Addition and subtraction share one harness; they are cheap
-                // relative to multiplication and division, whose solver cost
-                // grows far faster than the number of assertions. Splitting the
-                // expensive operations into their own harnesses keeps each
-                // verification condition small, so the wide integer proofs stay
-                // solvable instead of accumulating one large formula.
-                #[kani::proof]
-                #[kani::solver(cvc5)]
-                fn checked_add_sub_matches_native() {
-                    let left: $native = kani::any();
-                    let right: $native = kani::any();
-                    let pod = $pod::from(left);
+				// Addition and subtraction share one harness; they are cheap
+				// relative to multiplication and division, whose solver cost
+				// grows far faster than the number of assertions. Splitting the
+				// expensive operations into their own harnesses keeps each
+				// verification condition small, so the wide integer proofs stay
+				// solvable instead of accumulating one large formula.
+				#[kani::proof]
+				#[kani::solver(cvc5)]
+				fn checked_add_sub_matches_native() {
+					let left: $native = kani::any();
+					let right: $native = kani::any();
+					let pod = $pod::from(left);
 
-                    assert!(
-                        pod.checked_add(right).map(|value| value.get()) == left.checked_add(right)
-                    );
-                    assert!(
-                        pod.checked_sub(right).map(|value| value.get()) == left.checked_sub(right)
-                    );
-                }
+					assert!(
+						pod.checked_add(right).map(|value| value.get()) == left.checked_add(right)
+					);
+					assert!(
+						pod.checked_sub(right).map(|value| value.get()) == left.checked_sub(right)
+					);
+				}
 
-                #[kani::proof]
-                #[kani::solver(cvc5)]
-                fn checked_mul_matches_native() {
-                    let left: $native = kani::any();
-                    let right: $native = kani::any();
-                    let pod = $pod::from(left);
+				#[kani::proof]
+				#[kani::solver(cvc5)]
+				fn checked_mul_matches_native() {
+					let left: $native = kani::any();
+					let right: $native = kani::any();
+					let pod = $pod::from(left);
 
-                    assert!(
-                        pod.checked_mul(right).map(|value| value.get()) == left.checked_mul(right)
-                    );
-                }
+					assert!(
+						pod.checked_mul(right).map(|value| value.get()) == left.checked_mul(right)
+					);
+				}
 
-                #[kani::proof]
-                #[kani::solver(cvc5)]
-                fn checked_div_matches_native() {
-                    let left: $native = kani::any();
-                    let right: $native = kani::any();
-                    let pod = $pod::from(left);
+				#[kani::proof]
+				#[kani::solver(cvc5)]
+				fn checked_div_matches_native() {
+					let left: $native = kani::any();
+					let right: $native = kani::any();
+					let pod = $pod::from(left);
 
-                    assert!(
-                        pod.checked_div(right).map(|value| value.get()) == left.checked_div(right)
-                    );
-                }
+					assert!(
+						pod.checked_div(right).map(|value| value.get()) == left.checked_div(right)
+					);
+				}
 
-                #[kani::proof]
-                #[kani::solver(cvc5)]
-                fn wrapping_add_sub_matches_native() {
-                    let left: $native = kani::any();
-                    let right: $native = kani::any();
-                    let pod = $pod::from(left);
+				#[kani::proof]
+				#[kani::solver(cvc5)]
+				fn wrapping_add_sub_matches_native() {
+					let left: $native = kani::any();
+					let right: $native = kani::any();
+					let pod = $pod::from(left);
 
-                    assert!(pod.wrapping_add(right).get() == left.wrapping_add(right));
-                    assert!(pod.wrapping_sub(right).get() == left.wrapping_sub(right));
-                }
+					assert!(pod.wrapping_add(right).get() == left.wrapping_add(right));
+					assert!(pod.wrapping_sub(right).get() == left.wrapping_sub(right));
+				}
 
-                #[kani::proof]
-                #[kani::solver(cvc5)]
-                fn wrapping_mul_matches_native() {
-                    let left: $native = kani::any();
-                    let right: $native = kani::any();
-                    let pod = $pod::from(left);
+				#[kani::proof]
+				#[kani::solver(cvc5)]
+				fn wrapping_mul_matches_native() {
+					let left: $native = kani::any();
+					let right: $native = kani::any();
+					let pod = $pod::from(left);
 
-                    assert!(pod.wrapping_mul(right).get() == left.wrapping_mul(right));
-                }
+					assert!(pod.wrapping_mul(right).get() == left.wrapping_mul(right));
+				}
 
-                #[kani::proof]
-                #[kani::solver(cvc5)]
-                fn saturating_add_sub_matches_native() {
-                    let left: $native = kani::any();
-                    let right: $native = kani::any();
-                    let pod = $pod::from(left);
+				#[kani::proof]
+				#[kani::solver(cvc5)]
+				fn saturating_add_sub_matches_native() {
+					let left: $native = kani::any();
+					let right: $native = kani::any();
+					let pod = $pod::from(left);
 
-                    assert!(pod.saturating_add(right).get() == left.saturating_add(right));
-                    assert!(pod.saturating_sub(right).get() == left.saturating_sub(right));
-                }
+					assert!(pod.saturating_add(right).get() == left.saturating_add(right));
+					assert!(pod.saturating_sub(right).get() == left.saturating_sub(right));
+				}
 
-                #[kani::proof]
-                #[kani::solver(cvc5)]
-                fn saturating_mul_matches_native() {
-                    let left: $native = kani::any();
-                    let right: $native = kani::any();
-                    let pod = $pod::from(left);
+				#[kani::proof]
+				#[kani::solver(cvc5)]
+				fn saturating_mul_matches_native() {
+					let left: $native = kani::any();
+					let right: $native = kani::any();
+					let pod = $pod::from(left);
 
-                    assert!(pod.saturating_mul(right).get() == left.saturating_mul(right));
-                }
-            }
-        };
-    }
+					assert!(pod.saturating_mul(right).get() == left.saturating_mul(right));
+				}
+			}
+		};
+	}
 
-    macro_rules! prove_pod_signed {
-        ($pod:ident, $native:ty, $module:ident) => {
-            mod $module {
-                use super::super::*;
+	macro_rules! prove_pod_signed {
+		($pod:ident, $native:ty, $module:ident) => {
+			mod $module {
+				use super::super::*;
 
-                #[kani::proof]
-                fn explicit_negation_matches_native() {
-                    let value: $native = kani::any();
-                    let pod = $pod::from(value);
+				#[kani::proof]
+				fn explicit_negation_matches_native() {
+					let value: $native = kani::any();
+					let pod = $pod::from(value);
 
-                    assert!(pod.checked_neg().map(|value| value.get()) == value.checked_neg());
-                    assert!(pod.wrapping_neg().get() == value.wrapping_neg());
-                }
-            }
-        };
-    }
+					assert!(pod.checked_neg().map(|value| value.get()) == value.checked_neg());
+					assert!(pod.wrapping_neg().get() == value.wrapping_neg());
+				}
+			}
+		};
+	}
 
-    prove_pod_integer!(PodU16, u16, u16_proofs);
-    prove_pod_integer!(PodU32, u32, u32_proofs);
-    prove_pod_integer!(PodU64, u64, u64_proofs);
-    prove_pod_integer!(PodU128, u128, u128_proofs);
-    prove_pod_integer!(PodI16, i16, i16_proofs);
-    prove_pod_integer!(PodI32, i32, i32_proofs);
-    prove_pod_integer!(PodI64, i64, i64_proofs);
-    prove_pod_integer!(PodI128, i128, i128_proofs);
+	prove_pod_integer!(PodU16, u16, u16_proofs);
+	prove_pod_integer!(PodU32, u32, u32_proofs);
+	prove_pod_integer!(PodU64, u64, u64_proofs);
+	prove_pod_integer!(PodU128, u128, u128_proofs);
+	prove_pod_integer!(PodI16, i16, i16_proofs);
+	prove_pod_integer!(PodI32, i32, i32_proofs);
+	prove_pod_integer!(PodI64, i64, i64_proofs);
+	prove_pod_integer!(PodI128, i128, i128_proofs);
 
-    prove_pod_signed!(PodI16, i16, signed_i16_proofs);
-    prove_pod_signed!(PodI32, i32, signed_i32_proofs);
-    prove_pod_signed!(PodI64, i64, signed_i64_proofs);
-    prove_pod_signed!(PodI128, i128, signed_i128_proofs);
+	prove_pod_signed!(PodI16, i16, signed_i16_proofs);
+	prove_pod_signed!(PodI32, i32, signed_i32_proofs);
+	prove_pod_signed!(PodI64, i64, signed_i64_proofs);
+	prove_pod_signed!(PodI128, i128, signed_i128_proofs);
 }

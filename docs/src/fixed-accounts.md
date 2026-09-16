@@ -13,18 +13,18 @@ use pinapod::Vec;
 
 #[derive(PinaPod)]
 struct Profile {
-    authority: [u8; 32],
-    status: Status,
-    display_name: String<32>,
-    roles: Vec<u16, 8>,
-    note: Option<String<64>>,
+	authority: [u8; 32],
+	status: Status,
+	display_name: String<32>,
+	roles: Vec<u16, 8>,
+	note: Option<String<64>>,
 }
 
 #[derive(PinaPod, Debug, PartialEq)]
 #[repr(u8)]
 enum Status {
-    Active = 1,
-    Suspended = 2,
+	Active = 1,
+	Suspended = 2,
 }
 ```
 
@@ -102,9 +102,9 @@ use pinapod::Vec;
 
 #[derive(PinaPod)]
 struct Directory {
-    names: Vec<String<16>, 8>,
-    aliases: Vec<Option<String<8>>, 4>,
-    preferred_ids: Option<Vec<u64, 16>>,
+	names: Vec<String<16>, 8>,
+	aliases: Vec<Option<String<8>>, 4>,
+	preferred_ids: Option<Vec<u64, 16>>,
 }
 ```
 

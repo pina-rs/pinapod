@@ -23,7 +23,7 @@ For example, the field type now carries the element type instead of forcing raw 
 #[derive(PinaPod)]
 #[pinapod(compact)]
 struct Table {
-    weights: [u8; 16],
+	weights: [u8; 16],
 }
 ```
 
@@ -32,15 +32,15 @@ struct Table {
 #[derive(PinaPod)]
 #[pinapod(compact)]
 struct Table {
-    weights: [u64; 2],
+	weights: [u64; 2],
 }
 
 fn round_trip() {
-    let mut buffer = [0u8; Table::MAX_SIZE];
-    let patch = TablePatch::new().weights([5_u64, 6]);
-    let encoded_len = Table::initialize(&mut buffer, &patch).unwrap();
-    let table = Table::read_prefix(&buffer[..encoded_len]).unwrap();
-    assert_eq!(table.weights[0].get(), 5);
+	let mut buffer = [0u8; Table::MAX_SIZE];
+	let patch = TablePatch::new().weights([5_u64, 6]);
+	let encoded_len = Table::initialize(&mut buffer, &patch).unwrap();
+	let table = Table::read_prefix(&buffer[..encoded_len]).unwrap();
+	assert_eq!(table.weights[0].get(), 5);
 }
 ```
 

@@ -180,112 +180,112 @@ macro_rules! define_pod_float {
 }
 
 define_pod_float!(
-    /// Alignment-one storage for a 32-bit IEEE-754 float schema field.
-    ///
-    /// `get` and `set` convert through the bit pattern, while `to_bits` and `set_bits`
-    /// expose it directly. The pod is exactly four bytes wide.
-    ///
-    /// <!-- {=podFloatBitPatternContract|trim|linePrefix:"/// ":true|indent:"    "} -->
-    /// Storage is the complete IEEE-754 bit pattern, little-endian.
-    ///
-    /// Every bit pattern is a valid stored value, so validation never rejects a NaN, an infinity, or the sign of zero, and an all-zero field decodes as `+0.0`.<!-- {/podFloatBitPatternContract} -->
-    ///
-    /// A schema field declared as `f32` maps to this pod through the [`ZcField`]
-    /// implementation below, so `PinaPod` derives accept the native spelling.
-    ///
-    /// ```
-    /// use pinapod::pod::PodF32;
-    ///
-    /// let mut pod = PodF32::ZERO;
-    /// pod.set(-1.5);
-    /// assert_eq!(pod.get(), -1.5);
-    /// assert_eq!(pod.to_bits(), (-1.5_f32).to_bits());
-    ///
-    /// // Raw bit patterns survive a round trip, including a signaling NaN.
-    /// pod.set_bits(0x7f80_0001);
-    /// assert_eq!(pod.to_bits(), 0x7f80_0001);
-    /// ```
-    PodF32,
-    f32,
-    u32,
-    4
+	/// Alignment-one storage for a 32-bit IEEE-754 float schema field.
+	///
+	/// `get` and `set` convert through the bit pattern, while `to_bits` and `set_bits`
+	/// expose it directly. The pod is exactly four bytes wide.
+	///
+	/// <!-- {=podFloatBitPatternContract|trim|linePrefix:"/// ":true|indent:"\t"} -->
+	/// Storage is the complete IEEE-754 bit pattern, little-endian.
+	///
+	/// Every bit pattern is a valid stored value, so validation never rejects a NaN, an infinity, or the sign of zero, and an all-zero field decodes as `+0.0`.<!-- {/podFloatBitPatternContract} -->
+	///
+	/// A schema field declared as `f32` maps to this pod through the [`ZcField`]
+	/// implementation below, so `PinaPod` derives accept the native spelling.
+	///
+	/// ```
+	/// use pinapod::pod::PodF32;
+	///
+	/// let mut pod = PodF32::ZERO;
+	/// pod.set(-1.5);
+	/// assert_eq!(pod.get(), -1.5);
+	/// assert_eq!(pod.to_bits(), (-1.5_f32).to_bits());
+	///
+	/// // Raw bit patterns survive a round trip, including a signaling NaN.
+	/// pod.set_bits(0x7f80_0001);
+	/// assert_eq!(pod.to_bits(), 0x7f80_0001);
+	/// ```
+	PodF32,
+	f32,
+	u32,
+	4
 );
 
 define_pod_float!(
-    /// Alignment-one storage for a 64-bit IEEE-754 float schema field.
-    ///
-    /// `get` and `set` convert through the bit pattern, while `to_bits` and `set_bits`
-    /// expose it directly. The pod is exactly eight bytes wide.
-    ///
-    /// <!-- {=podFloatBitPatternContract|trim|linePrefix:"/// ":true|indent:"    "} -->
-    /// Storage is the complete IEEE-754 bit pattern, little-endian.
-    ///
-    /// Every bit pattern is a valid stored value, so validation never rejects a NaN, an infinity, or the sign of zero, and an all-zero field decodes as `+0.0`.<!-- {/podFloatBitPatternContract} -->
-    ///
-    /// A schema field declared as `f64` maps to this pod through the [`ZcField`]
-    /// implementation below, so `PinaPod` derives accept the native spelling.
-    ///
-    /// ```
-    /// use pinapod::pod::PodF64;
-    ///
-    /// let mut pod = PodF64::ZERO;
-    /// pod.set(3.125);
-    /// assert_eq!(pod.get(), 3.125);
-    /// assert_eq!(pod.to_bits(), 3.125_f64.to_bits());
-    /// ```
-    PodF64,
-    f64,
-    u64,
-    8
+	/// Alignment-one storage for a 64-bit IEEE-754 float schema field.
+	///
+	/// `get` and `set` convert through the bit pattern, while `to_bits` and `set_bits`
+	/// expose it directly. The pod is exactly eight bytes wide.
+	///
+	/// <!-- {=podFloatBitPatternContract|trim|linePrefix:"/// ":true|indent:"\t"} -->
+	/// Storage is the complete IEEE-754 bit pattern, little-endian.
+	///
+	/// Every bit pattern is a valid stored value, so validation never rejects a NaN, an infinity, or the sign of zero, and an all-zero field decodes as `+0.0`.<!-- {/podFloatBitPatternContract} -->
+	///
+	/// A schema field declared as `f64` maps to this pod through the [`ZcField`]
+	/// implementation below, so `PinaPod` derives accept the native spelling.
+	///
+	/// ```
+	/// use pinapod::pod::PodF64;
+	///
+	/// let mut pod = PodF64::ZERO;
+	/// pod.set(3.125);
+	/// assert_eq!(pod.get(), 3.125);
+	/// assert_eq!(pod.to_bits(), 3.125_f64.to_bits());
+	/// ```
+	PodF64,
+	f64,
+	u64,
+	8
 );
 
 #[cfg(all(kani, feature = "kani"))]
 mod kani_proofs {
-    use super::*;
+	use super::*;
 
-    // These harnesses prove the property the pods actually audit: storage is a
-    // lossless, alignment-one byte container for an arbitrary bit pattern.
-    //
-    // They are deliberately stated over the backing integer rather than over
-    // float values. Kani models `f32`/`f64` as values with limited bit
-    // precision, so a bits -> float -> bits round trip is not a sound proof
-    // obligation at this point (`from_bits`/`to_bits` are standard-library
-    // reinterpretations, not PinaPod code). Bit-pattern preservation is
-    // covered exhaustively by the runtime and Miri suites, including NaN
-    // payloads that no float-valued model can represent.
-    macro_rules! prove_pod_float {
-        ($pod:ident, $bits:ty, $module:ident) => {
-            mod $module {
-                use super::super::*;
+	// These harnesses prove the property the pods actually audit: storage is a
+	// lossless, alignment-one byte container for an arbitrary bit pattern.
+	//
+	// They are deliberately stated over the backing integer rather than over
+	// float values. Kani models `f32`/`f64` as values with limited bit
+	// precision, so a bits -> float -> bits round trip is not a sound proof
+	// obligation at this point (`from_bits`/`to_bits` are standard-library
+	// reinterpretations, not PinaPod code). Bit-pattern preservation is
+	// covered exhaustively by the runtime and Miri suites, including NaN
+	// payloads that no float-valued model can represent.
+	macro_rules! prove_pod_float {
+		($pod:ident, $bits:ty, $module:ident) => {
+			mod $module {
+				use super::super::*;
 
-                #[kani::proof]
-                fn set_bits_then_read_preserves_the_pattern() {
-                    let bits: $bits = kani::any();
-                    let mut pod = $pod::ZERO;
-                    pod.set_bits(bits);
+				#[kani::proof]
+				fn set_bits_then_read_preserves_the_pattern() {
+					let bits: $bits = kani::any();
+					let mut pod = $pod::ZERO;
+					pod.set_bits(bits);
 
-                    assert!(pod.to_bits() == bits);
-                }
+					assert!(pod.to_bits() == bits);
+				}
 
-                #[kani::proof]
-                fn new_from_array_is_little_endian() {
-                    let bytes: [u8; core::mem::size_of::<$pod>()] = kani::any();
-                    let pod = $pod::new_from_array(bytes);
+				#[kani::proof]
+				fn new_from_array_is_little_endian() {
+					let bytes: [u8; core::mem::size_of::<$pod>()] = kani::any();
+					let pod = $pod::new_from_array(bytes);
 
-                    assert!(pod.to_bits() == <$bits>::from_le_bytes(bytes));
-                    assert!(pod.as_ref() == &bytes);
-                }
+					assert!(pod.to_bits() == <$bits>::from_le_bytes(bytes));
+					assert!(pod.as_ref() == &bytes);
+				}
 
-                #[kani::proof]
-                fn zero_is_the_all_zero_pattern() {
-                    assert!($pod::ZERO.is_zero());
-                    assert!($pod::ZERO.to_bits() == 0);
-                    assert!(!$pod::new_from_array([1; core::mem::size_of::<$pod>()]).is_zero());
-                }
-            }
-        };
-    }
+				#[kani::proof]
+				fn zero_is_the_all_zero_pattern() {
+					assert!($pod::ZERO.is_zero());
+					assert!($pod::ZERO.to_bits() == 0);
+					assert!(!$pod::new_from_array([1; core::mem::size_of::<$pod>()]).is_zero());
+				}
+			}
+		};
+	}
 
-    prove_pod_float!(PodF32, u32, f32_proofs);
-    prove_pod_float!(PodF64, u64, f64_proofs);
+	prove_pod_float!(PodF32, u32, f32_proofs);
+	prove_pod_float!(PodF64, u64, f64_proofs);
 }
