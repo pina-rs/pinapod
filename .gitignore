@@ -1,4 +1,7 @@
-/target
+# Build output. A single recursive rule covers the workspace, the top-level
+# `/target`, and the `target` directory that nested fixture crates such as
+# `pinapod/tests/renamed_dependency` create when built from their own manifest.
+**/target
 /docs/book
 /.devenv
 /.video_agent
