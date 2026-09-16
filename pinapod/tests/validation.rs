@@ -1,7 +1,8 @@
 #![allow(
     unsafe_code,
     unused_qualifications,
-    reason = "the derive macro emits audited zero-copy code and these upstream tests preserve explicit trait paths"
+    missing_docs,
+    reason = "the derive macro emits audited zero-copy code, upstream tests preserve explicit trait paths, and these test fixtures are not a published surface"
 )]
 
 use pinapod::{pod::PodBool, PinaPod, PinaPodCompact};

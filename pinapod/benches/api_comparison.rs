@@ -3,6 +3,11 @@
 //! The three fixture modules derive separate but wire-identical schemas. The
 //! setup assertion makes a benchmark fail rather than compare different bytes.
 
+#![allow(
+    missing_docs,
+    reason = "this is a benchmark harness rather than a published surface, so its fixtures stay undocumented"
+)]
+
 use {
     criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion, Throughput},
     stats_alloc::{Region, StatsAlloc, INSTRUMENTED_SYSTEM},

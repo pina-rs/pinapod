@@ -60,9 +60,6 @@
 //! unsupported nesting inside a compact tail, and a caller-local type that shadows a
 //! primitive's name.
 
-// Generated code lands in downstream crates, so the derive's own surface has to
-// document itself for those crates to keep `missing_docs` enabled.
-#![deny(missing_docs)]
 #![allow(
     clippy::match_wildcard_for_single_variants,
     reason = "the wildcard preserves a concise fallback for future syn data variants"

@@ -1,7 +1,8 @@
 #![allow(
     unsafe_code,
     unused_qualifications,
-    reason = "adversarial tests construct raw layouts and preserve explicit upstream trait paths"
+    missing_docs,
+    reason = "adversarial tests construct raw layouts, preserve explicit upstream trait paths, and are not a published surface"
 )]
 
 use pinapod::{pod::*, PinaPodError};

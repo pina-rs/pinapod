@@ -1,6 +1,7 @@
 #![allow(
     unsafe_code,
-    reason = "the derive macro emits audited zero-copy representation implementations"
+    missing_docs,
+    reason = "the derive macro emits audited zero-copy representation implementations and these test fixtures are not a published surface"
 )]
 
 use core::mem::size_of;

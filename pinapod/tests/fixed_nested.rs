@@ -1,6 +1,7 @@
 #![allow(
     unused_qualifications,
-    reason = "these upstream layout assertions intentionally spell out trait paths"
+    missing_docs,
+    reason = "upstream layout assertions intentionally spell out trait paths and these test fixtures are not a published surface"
 )]
 
 use pinapod::PinaPod;

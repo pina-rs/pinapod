@@ -1,5 +1,9 @@
 //! Container storage remains initialized when copied into account bytes.
 #![forbid(unsafe_code)]
+#![allow(
+    missing_docs,
+    reason = "these are test fixtures rather than a published surface, so their schemas stay undocumented"
+)]
 
 use pinapod::{
     pod::{PodOption, PodString, PodU16, PodVec},
