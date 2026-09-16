@@ -7,17 +7,19 @@ Use a compact account when its allocation must follow active string and vector d
 Add `#[pinapod(compact)]`. Put fixed fields before dynamic tails.
 
 ```rust
-use pinapod::{PinaPod, String, Vec};
+use pinapod::PinaPod;
+use pinapod::String;
+use pinapod::Vec;
 
 #[derive(PinaPod)]
 #[pinapod(compact)]
 struct Journal {
-    authority: [u8; 32],
-    revision: u64,
-    checkpoint: Option<u64>,
-    entries: Vec<u64, 1024>,
-    note: Option<String<128>>,
-    labels: Vec<String<16>, 32>,
+	authority: [u8; 32],
+	revision: u64,
+	checkpoint: Option<u64>,
+	entries: Vec<u64, 1024>,
+	note: Option<String<128>>,
+	labels: Vec<String<16>, 32>,
 }
 ```
 

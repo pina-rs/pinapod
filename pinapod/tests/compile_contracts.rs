@@ -8,14 +8,14 @@
 /// snapshot-matched failure cases are skipped.
 #[test]
 fn generated_api_and_schema_contracts() {
-    let cases = trybuild::TestCases::new();
+	let cases = trybuild::TestCases::new();
 
-    cases.pass("tests/ui/pass/*.rs");
+	cases.pass("tests/ui/pass/*.rs");
 
-    if std::env::var_os("PINAPOD_UI").is_some_and(|value| value.eq_ignore_ascii_case("skip")) {
-        eprintln!("skipping UI snapshots: PINAPOD_UI=skip");
-        return;
-    }
+	if std::env::var_os("PINAPOD_UI").is_some_and(|value| value.eq_ignore_ascii_case("skip")) {
+		eprintln!("skipping UI snapshots: PINAPOD_UI=skip");
+		return;
+	}
 
-    cases.compile_fail("tests/ui/fail/*.rs");
+	cases.compile_fail("tests/ui/fail/*.rs");
 }

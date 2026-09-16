@@ -7,22 +7,24 @@ Use a fixed account when every field has a compile-time bound and the account do
 Do not add `#[pinapod(compact)]`.
 
 ```rust
-use pinapod::{PinaPod, String, Vec};
+use pinapod::PinaPod;
+use pinapod::String;
+use pinapod::Vec;
 
 #[derive(PinaPod)]
 struct Profile {
-    authority: [u8; 32],
-    status: Status,
-    display_name: String<32>,
-    roles: Vec<u16, 8>,
-    note: Option<String<64>>,
+	authority: [u8; 32],
+	status: Status,
+	display_name: String<32>,
+	roles: Vec<u16, 8>,
+	note: Option<String<64>>,
 }
 
 #[derive(PinaPod, Debug, PartialEq)]
 #[repr(u8)]
 enum Status {
-    Active = 1,
-    Suspended = 2,
+	Active = 1,
+	Suspended = 2,
 }
 ```
 
@@ -94,13 +96,15 @@ The prefix methods require at least `Profile::SIZE` bytes and ignore the remaini
 Fixed accounts can nest containers when every level has a fixed representation.
 
 ```rust
-use pinapod::{PinaPod, String, Vec};
+use pinapod::PinaPod;
+use pinapod::String;
+use pinapod::Vec;
 
 #[derive(PinaPod)]
 struct Directory {
-    names: Vec<String<16>, 8>,
-    aliases: Vec<Option<String<8>>, 4>,
-    preferred_ids: Option<Vec<u64, 16>>,
+	names: Vec<String<16>, 8>,
+	aliases: Vec<Option<String<8>>, 4>,
+	preferred_ids: Option<Vec<u64, 16>>,
 }
 ```
 

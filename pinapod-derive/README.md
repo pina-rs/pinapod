@@ -12,9 +12,9 @@ use pinapod::PinaPod;
 
 #[derive(PinaPod)]
 struct Balance {
-    owner: [u8; 32],
-    amount: u64,
-    frozen: bool,
+	owner: [u8; 32],
+	amount: u64,
+	frozen: bool,
 }
 ```
 
@@ -35,7 +35,7 @@ Direct dependencies can rename the `pinapod` package in `Cargo.toml`; the derive
 #[derive(pina::PinaPod)]
 #[pinapod(crate = pina::pinapod, no_inherent)]
 struct FrameworkAccount {
-    value: u64,
+	value: u64,
 }
 ```
 
@@ -57,14 +57,16 @@ For a unit enum with `#[repr(u8)]`, `#[repr(u16)]`, `#[repr(u32)]`, or `#[repr(u
 Add `#[pinapod(compact)]` to select the compact layout.
 
 ```rust
-use pinapod::{PinaPod, String, Vec};
+use pinapod::PinaPod;
+use pinapod::String;
+use pinapod::Vec;
 
 #[derive(PinaPod)]
 #[pinapod(compact)]
 struct Journal {
-    revision: u64,
-    entries: Vec<u64, 1024>,
-    note: Option<String<128>>,
+	revision: u64,
+	entries: Vec<u64, 1024>,
+	note: Option<String<128>>,
 }
 ```
 
@@ -86,11 +88,12 @@ A compact struct can contain more than one dynamic tail. Unsupported dynamic nes
 `String<N>` uses a one-byte prefix. `Vec<T, N>` uses a two-byte prefix. Use `PodString<N, PFX>` or `PodVec<T, N, PFX>` for an explicit width, where `PFX` is `1`, `2`, `4`, or `8`.
 
 ```rust
-use pinapod::{PinaPod, PodVec};
+use pinapod::PinaPod;
+use pinapod::PodVec;
 
 #[derive(PinaPod)]
 struct History {
-    values: PodVec<u64, 1024, 2>,
+	values: PodVec<u64, 1024, 2>,
 }
 ```
 

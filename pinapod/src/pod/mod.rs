@@ -30,9 +30,14 @@ mod option;
 mod string;
 mod vec;
 
+pub use numeric::*;
+pub use option::*;
+pub use string::*;
+pub use vec::*;
+
+pub use self::bool::*;
 #[cfg(feature = "floats")]
 pub use self::float::*;
-pub use {self::bool::*, numeric::*, option::*, string::*, vec::*};
 
 #[cfg(feature = "wincode")]
 mod wincode;

@@ -68,7 +68,7 @@ A framework that re-exports PinaPod must tell the derive where its runtime re-ex
 #[derive(pina::PinaPod)]
 #[pinapod(crate = pina::pinapod, no_inherent)]
 struct FrameworkAccount {
-    value: u64,
+	value: u64,
 }
 ```
 
@@ -116,14 +116,16 @@ Counter::initialize(&mut data, |value| {
 PinaPod v0.2 supports `String<N>`, `Vec<T, N>`, and `Option<T>` in fixed accounts. It also supports recursively bounded combinations.
 
 ```rust
-use pinapod::{PinaPod, String, Vec};
+use pinapod::PinaPod;
+use pinapod::String;
+use pinapod::Vec;
 
 #[derive(PinaPod)]
 struct Profile {
-    display_name: String<32>,
-    tags: Vec<u16, 16>,
-    bio: Option<String<128>>,
-    previous_names: Vec<String<32>, 4>,
+	display_name: String<32>,
+	tags: Vec<u16, 16>,
+	bio: Option<String<128>>,
+	previous_names: Vec<String<32>, 4>,
 }
 ```
 
@@ -197,7 +199,8 @@ profile.roles.try_set(&native)?;
 Remove any proposed or local `#[pinapod(prefix = ...)]` syntax. Use the final const generic on the pod type:
 
 ```rust
-use pinapod::{PodString, PodVec};
+use pinapod::PodString;
+use pinapod::PodVec;
 
 type Memo = PodString<1024, 2>;
 type Entries = PodVec<u64, 1024, 2>;

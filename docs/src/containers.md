@@ -14,7 +14,8 @@ The schema aliases choose common prefix widths, so ordinary declarations stay sh
 <!-- {/podSchemaAliases} -->
 
 ```rust
-use pinapod::{String, Vec};
+use pinapod::String;
+use pinapod::Vec;
 
 type Name = String<32>; // PodString<32, 1>
 type Scores = Vec<u64, 16>; // PodVec<u64, 16, 2>
@@ -25,7 +26,8 @@ The aliases are ordinary Rust aliases. An editor can resolve `String` and `Vec` 
 Use `PodString` or `PodVec` when a format needs an explicit prefix:
 
 ```rust
-use pinapod::{PodString, PodVec};
+use pinapod::PodString;
+use pinapod::PodVec;
 
 type LongText = PodString<1024, 2>;
 type SmallList = PodVec<u64, 12, 1>;
