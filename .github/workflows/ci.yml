@@ -261,8 +261,15 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: install solvers
-        uses: $/.github/actions/kani-solvers
+      # The arithmetic harnesses pin `cvc5`, and the packaged z3 on ubuntu-24.04
+      # is a 2021 release whose wide bitvector reasoning is far too slow for the
+      # 128-bit proofs, so both solvers are installed at pinned versions.
+      - name: install z3
+        uses: cda-tum/setup-z3@0401375ea1e34d77ef35bbeb634f6203f3bcde60 # v1.7.3
+        with:
+          version: 4.16.0
+      - name: install cvc5
+        uses: $/.github/actions/install-cvc5
       - name: verify Pinapod
         # The proofs run against Kani's own toolchain rather than the devenv
         # environment: they need nothing from devenv beyond the solvers
