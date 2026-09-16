@@ -8,6 +8,14 @@ Start with [Choose an account layout](./account-layouts.md). If you already use 
 
 ## What v0.2 guarantees
 
+<!-- {=podAlignmentAndValidationContract} -->
+
+All representations have alignment one, so a stored field can be read at any byte offset without a copy or a relocation.
+
+Safe readers validate tags, lengths, UTF-8, enum discriminants, nested values, and slice bounds before they return a reference.
+
+<!-- {/podAlignmentAndValidationContract} -->
+
 Safe APIs provide these guarantees:
 
 - A reader validates the complete representation before it returns a typed reference.

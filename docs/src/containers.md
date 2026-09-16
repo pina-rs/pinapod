@@ -2,9 +2,16 @@
 
 `String`, `Vec`, and `Option` in a schema are bounded account types. They do not use heap allocation. The derive maps them to `PodString`, `PodVec`, and `PodOption` representations.
 
-## Schema aliases choose common prefixes
+## Schema aliases
 
-The root aliases keep ordinary schema declarations short:
+<!-- {=podSchemaAliases} -->
+
+The schema aliases choose common prefix widths, so ordinary declarations stay short:
+
+- `String<N>` is `PodString<N, 1>`.
+- `Vec<T, N>` is `PodVec<T, N, 2>`.
+
+<!-- {/podSchemaAliases} -->
 
 ```rust
 use pinapod::{String, Vec};
@@ -25,11 +32,29 @@ type SmallList = PodVec<u64, 12, 1>;
 type LargeList = PodVec<u64, 100_000, 4>;
 ```
 
-The last const argument is a byte count. It must be `1`, `2`, `4`, or `8`. Do not write a prefix type such as `u16`, and do not attach a prefix attribute to the field.
+The last const argument is the prefix byte count.
 
-The capacity must fit in the selected prefix. For example, `String<256>` is invalid because its one-byte prefix can represent at most 255. Use `PodString<256, 2>` for that schema.
+<!-- {=podPrefixWidthRule} -->
+
+`PFX` is the width in bytes of the length prefix or tag that precedes the payload, and it must be `1`, `2`, `4`, or `8`.
+
+<!-- {/podPrefixWidthRule} -->
+
+<!-- {=podStringCapacityRule} -->
+
+The capacity must fit that prefix: `String<255>` is valid, `String<256>` is not, and `PodString<256, 2>` restores it.
+
+<!-- {/podStringCapacityRule} -->
+
+Do not write a prefix type such as `u16`, and do not attach a prefix attribute to the field.
 
 Changing a prefix width changes the wire format. Capacity alone does not change existing value bytes, but it changes the fixed representation size.
+
+<!-- {=podCapacityOverflowAdvice} -->
+
+Choose the capacity from the largest value the schema must hold, because a write that does not fit is rejected rather than truncated.
+
+<!-- {/podCapacityOverflowAdvice} -->
 
 ## `PodVec` maps native elements
 
@@ -49,9 +74,15 @@ assert_eq!(values[0].get(), 13);
 
 ## Removed values become zero bytes
 
-Every pod container has fully initialized backing storage. `Default` zeros both the prefix and inactive capacity. Operations that shorten or clear a string or vector zero the removed range. Setting a `PodOption` to `None` zeros its payload.
+<!-- {=podZeroedInactiveCapacityContract} -->
 
-These rules prevent a later raw account read or canonical serialization from disclosing a previous value.
+Every container starts with fully initialized backing storage.
+
+Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.
+
+<!-- {/podZeroedInactiveCapacityContract} -->
+
+`Default` zeros both the prefix and the inactive capacity, and setting a `PodOption` to `None` zeros its payload.
 
 ## A vector of strings has fixed-size elements
 

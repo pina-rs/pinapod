@@ -1,8 +1,13 @@
 use {crate::traits::ZcElem, core::mem::MaybeUninit};
 
-#[repr(C)]
-#[derive(Clone, Copy)]
 /// An alignment-one optional value whose storage type satisfies [`ZcElem`].
+///
+/// The representation is a `PFX`-byte little-endian tag followed by the payload, so
+/// `PodOption<T, PFX>` occupies `PFX + size_of::<T>()` bytes with alignment one. A tag
+/// of `0` is absent and a tag of `1` is present; a reader rejects every other value.
+///
+/// <!-- {=podPrefixWidthRule|trim|linePrefix:"/// ":true} -->
+/// `PFX` is the width in bytes of the length prefix or tag that precedes the payload, and it must be `1`, `2`, `4`, or `8`.<!-- {/podPrefixWidthRule} -->
 ///
 /// Types with restricted Rust bit validity cannot be used as raw storage:
 ///
@@ -22,6 +27,13 @@ use {crate::traits::ZcElem, core::mem::MaybeUninit};
 /// let absent = PodOption::<u8>::none();
 /// let _ = absent.value_unchecked();
 /// ```
+///
+/// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true} -->
+/// Every container starts with fully initialized backing storage.
+///
+/// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
+#[repr(C)]
+#[derive(Clone, Copy)]
 pub struct PodOption<T: ZcElem, const PFX: usize = 1> {
     tag: [u8; PFX],
     value: MaybeUninit<T>,
@@ -89,6 +101,10 @@ impl<T: ZcElem, const PFX: usize> PodOption<T, PFX> {
         buf
     }
 
+    /// Creates an absent value.
+    ///
+    /// The tag and the payload bytes are all zero, so this is the canonical absent
+    /// representation and its bytes are fully initialized.
     #[inline(always)]
     pub fn none() -> Self {
         Self {
@@ -97,6 +113,7 @@ impl<T: ZcElem, const PFX: usize> PodOption<T, PFX> {
         }
     }
 
+    /// Creates a present value.
     #[inline(always)]
     pub fn some(value: T) -> Self {
         Self {
@@ -105,16 +122,24 @@ impl<T: ZcElem, const PFX: usize> PodOption<T, PFX> {
         }
     }
 
+    /// Returns `true` when the tag encodes a present value.
+    ///
+    /// Only the tag is inspected, so an inactive payload cannot make this report `true`.
     #[inline(always)]
     pub fn is_some(&self) -> bool {
         self.decode_tag() == 1
     }
 
+    /// Returns `true` when the tag does not encode a present value.
+    ///
+    /// A tag other than `0` or `1` counts as absent; [`tag_valid`](Self::tag_valid)
+    /// distinguishes that corrupt case.
     #[inline(always)]
     pub fn is_none(&self) -> bool {
         !self.is_some()
     }
 
+    /// Returns a copy of the payload, or `None` when the tag does not encode a present value.
     #[inline(always)]
     pub fn get(&self) -> Option<T> {
         if self.is_some() {
@@ -134,6 +159,12 @@ impl<T: ZcElem, const PFX: usize> PodOption<T, PFX> {
         }
     }
 
+    /// Replaces the stored value, writing the canonical bytes for either state.
+    ///
+    /// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Every container starts with fully initialized backing storage.
+    ///
+    /// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
     #[inline(always)]
     pub fn set(&mut self, value: Option<T>) {
         match value {
@@ -157,19 +188,38 @@ impl<T: ZcElem, const PFX: usize> PodOption<T, PFX> {
         self.decode_tag()
     }
 
+    /// Returns `true` when the tag is `0` or `1`.
+    ///
+    /// Unlike [`is_none`](Self::is_none), this separates a canonical absent value from
+    /// a forged tag. Canonical writers reject a value this method reports `false` for.
     #[inline(always)]
     pub fn tag_valid(&self) -> bool {
         self.raw_tag() <= 1
     }
 
+    /// Borrows the payload without checking the tag.
+    ///
     /// # Safety
-    /// Caller must ensure tag == 1 (Some).
+    ///
+    /// The caller must ensure the tag is exactly `1`, for example after
+    /// [`is_some`](Self::is_some), `raw_tag() == 1`, or a validating read.
+    /// [`tag_valid`](Self::tag_valid) is not sufficient on its own, because it accepts an
+    /// absent tag of `0` as well.
+    ///
+    /// An absent or corrupt tag leaves the payload uninitialized, so the returned
+    /// reference would read indeterminate bytes.
     #[inline(always)]
     pub unsafe fn assume_init_ref(&self) -> &T {
         // SAFETY: upheld by the caller as documented above.
         unsafe { self.value.assume_init_ref() }
     }
 
+    /// Removes the value and returns it, leaving the option absent.
+    ///
+    /// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Every container starts with fully initialized backing storage.
+    ///
+    /// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
     pub fn take(&mut self) -> Option<T> {
         let result = self.get();
         self.tag = [0u8; PFX];
@@ -177,6 +227,12 @@ impl<T: ZcElem, const PFX: usize> PodOption<T, PFX> {
         result
     }
 
+    /// Replaces the value and returns the previous one, leaving the option present.
+    ///
+    /// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Every container starts with fully initialized backing storage.
+    ///
+    /// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
     pub fn replace(&mut self, value: T) -> Option<T> {
         let old = self.get();
         self.tag = Self::encode_tag(1);
@@ -184,11 +240,18 @@ impl<T: ZcElem, const PFX: usize> PodOption<T, PFX> {
         old
     }
 
+    /// Removes the value, leaving the option absent.
+    ///
+    /// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Every container starts with fully initialized backing storage.
+    ///
+    /// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
     pub fn clear(&mut self) {
         self.tag = [0u8; PFX];
         self.value = MaybeUninit::zeroed();
     }
 
+    /// Returns the payload, or `default` when the tag does not encode a present value.
     pub fn unwrap_or(self, default: T) -> T {
         match self.get() {
             Some(v) => v,
@@ -196,6 +259,8 @@ impl<T: ZcElem, const PFX: usize> PodOption<T, PFX> {
         }
     }
 
+    /// Applies `f` to the payload, or returns `default` when the tag does not encode a
+    /// present value.
     pub fn map_or<U>(&self, default: U, f: impl FnOnce(T) -> U) -> U {
         match self.get() {
             Some(v) => f(v),

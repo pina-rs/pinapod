@@ -15,7 +15,15 @@ PinaPod supports Rust 1.89 and newer. The MSRV follows the Rust versions support
 
 ## Pick a layout
 
-Use a fixed layout when the account allocation never changes. Bounded strings, vectors, and options work in fixed layouts. Their full capacities occupy account bytes.
+Use a fixed layout when the account allocation never changes. Bounded strings, vectors, and options work in fixed layouts.
+
+<!-- {=podContainerFootprintContract} -->
+
+A container reserves its full capacity wherever it appears, so a smaller value never shrinks the representation.
+
+`String<32>` occupies its one-byte prefix plus all 32 payload bytes, and `Vec<u64, 8>` occupies its two-byte prefix plus space for all eight elements.
+
+<!-- {/podContainerFootprintContract} -->
 
 ```rust
 use pinapod::{PinaPod, String, Vec};
@@ -59,12 +67,28 @@ Compact schemas support multiple tails. See the [compact account guide](https://
 
 ## Set a prefix width in the type
 
-The schema aliases choose common prefix widths:
+<!-- {=podSchemaAliases} -->
+
+The schema aliases choose common prefix widths, so ordinary declarations stay short:
 
 - `String<N>` is `PodString<N, 1>`.
 - `Vec<T, N>` is `PodVec<T, N, 2>`.
 
-Use the pod types when the wire format needs another width. `PFX` is the number of prefix bytes and must be `1`, `2`, `4`, or `8`.
+<!-- {/podSchemaAliases} -->
+
+Use the pod types when the wire format needs another width.
+
+<!-- {=podPrefixWidthRule} -->
+
+`PFX` is the width in bytes of the length prefix or tag that precedes the payload, and it must be `1`, `2`, `4`, or `8`.
+
+<!-- {/podPrefixWidthRule} -->
+
+<!-- {=podStringCapacityRule} -->
+
+The capacity must fit that prefix: `String<255>` is valid, `String<256>` is not, and `PodString<256, 2>` restores it.
+
+<!-- {/podStringCapacityRule} -->
 
 ```rust
 use pinapod::{PinaPod, PodString, PodVec};
@@ -80,6 +104,8 @@ Do not use `#[pinapod(prefix = u16)]`. Prefix width belongs in the field type, s
 
 ## Pod types
 
+<!-- {=podTypesTable} -->
+
 | Type                       |                     Stored size | Meaning                                     |
 | -------------------------- | ------------------------------: | ------------------------------------------- |
 | `PodU16` through `PodU128` |              2 through 16 bytes | Unsigned, little-endian integer             |
@@ -91,9 +117,19 @@ Do not use `#[pinapod(prefix = u16)]`. Prefix width belongs in the field type, s
 | `PodString<N, PFX>`        |                       `PFX + N` | UTF-8 string with at most `N` bytes         |
 | `PodVec<T, N, PFX>`        | `PFX + N * mapped element size` | Vector with at most `N` mapped pod elements |
 
-All representations have alignment one. Safe readers validate tags, lengths, UTF-8, enum discriminants, nested values, and slice bounds before they return a reference.
+<!-- {/podTypesTable} -->
+
+<!-- {=podAlignmentAndValidationContract} -->
+
+All representations have alignment one, so a stored field can be read at any byte offset without a copy or a relocation.
+
+Safe readers validate tags, lengths, UTF-8, enum discriminants, nested values, and slice bounds before they return a reference.
+
+<!-- {/podAlignmentAndValidationContract} -->
 
 ## Features
+
+<!-- {=podFeatureTable} -->
 
 | Feature                | Adds                                                     |
 | ---------------------- | -------------------------------------------------------- |
@@ -102,6 +138,16 @@ All representations have alignment one. Safe readers validate tags, lengths, UTF
 | `solana-address`       | A mapping for `solana_address::Address`                  |
 | `solana-program-error` | Conversion from `PinaPodError` to `ProgramError`         |
 | `wincode`              | Canonical `SchemaRead` and `SchemaWrite` implementations |
+
+<!-- {/podFeatureTable} -->
+
+<!-- {=podFeatureDefaultsContract} -->
+
+No feature is enabled by default, so the core crate stays `no_std` and dependency-free.
+
+Enable only what a program reads from or writes to the wire.
+
+<!-- {/podFeatureDefaultsContract} -->
 
 ## Documentation and verification
 

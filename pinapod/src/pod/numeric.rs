@@ -4,6 +4,11 @@ use core::fmt;
 
 macro_rules! define_pod_integer {
     ($name:ident, $native:ty, $size:expr) => {
+        #[doc = concat!("Alignment-one storage for a schema field declared as `", stringify!($native), "`.")]
+        #[doc = ""]
+        #[doc = concat!("The stored value is the little-endian bit pattern in ", stringify!($size), " bytes, so `", stringify!($name), "` is `#[repr(transparent)]` over `[u8; ", stringify!($size), "]` and can be read at any byte offset. Decode with [`get`](Self::get), encode with [`set`](Self::set), and pick an overflow contract per call with the `checked_*`, `wrapping_*`, and `saturating_*` methods.")]
+        #[doc = ""]
+        #[doc = concat!("A schema field declared as `", stringify!($native), "` maps to this pod through the [`ZcField`](crate::ZcField) implementation, so `PinaPod` derives accept the native spelling. The methods mirror the native integer arithmetic, but every operation returns a pod value and the arithmetic itself never panics.")]
         #[repr(transparent)]
         #[derive(Copy, Clone, Default)]
         #[cfg_attr(feature = "wincode", derive(wincode::SchemaWrite, wincode::SchemaRead))]

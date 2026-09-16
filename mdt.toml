@@ -1,0 +1,6 @@
+# Matches the Pina workspace convention. `before = 0` starts provider content on
+# the line after the opening tag, and `after = false` ends it inline with the
+# closing tag, so a `///`-prefixed block reads as an unbroken rustdoc chain.
+[padding]
+before = 0
+after = false
