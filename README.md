@@ -58,10 +58,10 @@ use pinapod::Vec;
 #[derive(PinaPod)]
 #[pinapod(compact)]
 struct Journal {
-	authority: [u8; 32],
-	revision: u64,
-	entries: Vec<u64, 1024>,
-	note: Option<String<128>>,
+    authority: [u8; 32],
+    revision: u64,
+    entries: Vec<u64, 1024>,
+    note: Option<String<128>>,
 }
 ```
 
@@ -99,8 +99,8 @@ use pinapod::PodVec;
 
 #[derive(PinaPod)]
 struct Archive {
-	label: PodString<300, 2>,
-	values: PodVec<u64, 1024, 2>,
+    label: PodString<300, 2>,
+    values: PodVec<u64, 1024, 2>,
 }
 ```
 

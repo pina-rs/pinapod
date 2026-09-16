@@ -68,7 +68,7 @@ A framework that re-exports PinaPod must tell the derive where its runtime re-ex
 #[derive(pina::PinaPod)]
 #[pinapod(crate = pina::pinapod, no_inherent)]
 struct FrameworkAccount {
-	value: u64,
+    value: u64,
 }
 ```
 
@@ -122,10 +122,10 @@ use pinapod::Vec;
 
 #[derive(PinaPod)]
 struct Profile {
-	display_name: String<32>,
-	tags: Vec<u16, 16>,
-	bio: Option<String<128>>,
-	previous_names: Vec<String<32>, 4>,
+    display_name: String<32>,
+    tags: Vec<u16, 16>,
+    bio: Option<String<128>>,
+    previous_names: Vec<String<32>, 4>,
 }
 ```
 

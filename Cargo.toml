@@ -42,6 +42,13 @@ unused_qualifications = "warn"
 variant_size_differences = "warn"
 edition_2024_expr_fragment_specifier = "allow"
 
+[workspace.lints.rustdoc]
+# mdt renders its block close markers inline after the last row of a
+# generated table. rustdoc's markdown table lint reads that marker as
+# content trailing the final cell, but the marker is an invisible
+# synchronization delimiter, so the warning is always a false positive here.
+invalid_markdown_table = "allow"
+
 [workspace.lints.rust.unexpected_cfgs]
 level = "warn"
 check-cfg = [
@@ -77,5 +84,9 @@ must_use_candidate = "allow"
 no_effect_underscore_binding = "allow"
 tabs-in-doc-comments = "allow"
 too_many_lines = "allow"
+# The pod containers force compile-time capacity and prefix assertions by
+# referencing deliberately underscore-prefixed consts (`let _ =
+# Self::_CAP_CHECK`); the lint misreads that idiom as an accidental use.
+used_underscore_items = "allow"
 wildcard_dependencies = "deny"
 wildcard_imports = "allow"

@@ -1,16 +1,10 @@
-error[E0277]: the trait bound `u16: ZcField` is not satisfied
+error[E0277]: the trait bound `<u16 as ZcField>::Pod: ZcElem` is not satisfied
  --> tests/ui/fail/primitive_name_shadowing.rs:6:10
   |
 6 | #[derive(PinaPod)]
-  |          ^^^^^^^ unsatisfied trait bound
+  |          ^^^^^^^ the trait `ZcElem` is not implemented for `<u16 as ZcField>::Pod`
   |
-help: the trait `ZcField` is not implemented for `u16`
- --> tests/ui/fail/primitive_name_shadowing.rs:4:1
-  |
-4 | struct u16(bool);
-  | ^^^^^^^^^^
-  = help: the following other types implement trait `ZcField`:
-            Option<T>
+  = help: the following other types implement trait `ZcElem`:
             PodBool
             PodF32
             PodF64
@@ -18,8 +12,8 @@ help: the trait `ZcField` is not implemented for `u16`
             PodI16
             PodI32
             PodI64
+            PodOption<T, PFX>
           and $N others
-  = help: see issue #48214
   = note: this error originates in the derive macro `PinaPod` (in Nightly builds, run with -Z macro-backtrace for more info)
 help: add `#![feature(trivial_bounds)]` to the crate attributes to enable
   |
@@ -27,37 +21,6 @@ help: add `#![feature(trivial_bounds)]` to the crate attributes to enable
   |
 
 error[E0277]: the trait bound `u16: ZcField` is not satisfied
- --> tests/ui/fail/primitive_name_shadowing.rs:8:8
-  |
-8 | struct ShadowedPrimitive {
-  |        ^^^^^^^^^^^^^^^^^ unsatisfied trait bound
-  |
-help: the trait `ZcField` is not implemented for `u16`
- --> tests/ui/fail/primitive_name_shadowing.rs:4:1
-  |
-4 | struct u16(bool);
-  | ^^^^^^^^^^
-  = help: the following other types implement trait `ZcField`:
-            Option<T>
-            PodBool
-            PodF32
-            PodF64
-            PodI128
-            PodI16
-            PodI32
-            PodI64
-          and $N others
-note: required by a bound in `ShadowedPrimitiveZc`
- --> tests/ui/fail/primitive_name_shadowing.rs:6:10
-  |
-6 | #[derive(PinaPod)]
-  |          ^^^^^^^ required by this bound in `ShadowedPrimitiveZc`
-7 | #[pinapod(crate = pinapod)]
-8 | struct ShadowedPrimitive {
-  |        ----------------- required by a bound in this struct
-  = note: this error originates in the derive macro `PinaPod` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0277]: the trait bound `u16: ZcField` is not satisfied
  --> tests/ui/fail/primitive_name_shadowing.rs:6:10
   |
 6 | #[derive(PinaPod)]
@@ -78,14 +41,50 @@ help: the trait `ZcField` is not implemented for `u16`
             PodI32
             PodI64
           and $N others
-note: required by a bound in `ShadowedPrimitiveZc`
+  = note: this error originates in the derive macro `PinaPod` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: add `#![feature(trivial_bounds)]` to the crate attributes to enable
+  |
+1 + #![feature(trivial_bounds)]
+  |
+
+error: the type `ShadowedPrimitiveZc` is not well-formed
+ --> tests/ui/fail/primitive_name_shadowing.rs:8:8
+  |
+8 | struct ShadowedPrimitive {
+  |        ^^^^^^^^^^^^^^^^^
+
+error: the type `&ShadowedPrimitiveZc` is not well-formed
  --> tests/ui/fail/primitive_name_shadowing.rs:6:10
   |
 6 | #[derive(PinaPod)]
-  |          ^^^^^^^ required by this bound in `ShadowedPrimitiveZc`
-7 | #[pinapod(crate = pinapod)]
+  |          ^^^^^^^
+  |
+  = note: this error originates in the derive macro `PinaPod` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the size for values of type `ShadowedPrimitiveZc` cannot be known at compilation time
+ --> tests/ui/fail/primitive_name_shadowing.rs:8:8
+  |
 8 | struct ShadowedPrimitive {
-  |        ----------------- required by a bound in this struct
+  |        ^^^^^^^^^^^^^^^^^ doesn't have a size known at compile-time
+  |
+help: the trait `Sized` is not implemented for `ShadowedPrimitiveZc`
+ --> tests/ui/fail/primitive_name_shadowing.rs:6:10
+  |
+6 | #[derive(PinaPod)]
+  |          ^^^^^^^
+note: required by an implicit `Sized` bound in `std::mem::align_of`
+ --> $RUST/core/src/mem/mod.rs
+  |
+  | pub const fn align_of<T>() -> usize {
+  |                       ^ required by the implicit `Sized` requirement on this type parameter in `align_of`
+  = note: this error originates in the derive macro `PinaPod` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: the type `ShadowedPrimitiveZc` is not well-formed
+ --> tests/ui/fail/primitive_name_shadowing.rs:6:10
+  |
+6 | #[derive(PinaPod)]
+  |          ^^^^^^^
+  |
   = note: this error originates in the derive macro `PinaPod` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `u16: ZcField` is not satisfied

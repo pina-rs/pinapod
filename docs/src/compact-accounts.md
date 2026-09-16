@@ -14,12 +14,12 @@ use pinapod::Vec;
 #[derive(PinaPod)]
 #[pinapod(compact)]
 struct Journal {
-	authority: [u8; 32],
-	revision: u64,
-	checkpoint: Option<u64>,
-	entries: Vec<u64, 1024>,
-	note: Option<String<128>>,
-	labels: Vec<String<16>, 32>,
+    authority: [u8; 32],
+    revision: u64,
+    checkpoint: Option<u64>,
+    entries: Vec<u64, 1024>,
+    note: Option<String<128>>,
+    labels: Vec<String<16>, 32>,
 }
 ```
 
