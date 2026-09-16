@@ -78,13 +78,17 @@ The schema aliases choose common prefix widths, so ordinary declarations stay sh
 
 Use the pod types when the wire format needs another width.
 
-<!-- {=podPrefixWidthContract} -->
+<!-- {=podPrefixWidthRule} -->
 
-`PFX` is the length-prefix width in bytes and must be `1`, `2`, `4`, or `8`.
+`PFX` is the width in bytes of the length prefix or tag that precedes the payload, and it must be `1`, `2`, `4`, or `8`.
+
+<!-- {/podPrefixWidthRule} -->
+
+<!-- {=podStringCapacityRule} -->
 
 The capacity must fit that prefix: `String<255>` is valid, `String<256>` is not, and `PodString<256, 2>` restores it.
 
-<!-- {/podPrefixWidthContract} -->
+<!-- {/podStringCapacityRule} -->
 
 ```rust
 use pinapod::{PinaPod, PodString, PodVec};

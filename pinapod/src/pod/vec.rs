@@ -18,10 +18,11 @@ use {
 /// `N` fixed-size element slots, so `PodVec<T, N, PFX>` occupies
 /// `PFX + N * size_of::<T::Pod>()` bytes with alignment one.
 ///
-/// <!-- {=podPrefixWidthContract|trim|linePrefix:"/// ":true} -->
-/// `PFX` is the length-prefix width in bytes and must be `1`, `2`, `4`, or `8`.
+/// <!-- {=podPrefixWidthRule|trim|linePrefix:"/// ":true} -->
+/// `PFX` is the width in bytes of the length prefix or tag that precedes the payload, and it must be `1`, `2`, `4`, or `8`.<!-- {/podPrefixWidthRule} -->
 ///
-/// The capacity must fit that prefix: `String<255>` is valid, `String<256>` is not, and `PodString<256, 2>` restores it.<!-- {/podPrefixWidthContract} -->
+/// <!-- {=podVecCapacityRule|trim|linePrefix:"/// ":true} -->
+/// The element count must fit that prefix: `Vec<u64, 255>` is valid, `Vec<u64, 256>` is not, and `PodVec<u64, 256, 2>` restores it.<!-- {/podVecCapacityRule} -->
 ///
 /// The default prefix is two bytes, so the [`Vec`](crate::Vec) alias is
 /// `PodVec<T, N, 2>`.
@@ -37,10 +38,11 @@ pub type PodVec<T, const N: usize, const PFX: usize = 2> = PodVecRepr<<T as ZcFi
 /// `N` element slots of type `T`, so `PodVecRepr<T, N, PFX>` occupies
 /// `PFX + N * size_of::<T>()` bytes with alignment one.
 ///
-/// <!-- {=podPrefixWidthContract|trim|linePrefix:"/// ":true} -->
-/// `PFX` is the length-prefix width in bytes and must be `1`, `2`, `4`, or `8`.
+/// <!-- {=podPrefixWidthRule|trim|linePrefix:"/// ":true} -->
+/// `PFX` is the width in bytes of the length prefix or tag that precedes the payload, and it must be `1`, `2`, `4`, or `8`.<!-- {/podPrefixWidthRule} -->
 ///
-/// The capacity must fit that prefix: `String<255>` is valid, `String<256>` is not, and `PodString<256, 2>` restores it.<!-- {/podPrefixWidthContract} -->
+/// <!-- {=podVecCapacityRule|trim|linePrefix:"/// ":true} -->
+/// The element count must fit that prefix: `Vec<u64, 255>` is valid, `Vec<u64, 256>` is not, and `PodVec<u64, 256, 2>` restores it.<!-- {/podVecCapacityRule} -->
 ///
 /// # Stability
 ///

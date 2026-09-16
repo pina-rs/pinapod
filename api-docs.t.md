@@ -28,13 +28,23 @@ The destination keeps its previous contents, so a rejected write is a no-op.
 
 <!-- {/podWriteCapacityContract} -->
 
-<!-- {@podPrefixWidthContract} -->
+<!-- {@podPrefixWidthRule} -->
 
-`PFX` is the length-prefix width in bytes and must be `1`, `2`, `4`, or `8`.
+`PFX` is the width in bytes of the length prefix or tag that precedes the payload, and it must be `1`, `2`, `4`, or `8`.
+
+<!-- {/podPrefixWidthRule} -->
+
+<!-- {@podStringCapacityRule} -->
 
 The capacity must fit that prefix: `String<255>` is valid, `String<256>` is not, and `PodString<256, 2>` restores it.
 
-<!-- {/podPrefixWidthContract} -->
+<!-- {/podStringCapacityRule} -->
+
+<!-- {@podVecCapacityRule} -->
+
+The element count must fit that prefix: `Vec<u64, 255>` is valid, `Vec<u64, 256>` is not, and `PodVec<u64, 256, 2>` restores it.
+
+<!-- {/podVecCapacityRule} -->
 
 <!-- {@podZeroedInactiveCapacityContract} -->
 

@@ -20,10 +20,11 @@ pub(crate) const fn max_n_for_pfx(pfx: usize) -> usize {
 /// read at any byte offset. Active bytes are always valid UTF-8: a reader validates them,
 /// and every writer takes a `&str`.
 ///
-/// <!-- {=podPrefixWidthContract|trim|linePrefix:"/// ":true} -->
-/// `PFX` is the length-prefix width in bytes and must be `1`, `2`, `4`, or `8`.
+/// <!-- {=podPrefixWidthRule|trim|linePrefix:"/// ":true} -->
+/// `PFX` is the width in bytes of the length prefix or tag that precedes the payload, and it must be `1`, `2`, `4`, or `8`.<!-- {/podPrefixWidthRule} -->
 ///
-/// The capacity must fit that prefix: `String<255>` is valid, `String<256>` is not, and `PodString<256, 2>` restores it.<!-- {/podPrefixWidthContract} -->
+/// <!-- {=podStringCapacityRule|trim|linePrefix:"/// ":true} -->
+/// The capacity must fit that prefix: `String<255>` is valid, `String<256>` is not, and `PodString<256, 2>` restores it.<!-- {/podStringCapacityRule} -->
 ///
 /// The default prefix is one byte, so the [`String`](crate::String) alias is
 /// `PodString<N, 1>`. Safe accessors clamp the decoded length to `N`; call

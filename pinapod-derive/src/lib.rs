@@ -32,9 +32,14 @@
 //! # Container fields
 //!
 //! A field is treated as a dynamic container when it is spelled `String<..>`, `Vec<..>`,
-//! or `Option<..>`, either unqualified or through a resolved `pinapod` path. Every other
-//! type must provide its own `ZcField` mapping, so a locally defined `String` is a fixed
-//! inline type rather than a `PinaPod` container.
+//! or `Option<..>` as a single unqualified segment, or when the segment before the name
+//! is literally `pinapod`, `pinapod::pod`, or a `pina` re-export. Every other type must
+//! provide its own `ZcField` mapping.
+//!
+//! The check compares path segments, so a module of yours that is itself named `pinapod`
+//! or `pina` is read as the `PinaPod` containers rather than as your types. Avoid module
+//! names that shadow the dependency, or spell such a field through an unambiguous path.
+//! A type name alone never grants a built-in representation.
 //!
 //! Prefix width belongs in the field type, not in an attribute:
 //!

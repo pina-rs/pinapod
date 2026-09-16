@@ -170,10 +170,11 @@ mod generated_proofs;
 /// [`pod::PodString`] directly when the wire format needs an explicit prefix width,
 /// for example `PodString<300, 2>`.
 ///
-/// <!-- {=podPrefixWidthContract|trim|linePrefix:"/// ":true} -->
-/// `PFX` is the length-prefix width in bytes and must be `1`, `2`, `4`, or `8`.
+/// <!-- {=podPrefixWidthRule|trim|linePrefix:"/// ":true} -->
+/// `PFX` is the width in bytes of the length prefix or tag that precedes the payload, and it must be `1`, `2`, `4`, or `8`.<!-- {/podPrefixWidthRule} -->
 ///
-/// The capacity must fit that prefix: `String<255>` is valid, `String<256>` is not, and `PodString<256, 2>` restores it.<!-- {/podPrefixWidthContract} -->
+/// <!-- {=podStringCapacityRule|trim|linePrefix:"/// ":true} -->
+/// The capacity must fit that prefix: `String<255>` is valid, `String<256>` is not, and `PodString<256, 2>` restores it.<!-- {/podStringCapacityRule} -->
 ///
 /// <!-- {=podCapacityOverflowAdvice|trim|linePrefix:"/// ":true} -->
 /// Choose the capacity from the largest value the schema must hold, because a write that does not fit is rejected rather than truncated.<!-- {/podCapacityOverflowAdvice} -->
@@ -186,10 +187,11 @@ pub type String<const N: usize> = PodString<N, 1>;
 /// Use [`pod::PodVec`] directly when the wire format needs an explicit prefix width,
 /// for example `PodVec<u64, 1024, 4>`.
 ///
-/// <!-- {=podPrefixWidthContract|trim|linePrefix:"/// ":true} -->
-/// `PFX` is the length-prefix width in bytes and must be `1`, `2`, `4`, or `8`.
+/// <!-- {=podPrefixWidthRule|trim|linePrefix:"/// ":true} -->
+/// `PFX` is the width in bytes of the length prefix or tag that precedes the payload, and it must be `1`, `2`, `4`, or `8`.<!-- {/podPrefixWidthRule} -->
 ///
-/// The capacity must fit that prefix: `String<255>` is valid, `String<256>` is not, and `PodString<256, 2>` restores it.<!-- {/podPrefixWidthContract} -->
+/// <!-- {=podVecCapacityRule|trim|linePrefix:"/// ":true} -->
+/// The element count must fit that prefix: `Vec<u64, 255>` is valid, `Vec<u64, 256>` is not, and `PodVec<u64, 256, 2>` restores it.<!-- {/podVecCapacityRule} -->
 ///
 /// <!-- {=podCapacityOverflowAdvice|trim|linePrefix:"/// ":true} -->
 /// Choose the capacity from the largest value the schema must hold, because a write that does not fit is rejected rather than truncated.<!-- {/podCapacityOverflowAdvice} -->

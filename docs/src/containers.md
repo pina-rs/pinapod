@@ -34,13 +34,17 @@ type LargeList = PodVec<u64, 100_000, 4>;
 
 The last const argument is the prefix byte count.
 
-<!-- {=podPrefixWidthContract} -->
+<!-- {=podPrefixWidthRule} -->
 
-`PFX` is the length-prefix width in bytes and must be `1`, `2`, `4`, or `8`.
+`PFX` is the width in bytes of the length prefix or tag that precedes the payload, and it must be `1`, `2`, `4`, or `8`.
+
+<!-- {/podPrefixWidthRule} -->
+
+<!-- {=podStringCapacityRule} -->
 
 The capacity must fit that prefix: `String<255>` is valid, `String<256>` is not, and `PodString<256, 2>` restores it.
 
-<!-- {/podPrefixWidthContract} -->
+<!-- {/podStringCapacityRule} -->
 
 Do not write a prefix type such as `u16`, and do not attach a prefix attribute to the field.
 

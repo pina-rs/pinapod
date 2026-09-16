@@ -6,10 +6,8 @@ use {crate::traits::ZcElem, core::mem::MaybeUninit};
 /// `PodOption<T, PFX>` occupies `PFX + size_of::<T>()` bytes with alignment one. A tag
 /// of `0` is absent and a tag of `1` is present; a reader rejects every other value.
 ///
-/// <!-- {=podPrefixWidthContract|trim|linePrefix:"/// ":true} -->
-/// `PFX` is the length-prefix width in bytes and must be `1`, `2`, `4`, or `8`.
-///
-/// The capacity must fit that prefix: `String<255>` is valid, `String<256>` is not, and `PodString<256, 2>` restores it.<!-- {/podPrefixWidthContract} -->
+/// <!-- {=podPrefixWidthRule|trim|linePrefix:"/// ":true} -->
+/// `PFX` is the width in bytes of the length prefix or tag that precedes the payload, and it must be `1`, `2`, `4`, or `8`.<!-- {/podPrefixWidthRule} -->
 ///
 /// Types with restricted Rust bit validity cannot be used as raw storage:
 ///
@@ -203,8 +201,11 @@ impl<T: ZcElem, const PFX: usize> PodOption<T, PFX> {
     ///
     /// # Safety
     ///
-    /// The caller must ensure the tag is `1`, for example after
-    /// [`is_some`](Self::is_some), [`tag_valid`](Self::tag_valid), or a validating read.
+    /// The caller must ensure the tag is exactly `1`, for example after
+    /// [`is_some`](Self::is_some), `raw_tag() == 1`, or a validating read.
+    /// [`tag_valid`](Self::tag_valid) is not sufficient on its own, because it accepts an
+    /// absent tag of `0` as well.
+    ///
     /// An absent or corrupt tag leaves the payload uninitialized, so the returned
     /// reference would read indeterminate bytes.
     #[inline(always)]
