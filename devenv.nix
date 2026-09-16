@@ -8,6 +8,17 @@
 let
   currentDir = builtins.dirOf __curPos.file;
   custom = inputs.ifiokjr-nixpkgs.packages.${pkgs.stdenv.hostPlatform.system};
+  # Kani's prebuilt driver links the compiler libraries of one exact nightly
+  # release, so the proof environment ships that toolchain alongside it.
+  kaniToolchain = pkgs.rust-bin.nightly."2025-11-21".minimal;
+  kani = custom.kani.overrideAttrs (old: {
+    buildInputs = (old.buildInputs or [ ]) ++ lib.optionals pkgs.stdenv.isLinux [ kaniToolchain ];
+    postInstall = (old.postInstall or "") + ''
+      if [ ! -e "$out/toolchain" ]; then
+        ln -s ${kaniToolchain} "$out/toolchain"
+      fi
+    '';
+  });
 in
 {
   packages = with pkgs; [
@@ -31,6 +42,18 @@ in
 
   apple.sdk = null;
   dotenv.disableHint = true;
+
+  # Proofs run through `devenv --profile kani shell`, matching Pina's setup.
+  # The arithmetic harnesses pin `cvc5` because it decides the wide integer
+  # multiplication and division formulas that the 128-bit pods generate, while
+  # `z3` has to be timed out on the signed 128-bit division proof. Both solvers
+  # ship here so a harness can switch between them during investigation, and so
+  # the same proofs run locally instead of only in CI.
+  profiles.kani.module.packages = [
+    kani
+    pkgs.cvc5
+    pkgs.z3
+  ];
 
   scripts = {
     "build:all" = {
@@ -64,6 +87,48 @@ in
         cargo miri test --manifest-path pinapod/Cargo.toml --all-features --locked
       '';
       description = "Run PinaPod's zero-copy regression suite under Miri.";
+      binary = "bash";
+    };
+    # Proof shards mirror the CI matrix so a local run reproduces a red job.
+    "test:kani" = {
+      exec = ''
+        set -euo pipefail
+        cargo-kani \
+          --manifest-path pinapod/Cargo.toml \
+          --features kani,floats \
+          --output-format terse \
+          --harness "$1"
+      '';
+      description = "Run one Kani proof shard by harness name, e.g. test:kani u128_proofs.";
+      binary = "bash";
+    };
+    # Times every harness in a shard so the slow proofs are visible instead of
+    # only surfacing as a CI timeout.
+    "test:kani:time" = {
+      exec = ''
+        set -euo pipefail
+        for harness in $(cargo +stable metadata --manifest-path pinapod/Cargo.toml --format-version 1 >/dev/null 2>&1; grep -rhoE 'fn [a-z0-9_]+\(' pinapod/src/pod/numeric.rs | sed -E 's/fn ([a-z0-9_]+)\(/\1/' | sort -u); do
+          start=$(date +%s)
+          cargo-kani \
+            --manifest-path pinapod/Cargo.toml \
+            --features kani,floats \
+            --output-format terse \
+            --harness "$1::$harness" >/dev/null 2>&1 || true
+          printf '%s %ss\n' "$harness" "$(( $(date +%s) - start ))"
+        done
+      '';
+      description = "Time each proof harness in a shard to locate slow proofs.";
+      binary = "bash";
+    };
+    "test:kani:all" = {
+      exec = ''
+        set -euo pipefail
+        cargo-kani \
+          --manifest-path pinapod/Cargo.toml \
+          --features kani,floats \
+          --output-format terse
+      '';
+      description = "Run every Kani proof in the workspace.";
       binary = "bash";
     };
     "coverage:all" = {
