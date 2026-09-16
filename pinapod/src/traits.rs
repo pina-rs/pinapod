@@ -21,24 +21,24 @@ use crate::pod::*;
 /// Validation trait for stored (pod) types.
 /// Each pod type knows how to validate itself.
 pub trait ZcValidate: Copy {
-	/// Validate that this value's bytes represent a valid state.
-	fn validate_ref(value: &Self) -> Result<(), PinaPodError>;
+    /// Validate that this value's bytes represent a valid state.
+    fn validate_ref(value: &Self) -> Result<(), PinaPodError>;
 }
 
 // --- ZcValidate: trivially valid types (all bit patterns valid) ---
 
 impl ZcValidate for u8 {
-	#[inline(always)]
-	fn validate_ref(_: &Self) -> Result<(), PinaPodError> {
-		Ok(())
-	}
+    #[inline(always)]
+    fn validate_ref(_: &Self) -> Result<(), PinaPodError> {
+        Ok(())
+    }
 }
 
 impl ZcValidate for i8 {
-	#[inline(always)]
-	fn validate_ref(_: &Self) -> Result<(), PinaPodError> {
-		Ok(())
-	}
+    #[inline(always)]
+    fn validate_ref(_: &Self) -> Result<(), PinaPodError> {
+        Ok(())
+    }
 }
 
 macro_rules! impl_zc_validate_trivial {
@@ -53,89 +53,89 @@ macro_rules! impl_zc_validate_trivial {
 }
 
 impl_zc_validate_trivial!(
-	PodU16, PodU32, PodU64, PodU128, PodI16, PodI32, PodI64, PodI128
+    PodU16, PodU32, PodU64, PodU128, PodI16, PodI32, PodI64, PodI128
 );
 
 // Arrays validate per element; for pods whose every bit pattern is valid the
 // loop optimizes away entirely after monomorphization.
 impl<T: ZcValidate, const N: usize> ZcValidate for [T; N] {
-	#[inline(always)]
-	fn validate_ref(value: &Self) -> Result<(), PinaPodError> {
-		for item in value {
-			T::validate_ref(item)?;
-		}
-		Ok(())
-	}
+    #[inline(always)]
+    fn validate_ref(value: &Self) -> Result<(), PinaPodError> {
+        for item in value {
+            T::validate_ref(item)?;
+        }
+        Ok(())
+    }
 }
 
 // --- ZcValidate: PodBool (byte must be 0 or 1) ---
 
 impl ZcValidate for PodBool {
-	#[inline(always)]
-	fn validate_ref(value: &Self) -> Result<(), PinaPodError> {
-		// SAFETY: PodBool is #[repr(transparent)] over [u8; 1], alignment 1.
-		// Dereferencing as *const u8 reads the single stored byte.
-		let byte = unsafe { *(value as *const PodBool as *const u8) };
-		if byte > 1 {
-			Err(PinaPodError::InvalidBool)
-		} else {
-			Ok(())
-		}
-	}
+    #[inline(always)]
+    fn validate_ref(value: &Self) -> Result<(), PinaPodError> {
+        // SAFETY: PodBool is #[repr(transparent)] over [u8; 1], alignment 1.
+        // Dereferencing as *const u8 reads the single stored byte.
+        let byte = unsafe { *(value as *const PodBool as *const u8) };
+        if byte > 1 {
+            Err(PinaPodError::InvalidBool)
+        } else {
+            Ok(())
+        }
+    }
 }
 
 // --- ZcValidate: PodString (len <= N, active bytes valid UTF-8) ---
 
 impl<const N: usize, const PFX: usize> ZcValidate for PodString<N, PFX> {
-	#[inline(always)]
-	fn validate_ref(value: &Self) -> Result<(), PinaPodError> {
-		let raw_len = value.try_decode_len()?;
-		if raw_len > N {
-			return Err(PinaPodError::InvalidLength);
-		}
-		// SAFETY: raw_len <= N, and data is a [MaybeUninit<u8>; N] array.
-		// The bytes come from account data (initialized memory), not
-		// MaybeUninit::uninit().
-		let bytes =
-			unsafe { core::slice::from_raw_parts(value.data.as_ptr() as *const u8, raw_len) };
-		if core::str::from_utf8(bytes).is_err() {
-			return Err(PinaPodError::InvalidUtf8);
-		}
-		Ok(())
-	}
+    #[inline(always)]
+    fn validate_ref(value: &Self) -> Result<(), PinaPodError> {
+        let raw_len = value.try_decode_len()?;
+        if raw_len > N {
+            return Err(PinaPodError::InvalidLength);
+        }
+        // SAFETY: raw_len <= N, and data is a [MaybeUninit<u8>; N] array.
+        // The bytes come from account data (initialized memory), not
+        // MaybeUninit::uninit().
+        let bytes =
+            unsafe { core::slice::from_raw_parts(value.data.as_ptr() as *const u8, raw_len) };
+        if core::str::from_utf8(bytes).is_err() {
+            return Err(PinaPodError::InvalidUtf8);
+        }
+        Ok(())
+    }
 }
 
 // --- ZcValidate: PodVec (len <= N) ---
 
 impl<T: ZcElem, const N: usize, const PFX: usize> ZcValidate for PodVecRepr<T, N, PFX> {
-	#[inline(always)]
-	fn validate_ref(value: &Self) -> Result<(), PinaPodError> {
-		if value.try_decode_len()? > N {
-			return Err(PinaPodError::InvalidLength);
-		}
-		for item in value.as_slice() {
-			T::validate_ref(item)?;
-		}
-		Ok(())
-	}
+    #[inline(always)]
+    fn validate_ref(value: &Self) -> Result<(), PinaPodError> {
+        if value.try_decode_len()? > N {
+            return Err(PinaPodError::InvalidLength);
+        }
+        for item in value.as_slice() {
+            T::validate_ref(item)?;
+        }
+        Ok(())
+    }
 }
 
 // --- ZcValidate: PodOption (tag 0 or 1, inner valid if Some) ---
 
 impl<T: ZcElem, const PFX: usize> ZcValidate for PodOption<T, PFX> {
-	#[inline(always)]
-	fn validate_ref(value: &Self) -> Result<(), PinaPodError> {
-		match value.raw_tag() {
-			0 => Ok(()),
-			1 => {
-				// SAFETY: Tag validated as == 1 above, so the MaybeUninit value was
-				// initialized by PodOption::some() or deserialization.
-				let inner = unsafe { value.assume_init_ref() };
-				T::validate_ref(inner)
-			}
-			_ => Err(PinaPodError::InvalidTag),
-		}
-	}
+    #[inline(always)]
+    fn validate_ref(value: &Self) -> Result<(), PinaPodError> {
+        match value.raw_tag() {
+            0 => Ok(()),
+            1 => {
+                // SAFETY: Tag validated as == 1 above, so the MaybeUninit value was
+                // initialized by PodOption::some() or deserialization.
+                let inner = unsafe { value.assume_init_ref() };
+                T::validate_ref(inner)
+            }
+            _ => Err(PinaPodError::InvalidTag),
+        }
+    }
 }
 
 /// # Safety
@@ -224,25 +224,25 @@ unsafe impl<T: ZcElem, const N: usize, const PFX: usize> ZcElem for PodVecRepr<T
 
 #[cfg(feature = "solana-address")]
 mod solana_address_impls {
-	use super::*;
+    use super::*;
 
-	const _: () = assert!(core::mem::align_of::<solana_address::Address>() == 1);
+    const _: () = assert!(core::mem::align_of::<solana_address::Address>() == 1);
 
-	// SAFETY: solana_address::Address is #[repr(transparent)] over [u8; 32],
-	// align 1, all bit patterns valid.
-	impl ZcValidate for solana_address::Address {
-		#[inline(always)]
-		fn validate_ref(_: &Self) -> Result<(), PinaPodError> {
-			Ok(())
-		}
-	}
+    // SAFETY: solana_address::Address is #[repr(transparent)] over [u8; 32],
+    // align 1, all bit patterns valid.
+    impl ZcValidate for solana_address::Address {
+        #[inline(always)]
+        fn validate_ref(_: &Self) -> Result<(), PinaPodError> {
+            Ok(())
+        }
+    }
 
-	// SAFETY: Address is Copy, align 1, all bit patterns valid.
-	unsafe impl ZcElem for solana_address::Address {}
+    // SAFETY: Address is Copy, align 1, all bit patterns valid.
+    unsafe impl ZcElem for solana_address::Address {}
 
-	unsafe impl ZcField for solana_address::Address {
-		type Pod = solana_address::Address;
-	}
+    unsafe impl ZcField for solana_address::Address {
+        type Pod = solana_address::Address;
+    }
 }
 
 /// Describes the byte layout generated for a schema type.
@@ -275,127 +275,127 @@ pub trait PinaPod: Sized {}
 /// `Self`. Its byte size and validation rules must not depend on runtime state.
 /// Prefer `#[derive(PinaPod)]`; manual implementations are an advanced raw API.
 pub unsafe trait PinaPodFixed: PinaPod {
-	/// The complete fixed representation of this schema.
-	///
-	/// `size_of::<Zc>()` is the schema's size, so the size must not depend on runtime
-	/// state. A derive generates a companion struct whose fields are the mapped pods in
-	/// declaration order.
-	type Zc: ZcElem;
+    /// The complete fixed representation of this schema.
+    ///
+    /// `size_of::<Zc>()` is the schema's size, so the size must not depend on runtime
+    /// state. A derive generates a companion struct whose fields are the mapped pods in
+    /// declaration order.
+    type Zc: ZcElem;
 
-	/// Read one fixed value and reject both truncated and trailing bytes.
-	fn read_exact(data: &[u8]) -> Result<&Self::Zc, PinaPodError> {
-		Self::validate_exact(data)?;
+    /// Read one fixed value and reject both truncated and trailing bytes.
+    fn read_exact(data: &[u8]) -> Result<&Self::Zc, PinaPodError> {
+        Self::validate_exact(data)?;
 
-		// SAFETY: validate_exact proves the slice has exactly one complete
-		// representation and ZcElem guarantees alignment one and bit validity.
-		Ok(unsafe { &*data.as_ptr().cast::<Self::Zc>() })
-	}
+        // SAFETY: validate_exact proves the slice has exactly one complete
+        // representation and ZcElem guarantees alignment one and bit validity.
+        Ok(unsafe { &*data.as_ptr().cast::<Self::Zc>() })
+    }
 
-	/// Mutably read one fixed value and reject truncated and trailing bytes.
-	fn read_exact_mut(data: &mut [u8]) -> Result<&mut Self::Zc, PinaPodError> {
-		Self::validate_exact(data)?;
+    /// Mutably read one fixed value and reject truncated and trailing bytes.
+    fn read_exact_mut(data: &mut [u8]) -> Result<&mut Self::Zc, PinaPodError> {
+        Self::validate_exact(data)?;
 
-		// SAFETY: validate_exact proves the slice has exactly one complete
-		// representation and ZcElem guarantees alignment one and bit validity.
-		Ok(unsafe { &mut *data.as_mut_ptr().cast::<Self::Zc>() })
-	}
+        // SAFETY: validate_exact proves the slice has exactly one complete
+        // representation and ZcElem guarantees alignment one and bit validity.
+        Ok(unsafe { &mut *data.as_mut_ptr().cast::<Self::Zc>() })
+    }
 
-	/// Read the first fixed value from a larger containing byte sequence.
-	fn read_prefix(data: &[u8]) -> Result<&Self::Zc, PinaPodError> {
-		Self::validate_prefix(data)?;
+    /// Read the first fixed value from a larger containing byte sequence.
+    fn read_prefix(data: &[u8]) -> Result<&Self::Zc, PinaPodError> {
+        Self::validate_prefix(data)?;
 
-		// SAFETY: validate_prefix proves that the first representation-sized
-		// prefix is valid. ZcElem guarantees alignment one.
-		Ok(unsafe { &*data.as_ptr().cast::<Self::Zc>() })
-	}
+        // SAFETY: validate_prefix proves that the first representation-sized
+        // prefix is valid. ZcElem guarantees alignment one.
+        Ok(unsafe { &*data.as_ptr().cast::<Self::Zc>() })
+    }
 
-	/// Mutably read the first fixed value from a larger containing sequence.
-	fn read_prefix_mut(data: &mut [u8]) -> Result<&mut Self::Zc, PinaPodError> {
-		Self::validate_prefix(data)?;
+    /// Mutably read the first fixed value from a larger containing sequence.
+    fn read_prefix_mut(data: &mut [u8]) -> Result<&mut Self::Zc, PinaPodError> {
+        Self::validate_prefix(data)?;
 
-		// SAFETY: validate_prefix proves that the first SIZE bytes contain a
-		// valid representation. ZcElem guarantees alignment one.
-		Ok(unsafe { &mut *data.as_mut_ptr().cast::<Self::Zc>() })
-	}
+        // SAFETY: validate_prefix proves that the first SIZE bytes contain a
+        // valid representation. ZcElem guarantees alignment one.
+        Ok(unsafe { &mut *data.as_mut_ptr().cast::<Self::Zc>() })
+    }
 
-	/// Validate one complete fixed value with no trailing bytes.
-	fn validate_exact(data: &[u8]) -> Result<(), PinaPodError> {
-		let size = core::mem::size_of::<Self::Zc>();
+    /// Validate one complete fixed value with no trailing bytes.
+    fn validate_exact(data: &[u8]) -> Result<(), PinaPodError> {
+        let size = core::mem::size_of::<Self::Zc>();
 
-		if data.len() != size {
-			if data.len() < size {
-				return Err(PinaPodError::BufferTooSmall);
-			}
-			return Err(PinaPodError::InvalidLength);
-		}
+        if data.len() != size {
+            if data.len() < size {
+                return Err(PinaPodError::BufferTooSmall);
+            }
+            return Err(PinaPodError::InvalidLength);
+        }
 
-		// SAFETY: the length check proves a complete representation is present
-		// and ZcElem permits forming a reference from initialized bytes before
-		// semantic validation.
-		let value = unsafe { &*data.as_ptr().cast::<Self::Zc>() };
-		<Self::Zc as ZcValidate>::validate_ref(value)
-	}
+        // SAFETY: the length check proves a complete representation is present
+        // and ZcElem permits forming a reference from initialized bytes before
+        // semantic validation.
+        let value = unsafe { &*data.as_ptr().cast::<Self::Zc>() };
+        <Self::Zc as ZcValidate>::validate_ref(value)
+    }
 
-	/// Validate the first fixed value in a larger containing byte sequence.
-	fn validate_prefix(data: &[u8]) -> Result<(), PinaPodError> {
-		let size = core::mem::size_of::<Self::Zc>();
+    /// Validate the first fixed value in a larger containing byte sequence.
+    fn validate_prefix(data: &[u8]) -> Result<(), PinaPodError> {
+        let size = core::mem::size_of::<Self::Zc>();
 
-		if data.len() < size {
-			return Err(PinaPodError::BufferTooSmall);
-		}
+        if data.len() < size {
+            return Err(PinaPodError::BufferTooSmall);
+        }
 
-		// SAFETY: the length check proves a complete representation is present
-		// and ZcElem permits forming a reference from initialized bytes before
-		// semantic validation.
-		let value = unsafe { &*data.as_ptr().cast::<Self::Zc>() };
-		<Self::Zc as ZcValidate>::validate_ref(value)
-	}
+        // SAFETY: the length check proves a complete representation is present
+        // and ZcElem permits forming a reference from initialized bytes before
+        // semantic validation.
+        let value = unsafe { &*data.as_ptr().cast::<Self::Zc>() };
+        <Self::Zc as ZcValidate>::validate_ref(value)
+    }
 
-	/// Initialize exactly one fixed value and validate it after configuration.
-	///
-	/// The destination is zeroed before `initialize` is called, so the closure
-	/// can set fields such as enums whose valid discriminants exclude zero.
-	/// Validation runs once, after the closure returns successfully.
-	///
-	/// If the closure or validation returns an error, the complete destination
-	/// is zeroed again. This deterministic failure state is fully initialized,
-	/// but it is not necessarily a semantically valid value for the schema.
-	fn initialize(
-		data: &mut [u8],
-		initialize: impl FnOnce(&mut Self::Zc) -> Result<(), PinaPodError>,
-	) -> Result<&mut Self::Zc, PinaPodError> {
-		let size = core::mem::size_of::<Self::Zc>();
+    /// Initialize exactly one fixed value and validate it after configuration.
+    ///
+    /// The destination is zeroed before `initialize` is called, so the closure
+    /// can set fields such as enums whose valid discriminants exclude zero.
+    /// Validation runs once, after the closure returns successfully.
+    ///
+    /// If the closure or validation returns an error, the complete destination
+    /// is zeroed again. This deterministic failure state is fully initialized,
+    /// but it is not necessarily a semantically valid value for the schema.
+    fn initialize(
+        data: &mut [u8],
+        initialize: impl FnOnce(&mut Self::Zc) -> Result<(), PinaPodError>,
+    ) -> Result<&mut Self::Zc, PinaPodError> {
+        let size = core::mem::size_of::<Self::Zc>();
 
-		if data.len() < size {
-			return Err(PinaPodError::BufferTooSmall);
-		}
+        if data.len() < size {
+            return Err(PinaPodError::BufferTooSmall);
+        }
 
-		if data.len() != size {
-			return Err(PinaPodError::InvalidLength);
-		}
+        if data.len() != size {
+            return Err(PinaPodError::InvalidLength);
+        }
 
-		data.fill(0);
+        data.fill(0);
 
-		let pointer = data.as_mut_ptr().cast::<Self::Zc>();
-		let result = {
-			// SAFETY: the exact length is checked above, ZcElem has alignment
-			// one, and its unsafe contract makes the all-zero initialization
-			// state safe to inspect and mutate before semantic validation.
-			let value = unsafe { &mut *pointer };
+        let pointer = data.as_mut_ptr().cast::<Self::Zc>();
+        let result = {
+            // SAFETY: the exact length is checked above, ZcElem has alignment
+            // one, and its unsafe contract makes the all-zero initialization
+            // state safe to inspect and mutate before semantic validation.
+            let value = unsafe { &mut *pointer };
 
-			initialize(value).and_then(|()| <Self::Zc as ZcValidate>::validate_ref(value))
-		};
+            initialize(value).and_then(|()| <Self::Zc as ZcValidate>::validate_ref(value))
+        };
 
-		if let Err(error) = result {
-			data.fill(0);
+        if let Err(error) = result {
+            data.fill(0);
 
-			return Err(error);
-		}
+            return Err(error);
+        }
 
-		// SAFETY: the closure completed and validate_ref accepted the same
-		// representation. The mutable borrow of `data` remains exclusive.
-		Ok(unsafe { &mut *pointer })
-	}
+        // SAFETY: the closure completed and validate_ref accepted the same
+        // representation. The mutable borrow of `data` remains exclusive.
+        Ok(unsafe { &mut *pointer })
+    }
 }
 
 /// Zero-copy access for compact schemas with a fixed header and dynamic tails.
@@ -406,52 +406,52 @@ pub unsafe trait PinaPodFixed: PinaPod {
 /// the same representation. Dynamic length metadata must not be exposed for
 /// direct mutable access.
 pub unsafe trait PinaPodCompact: PinaPod {
-	/// The fixed header that precedes the dynamic tails.
-	///
-	/// Its size must equal [`HEADER_SIZE`](Self::HEADER_SIZE).
-	type Header: ZcElem;
+    /// The fixed header that precedes the dynamic tails.
+    ///
+    /// Its size must equal [`HEADER_SIZE`](Self::HEADER_SIZE).
+    type Header: ZcElem;
 
-	/// Smallest valid allocation for this compact schema.
-	const MIN_SIZE: usize;
+    /// Smallest valid allocation for this compact schema.
+    const MIN_SIZE: usize;
 
-	/// Largest valid allocation for this compact schema.
-	const MAX_SIZE: usize;
+    /// Largest valid allocation for this compact schema.
+    const MAX_SIZE: usize;
 
-	/// Byte granularity of valid allocation growth beyond [`Self::MIN_SIZE`].
-	const TAIL_ALIGNMENT: usize;
+    /// Byte granularity of valid allocation growth beyond [`Self::MIN_SIZE`].
+    const TAIL_ALIGNMENT: usize;
 
-	/// Byte size of [`Header`](Self::Header).
-	///
-	/// Implementations must keep this equal to `size_of::<Self::Header>()`;
-	/// [`validate`](Self::validate) relies on it to locate the first tail.
-	const HEADER_SIZE: usize;
+    /// Byte size of [`Header`](Self::Header).
+    ///
+    /// Implementations must keep this equal to `size_of::<Self::Header>()`;
+    /// [`validate`](Self::validate) relies on it to locate the first tail.
+    const HEADER_SIZE: usize;
 
-	/// Validate the physical allocation independently of its active contents.
-	fn validate_storage_len(size: usize) -> Result<(), PinaPodError> {
-		if Self::TAIL_ALIGNMENT == 0
-			|| size < Self::MIN_SIZE
-			|| size > Self::MAX_SIZE
-			|| !(size - Self::MIN_SIZE).is_multiple_of(Self::TAIL_ALIGNMENT)
-		{
-			return Err(PinaPodError::InvalidLength);
-		}
+    /// Validate the physical allocation independently of its active contents.
+    fn validate_storage_len(size: usize) -> Result<(), PinaPodError> {
+        if Self::TAIL_ALIGNMENT == 0
+            || size < Self::MIN_SIZE
+            || size > Self::MAX_SIZE
+            || !(size - Self::MIN_SIZE).is_multiple_of(Self::TAIL_ALIGNMENT)
+        {
+            return Err(PinaPodError::InvalidLength);
+        }
 
-		Ok(())
-	}
+        Ok(())
+    }
 
-	/// Validate one complete compact representation.
-	///
-	/// Implementations must check the allocation through
-	/// [`validate_storage_len`](Self::validate_storage_len) first, then walk the header
-	/// and every tail: option tags, length prefixes, field capacities, offsets, and
-	/// UTF-8. A caller may form references only after this returns `Ok`.
-	///
-	/// # Errors
-	///
-	/// Returns [`PinaPodError::InvalidLength`] for an allocation outside the schema's
-	/// size bounds or tail granularity, and another [`PinaPodError`] variant when a
-	/// stored value is not a valid representation.
-	fn validate(data: &[u8]) -> Result<(), PinaPodError>;
+    /// Validate one complete compact representation.
+    ///
+    /// Implementations must check the allocation through
+    /// [`validate_storage_len`](Self::validate_storage_len) first, then walk the header
+    /// and every tail: option tags, length prefixes, field capacities, offsets, and
+    /// UTF-8. A caller may form references only after this returns `Ok`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PinaPodError::InvalidLength`] for an allocation outside the schema's
+    /// size bounds or tail granularity, and another [`PinaPodError`] variant when a
+    /// stored value is not a valid representation.
+    fn validate(data: &[u8]) -> Result<(), PinaPodError>;
 }
 
 /// An atomic, preflighted update for one compact schema.
@@ -461,56 +461,56 @@ pub unsafe trait PinaPodCompact: PinaPod {
 /// trait to plan a resize, release the old borrow, and apply the same patch to
 /// the resized allocation.
 pub trait PinaPodPatch<T: PinaPodCompact> {
-	/// The allocation size [`update`](Self::update) would produce, without changing `data`.
-	///
-	/// Frameworks call this to plan a resize, release the old borrow, and then apply the
-	/// same patch to the resized allocation.
-	///
-	/// # Errors
-	///
-	/// Returns [`PinaPodError`] when the supplied values cannot be encoded or `data` is
-	/// not a valid existing representation.
-	fn updated_len(&self, data: &[u8]) -> Result<usize, PinaPodError>;
-	/// Applies the patch to an existing representation and returns the new length.
-	///
-	/// Capacity, arithmetic, and supplied-value checks all run before the first byte
-	/// changes, so a rejected patch leaves `data` untouched.
-	///
-	/// # Errors
-	///
-	/// Returns [`PinaPodError::BufferTooSmall`] when the resized value does not fit
-	/// `data`, and another [`PinaPodError`] variant when `data` is not a valid existing
-	/// representation or a supplied value cannot be encoded.
-	fn update(&self, data: &mut [u8]) -> Result<usize, PinaPodError>;
-	/// Writes the patch into a destination without reading a previous representation.
-	///
-	/// Use this for a fresh allocation or for a destination left zeroed by a failed
-	/// update. The destination is zeroed before configuration and validated after it.
-	///
-	/// # Errors
-	///
-	/// Returns [`PinaPodError`] when the allocation size is invalid, the encoded value
-	/// does not fit `data`, or a supplied value cannot be encoded. A failure leaves the
-	/// destination zeroed rather than partially patched.
-	fn initialize(&self, data: &mut [u8]) -> Result<usize, PinaPodError>;
+    /// The allocation size [`update`](Self::update) would produce, without changing `data`.
+    ///
+    /// Frameworks call this to plan a resize, release the old borrow, and then apply the
+    /// same patch to the resized allocation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PinaPodError`] when the supplied values cannot be encoded or `data` is
+    /// not a valid existing representation.
+    fn updated_len(&self, data: &[u8]) -> Result<usize, PinaPodError>;
+    /// Applies the patch to an existing representation and returns the new length.
+    ///
+    /// Capacity, arithmetic, and supplied-value checks all run before the first byte
+    /// changes, so a rejected patch leaves `data` untouched.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PinaPodError::BufferTooSmall`] when the resized value does not fit
+    /// `data`, and another [`PinaPodError`] variant when `data` is not a valid existing
+    /// representation or a supplied value cannot be encoded.
+    fn update(&self, data: &mut [u8]) -> Result<usize, PinaPodError>;
+    /// Writes the patch into a destination without reading a previous representation.
+    ///
+    /// Use this for a fresh allocation or for a destination left zeroed by a failed
+    /// update. The destination is zeroed before configuration and validated after it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PinaPodError`] when the allocation size is invalid, the encoded value
+    /// does not fit `data`, or a supplied value cannot be encoded. A failure leaves the
+    /// destination zeroed rather than partially patched.
+    fn initialize(&self, data: &mut [u8]) -> Result<usize, PinaPodError>;
 }
 
 impl<T, P> PinaPodPatch<T> for &P
 where
-	T: PinaPodCompact,
-	P: PinaPodPatch<T> + ?Sized,
+    T: PinaPodCompact,
+    P: PinaPodPatch<T> + ?Sized,
 {
-	fn updated_len(&self, data: &[u8]) -> Result<usize, PinaPodError> {
-		<P as PinaPodPatch<T>>::updated_len(*self, data)
-	}
+    fn updated_len(&self, data: &[u8]) -> Result<usize, PinaPodError> {
+        <P as PinaPodPatch<T>>::updated_len(*self, data)
+    }
 
-	fn update(&self, data: &mut [u8]) -> Result<usize, PinaPodError> {
-		<P as PinaPodPatch<T>>::update(*self, data)
-	}
+    fn update(&self, data: &mut [u8]) -> Result<usize, PinaPodError> {
+        <P as PinaPodPatch<T>>::update(*self, data)
+    }
 
-	fn initialize(&self, data: &mut [u8]) -> Result<usize, PinaPodError> {
-		<P as PinaPodPatch<T>>::initialize(*self, data)
-	}
+    fn initialize(&self, data: &mut [u8]) -> Result<usize, PinaPodError> {
+        <P as PinaPodPatch<T>>::initialize(*self, data)
+    }
 }
 
 /// Maps a native Rust type to its pod (zero-copy) companion.
@@ -521,12 +521,12 @@ where
 /// validation requirements through [`ZcElem`]. Its size is always derived with
 /// `size_of::<Self::Pod>()`; implementors cannot provide conflicting metadata.
 pub unsafe trait ZcField: Sized {
-	/// The alignment-one pod that stores this type in a schema.
-	///
-	/// A field declared as `Self` is stored as `Pod`. The mapping must not depend on
-	/// runtime state, because a representation's layout is fixed at compile time and its
-	/// size is always derived from `size_of::<Self::Pod>()`.
-	type Pod: ZcElem;
+    /// The alignment-one pod that stores this type in a schema.
+    ///
+    /// A field declared as `Self` is stored as `Pod`. The mapping must not depend on
+    /// runtime state, because a representation's layout is fixed at compile time and its
+    /// size is always derived from `size_of::<Self::Pod>()`.
+    type Pod: ZcElem;
 }
 
 /// Converts a compact patch argument for a native [`Option<T>`] field into
@@ -538,41 +538,41 @@ pub unsafe trait ZcField: Sized {
 /// It is not part of the hand-written PinaPod API. Its shape follows the generated output and changes only in breaking releases, in lockstep with the derive.<!-- {/podDeriveSupportTraitContract} -->
 #[doc(hidden)]
 pub trait IntoPodOption<T: ZcField> {
-	/// Converts `Option<T>` or an already-stored [`PodOption`] into the stored form.
-	fn into_pod_option(self) -> PodOption<T::Pod>;
+    /// Converts `Option<T>` or an already-stored [`PodOption`] into the stored form.
+    fn into_pod_option(self) -> PodOption<T::Pod>;
 }
 
 impl<T> IntoPodOption<T> for Option<T>
 where
-	T: ZcField,
-	T::Pod: From<T>,
+    T: ZcField,
+    T::Pod: From<T>,
 {
-	#[inline(always)]
-	fn into_pod_option(self) -> PodOption<T::Pod> {
-		match self {
-			Some(value) => PodOption::some(value.into()),
-			None => PodOption::none(),
-		}
-	}
+    #[inline(always)]
+    fn into_pod_option(self) -> PodOption<T::Pod> {
+        match self {
+            Some(value) => PodOption::some(value.into()),
+            None => PodOption::none(),
+        }
+    }
 }
 
 impl<T> IntoPodOption<T> for PodOption<T::Pod>
 where
-	T: ZcField,
+    T: ZcField,
 {
-	#[inline(always)]
-	fn into_pod_option(self) -> PodOption<T::Pod> {
-		self
-	}
+    #[inline(always)]
+    fn into_pod_option(self) -> PodOption<T::Pod> {
+        self
+    }
 }
 
 // Built-in ZcField impls
 macro_rules! impl_zc_field {
-	($native:ty, $pod:ty) => {
-		unsafe impl ZcField for $native {
-			type Pod = $pod;
-		}
-	};
+    ($native:ty, $pod:ty) => {
+        unsafe impl ZcField for $native {
+            type Pod = $pod;
+        }
+    };
 }
 
 impl_zc_field!(u8, u8);
@@ -589,30 +589,30 @@ impl_zc_field!(bool, PodBool);
 
 #[cfg(feature = "fixed")]
 mod fixed_impls {
-	use super::*;
+    use super::*;
 
-	macro_rules! impl_fixed_zc_field {
-		($fixed:ident, $pod:ty) => {
-			// SAFETY: `fixed::$fixed<Frac>` is a schema type whose complete
-			// bit pattern is stored in the matching little-endian integer pod.
-			// The pod type is an alignment-one `ZcElem`; its size is derived
-			// directly wherever it is used.
-			unsafe impl<Frac> ZcField for fixed::$fixed<Frac> {
-				type Pod = $pod;
-			}
-		};
-	}
+    macro_rules! impl_fixed_zc_field {
+        ($fixed:ident, $pod:ty) => {
+            // SAFETY: `fixed::$fixed<Frac>` is a schema type whose complete
+            // bit pattern is stored in the matching little-endian integer pod.
+            // The pod type is an alignment-one `ZcElem`; its size is derived
+            // directly wherever it is used.
+            unsafe impl<Frac> ZcField for fixed::$fixed<Frac> {
+                type Pod = $pod;
+            }
+        };
+    }
 
-	impl_fixed_zc_field!(FixedI8, i8);
-	impl_fixed_zc_field!(FixedI16, PodI16);
-	impl_fixed_zc_field!(FixedI32, PodI32);
-	impl_fixed_zc_field!(FixedI64, PodI64);
-	impl_fixed_zc_field!(FixedI128, PodI128);
-	impl_fixed_zc_field!(FixedU8, u8);
-	impl_fixed_zc_field!(FixedU16, PodU16);
-	impl_fixed_zc_field!(FixedU32, PodU32);
-	impl_fixed_zc_field!(FixedU64, PodU64);
-	impl_fixed_zc_field!(FixedU128, PodU128);
+    impl_fixed_zc_field!(FixedI8, i8);
+    impl_fixed_zc_field!(FixedI16, PodI16);
+    impl_fixed_zc_field!(FixedI32, PodI32);
+    impl_fixed_zc_field!(FixedI64, PodI64);
+    impl_fixed_zc_field!(FixedI128, PodI128);
+    impl_fixed_zc_field!(FixedU8, u8);
+    impl_fixed_zc_field!(FixedU16, PodU16);
+    impl_fixed_zc_field!(FixedU32, PodU32);
+    impl_fixed_zc_field!(FixedU64, PodU64);
+    impl_fixed_zc_field!(FixedU128, PodU128);
 }
 
 // SAFETY: The pod of an array is the array of its element pods. `[T::Pod; N]`
@@ -620,7 +620,7 @@ mod fixed_impls {
 // representation contract carries through unchanged. `[u8; N]` keeps its
 // identity mapping via `<u8 as ZcField>::Pod = u8`.
 unsafe impl<T: ZcField, const N: usize> ZcField for [T; N] {
-	type Pod = [<T as ZcField>::Pod; N];
+    type Pod = [<T as ZcField>::Pod; N];
 }
 
 /// Converts a native or pod-spelled array into its stored representation,
@@ -636,19 +636,19 @@ unsafe impl<T: ZcField, const N: usize> ZcField for [T; N] {
 /// `From`.
 #[doc(hidden)]
 pub trait IntoPodArray<T: ZcField, const N: usize> {
-	/// Converts each element through its [`ZcField`] mapping.
-	fn into_pod_array(self) -> [<T as ZcField>::Pod; N];
+    /// Converts each element through its [`ZcField`] mapping.
+    fn into_pod_array(self) -> [<T as ZcField>::Pod; N];
 }
 
 impl<T, U, const N: usize> IntoPodArray<T, N> for [U; N]
 where
-	T: ZcField,
-	T::Pod: From<U>,
+    T: ZcField,
+    T::Pod: From<U>,
 {
-	#[inline(always)]
-	fn into_pod_array(self) -> [T::Pod; N] {
-		self.map(<T::Pod as From<U>>::from)
-	}
+    #[inline(always)]
+    fn into_pod_array(self) -> [T::Pod; N] {
+        self.map(<T::Pod as From<U>>::from)
+    }
 }
 
 macro_rules! impl_zc_field_identity {
@@ -662,25 +662,25 @@ macro_rules! impl_zc_field_identity {
 }
 
 impl_zc_field_identity!(
-	PodU16, PodU32, PodU64, PodU128, PodI16, PodI32, PodI64, PodI128, PodBool
+    PodU16, PodU32, PodU64, PodU128, PodI16, PodI32, PodI64, PodI128, PodBool
 );
 
 unsafe impl<const N: usize, const PFX: usize> ZcField for PodString<N, PFX> {
-	type Pod = Self;
+    type Pod = Self;
 }
 
 unsafe impl<T: ZcElem, const N: usize, const PFX: usize> ZcField for PodVecRepr<T, N, PFX> {
-	type Pod = Self;
+    type Pod = Self;
 }
 
 unsafe impl<T: ZcElem, const PFX: usize> ZcField for PodOption<T, PFX> {
-	type Pod = Self;
+    type Pod = Self;
 }
 
 // Option<T> maps to PodOption<T::Pod, 1> (PFX=1 only, unchanged).
 unsafe impl<T> ZcField for Option<T>
 where
-	T: ZcField,
+    T: ZcField,
 {
-	type Pod = PodOption<T::Pod, 1>;
+    type Pod = PodOption<T::Pod, 1>;
 }

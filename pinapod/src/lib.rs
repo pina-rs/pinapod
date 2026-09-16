@@ -110,35 +110,35 @@
 #![no_std]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![cfg_attr(
-	kani,
-	allow(
-		unstable_features,
-		reason = "Kani injects the unstable register_tool feature while compiling proof harnesses"
-	)
+    kani,
+    allow(
+        unstable_features,
+        reason = "Kani injects the unstable register_tool feature while compiling proof harnesses"
+    )
 )]
 
 pub mod error;
 #[allow(
-	clippy::cast_lossless,
-	clippy::ignored_unit_patterns,
-	clippy::inline_always,
-	clippy::ptr_as_ptr,
-	clippy::ref_as_ptr,
-	clippy::single_match_else,
-	clippy::uninlined_format_args,
-	unsafe_code,
-	unused_qualifications,
-	reason = "PinaPod's audited zero-copy primitives require narrowly scoped unsafe operations"
+    clippy::cast_lossless,
+    clippy::ignored_unit_patterns,
+    clippy::inline_always,
+    clippy::ptr_as_ptr,
+    clippy::ref_as_ptr,
+    clippy::single_match_else,
+    clippy::uninlined_format_args,
+    unsafe_code,
+    unused_qualifications,
+    reason = "PinaPod's audited zero-copy primitives require narrowly scoped unsafe operations"
 )]
 pub mod pod;
 #[allow(
-	clippy::inline_always,
-	clippy::ptr_as_ptr,
-	clippy::ref_as_ptr,
-	clippy::wildcard_imports,
-	unsafe_code,
-	unused_qualifications,
-	reason = "PinaPod's audited byte-casting contracts require narrowly scoped unsafe operations"
+    clippy::inline_always,
+    clippy::ptr_as_ptr,
+    clippy::ref_as_ptr,
+    clippy::wildcard_imports,
+    unsafe_code,
+    unused_qualifications,
+    reason = "PinaPod's audited byte-casting contracts require narrowly scoped unsafe operations"
 )]
 pub mod traits;
 
@@ -159,9 +159,9 @@ pub use traits::ZcValidate;
 // lifted for it exactly like the handwritten pod modules.
 #[cfg(all(kani, feature = "kani"))]
 #[allow(
-	unsafe_code,
-	reason = "the derive expands PinaPod's audited byte-casting implementation inside the proof \
-	          module"
+    unsafe_code,
+    reason = "the derive expands PinaPod's audited byte-casting implementation inside the proof \
+              module"
 )]
 mod generated_proofs;
 
