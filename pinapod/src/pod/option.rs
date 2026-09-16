@@ -37,8 +37,8 @@ use crate::traits::ZcElem;
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct PodOption<T: ZcElem, const PFX: usize = 1> {
-	tag: [u8; PFX],
-	value: MaybeUninit<T>,
+    tag: [u8; PFX],
+    value: MaybeUninit<T>,
 }
 
 const _: () = assert!(core::mem::align_of::<PodOption<u8>>() == 1);
@@ -48,449 +48,449 @@ const _: () = assert!(core::mem::size_of::<PodOption<[u8; 32], 4>>() == 36);
 const _: () = assert!(core::mem::size_of::<PodOption<u8, 8>>() == 9);
 
 impl<T: ZcElem, const PFX: usize> PodOption<T, PFX> {
-	const _PFX_CHECK: () = assert!(
-		PFX == 1 || PFX == 2 || PFX == 4 || PFX == 8,
-		"PodOption<T, PFX>: PFX must be 1, 2, 4, or 8"
-	);
+    const _PFX_CHECK: () = assert!(
+        PFX == 1 || PFX == 2 || PFX == 4 || PFX == 8,
+        "PodOption<T, PFX>: PFX must be 1, 2, 4, or 8"
+    );
 
-	#[inline(always)]
-	fn decode_tag(&self) -> u64 {
-		#[allow(clippy::let_unit_value)]
-		let _ = Self::_PFX_CHECK;
-		match PFX {
-			1 => u64::from(self.tag[0]),
-			2 => u64::from(u16::from_le_bytes([self.tag[0], self.tag[1]])),
-			4 => {
-				u64::from(u32::from_le_bytes([
-					self.tag[0],
-					self.tag[1],
-					self.tag[2],
-					self.tag[3],
-				]))
-			}
-			_ => {
-				u64::from_le_bytes([
-					self.tag[0],
-					self.tag[1],
-					self.tag[2],
-					self.tag[3],
-					self.tag[4],
-					self.tag[5],
-					self.tag[6],
-					self.tag[7],
-				])
-			}
-		}
-	}
+    #[inline(always)]
+    fn decode_tag(&self) -> u64 {
+        #[allow(clippy::let_unit_value)]
+        let _ = Self::_PFX_CHECK;
+        match PFX {
+            1 => u64::from(self.tag[0]),
+            2 => u64::from(u16::from_le_bytes([self.tag[0], self.tag[1]])),
+            4 => {
+                u64::from(u32::from_le_bytes([
+                    self.tag[0],
+                    self.tag[1],
+                    self.tag[2],
+                    self.tag[3],
+                ]))
+            }
+            _ => {
+                u64::from_le_bytes([
+                    self.tag[0],
+                    self.tag[1],
+                    self.tag[2],
+                    self.tag[3],
+                    self.tag[4],
+                    self.tag[5],
+                    self.tag[6],
+                    self.tag[7],
+                ])
+            }
+        }
+    }
 
-	#[inline(always)]
-	fn encode_tag(v: u32) -> [u8; PFX] {
-		#[allow(clippy::let_unit_value)]
-		let _ = Self::_PFX_CHECK;
-		let mut buf = [0u8; PFX];
-		match PFX {
-			1 => buf[0] = v as u8,
-			2 => {
-				let bytes = (v as u16).to_le_bytes();
-				buf[0] = bytes[0];
-				buf[1] = bytes[1];
-			}
-			4 => {
-				let bytes = v.to_le_bytes();
-				buf[..4].copy_from_slice(&bytes);
-			}
-			_ => {
-				let bytes = u64::from(v).to_le_bytes();
-				buf.copy_from_slice(&bytes);
-			}
-		}
-		buf
-	}
+    #[inline(always)]
+    fn encode_tag(v: u32) -> [u8; PFX] {
+        #[allow(clippy::let_unit_value)]
+        let _ = Self::_PFX_CHECK;
+        let mut buf = [0u8; PFX];
+        match PFX {
+            1 => buf[0] = v as u8,
+            2 => {
+                let bytes = (v as u16).to_le_bytes();
+                buf[0] = bytes[0];
+                buf[1] = bytes[1];
+            }
+            4 => {
+                let bytes = v.to_le_bytes();
+                buf[..4].copy_from_slice(&bytes);
+            }
+            _ => {
+                let bytes = u64::from(v).to_le_bytes();
+                buf.copy_from_slice(&bytes);
+            }
+        }
+        buf
+    }
 
-	/// Creates an absent value.
-	///
-	/// The tag and the payload bytes are all zero, so this is the canonical absent
-	/// representation and its bytes are fully initialized.
-	#[inline(always)]
-	pub fn none() -> Self {
-		Self {
-			tag: [0u8; PFX],
-			value: MaybeUninit::zeroed(),
-		}
-	}
+    /// Creates an absent value.
+    ///
+    /// The tag and the payload bytes are all zero, so this is the canonical absent
+    /// representation and its bytes are fully initialized.
+    #[inline(always)]
+    pub fn none() -> Self {
+        Self {
+            tag: [0u8; PFX],
+            value: MaybeUninit::zeroed(),
+        }
+    }
 
-	/// Creates a present value.
-	#[inline(always)]
-	pub fn some(value: T) -> Self {
-		Self {
-			tag: Self::encode_tag(1),
-			value: MaybeUninit::new(value),
-		}
-	}
+    /// Creates a present value.
+    #[inline(always)]
+    pub fn some(value: T) -> Self {
+        Self {
+            tag: Self::encode_tag(1),
+            value: MaybeUninit::new(value),
+        }
+    }
 
-	/// Returns `true` when the tag encodes a present value.
-	///
-	/// Only the tag is inspected, so an inactive payload cannot make this report `true`.
-	#[inline(always)]
-	pub fn is_some(&self) -> bool {
-		self.decode_tag() == 1
-	}
+    /// Returns `true` when the tag encodes a present value.
+    ///
+    /// Only the tag is inspected, so an inactive payload cannot make this report `true`.
+    #[inline(always)]
+    pub fn is_some(&self) -> bool {
+        self.decode_tag() == 1
+    }
 
-	/// Returns `true` when the tag does not encode a present value.
-	///
-	/// A tag other than `0` or `1` counts as absent; [`tag_valid`](Self::tag_valid)
-	/// distinguishes that corrupt case.
-	#[inline(always)]
-	pub fn is_none(&self) -> bool {
-		!self.is_some()
-	}
+    /// Returns `true` when the tag does not encode a present value.
+    ///
+    /// A tag other than `0` or `1` counts as absent; [`tag_valid`](Self::tag_valid)
+    /// distinguishes that corrupt case.
+    #[inline(always)]
+    pub fn is_none(&self) -> bool {
+        !self.is_some()
+    }
 
-	/// Returns a copy of the payload, or `None` when the tag does not encode a present value.
-	#[inline(always)]
-	pub fn get(&self) -> Option<T> {
-		if self.is_some() {
-			Some(unsafe { self.value.assume_init() })
-		} else {
-			None
-		}
-	}
+    /// Returns a copy of the payload, or `None` when the tag does not encode a present value.
+    #[inline(always)]
+    pub fn get(&self) -> Option<T> {
+        if self.is_some() {
+            Some(unsafe { self.value.assume_init() })
+        } else {
+            None
+        }
+    }
 
-	/// Borrow the inner value if `Some`.
-	#[inline(always)]
-	pub fn get_ref(&self) -> Option<&T> {
-		if self.is_some() {
-			Some(unsafe { self.value.assume_init_ref() })
-		} else {
-			None
-		}
-	}
+    /// Borrow the inner value if `Some`.
+    #[inline(always)]
+    pub fn get_ref(&self) -> Option<&T> {
+        if self.is_some() {
+            Some(unsafe { self.value.assume_init_ref() })
+        } else {
+            None
+        }
+    }
 
-	/// Replaces the stored value, writing the canonical bytes for either state.
-	///
-	/// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
-	/// Every container starts with fully initialized backing storage.
-	///
-	/// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
-	#[inline(always)]
-	pub fn set(&mut self, value: Option<T>) {
-		match value {
-			Some(v) => {
-				self.tag = Self::encode_tag(1);
-				self.value = MaybeUninit::new(v);
-			}
-			None => {
-				self.tag = [0u8; PFX];
-				self.value = MaybeUninit::zeroed();
-			}
-		}
-	}
+    /// Replaces the stored value, writing the canonical bytes for either state.
+    ///
+    /// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Every container starts with fully initialized backing storage.
+    ///
+    /// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
+    #[inline(always)]
+    pub fn set(&mut self, value: Option<T>) {
+        match value {
+            Some(v) => {
+                self.tag = Self::encode_tag(1);
+                self.value = MaybeUninit::new(v);
+            }
+            None => {
+                self.tag = [0u8; PFX];
+                self.value = MaybeUninit::zeroed();
+            }
+        }
+    }
 
-	/// The raw decoded tag.
-	///
-	/// This is the unvalidated prefix value. Tags are stored in `PFX` bytes,
-	/// so the decoded width is `u64`; only `0` and `1` are valid. Safe
-	/// accessors treat every other value as absent.
-	pub fn raw_tag(&self) -> u64 {
-		self.decode_tag()
-	}
+    /// The raw decoded tag.
+    ///
+    /// This is the unvalidated prefix value. Tags are stored in `PFX` bytes,
+    /// so the decoded width is `u64`; only `0` and `1` are valid. Safe
+    /// accessors treat every other value as absent.
+    pub fn raw_tag(&self) -> u64 {
+        self.decode_tag()
+    }
 
-	/// Returns `true` when the tag is `0` or `1`.
-	///
-	/// Unlike [`is_none`](Self::is_none), this separates a canonical absent value from
-	/// a forged tag. Canonical writers reject a value this method reports `false` for.
-	#[inline(always)]
-	pub fn tag_valid(&self) -> bool {
-		self.raw_tag() <= 1
-	}
+    /// Returns `true` when the tag is `0` or `1`.
+    ///
+    /// Unlike [`is_none`](Self::is_none), this separates a canonical absent value from
+    /// a forged tag. Canonical writers reject a value this method reports `false` for.
+    #[inline(always)]
+    pub fn tag_valid(&self) -> bool {
+        self.raw_tag() <= 1
+    }
 
-	/// Borrows the payload without checking the tag.
-	///
-	/// # Safety
-	///
-	/// The caller must ensure the tag is exactly `1`, for example after
-	/// [`is_some`](Self::is_some), `raw_tag() == 1`, or a validating read.
-	/// [`tag_valid`](Self::tag_valid) is not sufficient on its own, because it accepts an
-	/// absent tag of `0` as well.
-	///
-	/// An absent or corrupt tag leaves the payload uninitialized, so the returned
-	/// reference would read indeterminate bytes.
-	#[inline(always)]
-	pub unsafe fn assume_init_ref(&self) -> &T {
-		// SAFETY: upheld by the caller as documented above.
-		unsafe { self.value.assume_init_ref() }
-	}
+    /// Borrows the payload without checking the tag.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the tag is exactly `1`, for example after
+    /// [`is_some`](Self::is_some), `raw_tag() == 1`, or a validating read.
+    /// [`tag_valid`](Self::tag_valid) is not sufficient on its own, because it accepts an
+    /// absent tag of `0` as well.
+    ///
+    /// An absent or corrupt tag leaves the payload uninitialized, so the returned
+    /// reference would read indeterminate bytes.
+    #[inline(always)]
+    pub unsafe fn assume_init_ref(&self) -> &T {
+        // SAFETY: upheld by the caller as documented above.
+        unsafe { self.value.assume_init_ref() }
+    }
 
-	/// Removes the value and returns it, leaving the option absent.
-	///
-	/// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
-	/// Every container starts with fully initialized backing storage.
-	///
-	/// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
-	pub fn take(&mut self) -> Option<T> {
-		let result = self.get();
-		self.tag = [0u8; PFX];
-		self.value = MaybeUninit::zeroed();
-		result
-	}
+    /// Removes the value and returns it, leaving the option absent.
+    ///
+    /// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Every container starts with fully initialized backing storage.
+    ///
+    /// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
+    pub fn take(&mut self) -> Option<T> {
+        let result = self.get();
+        self.tag = [0u8; PFX];
+        self.value = MaybeUninit::zeroed();
+        result
+    }
 
-	/// Replaces the value and returns the previous one, leaving the option present.
-	///
-	/// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
-	/// Every container starts with fully initialized backing storage.
-	///
-	/// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
-	pub fn replace(&mut self, value: T) -> Option<T> {
-		let old = self.get();
-		self.tag = Self::encode_tag(1);
-		self.value = MaybeUninit::new(value);
-		old
-	}
+    /// Replaces the value and returns the previous one, leaving the option present.
+    ///
+    /// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Every container starts with fully initialized backing storage.
+    ///
+    /// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
+    pub fn replace(&mut self, value: T) -> Option<T> {
+        let old = self.get();
+        self.tag = Self::encode_tag(1);
+        self.value = MaybeUninit::new(value);
+        old
+    }
 
-	/// Removes the value, leaving the option absent.
-	///
-	/// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
-	/// Every container starts with fully initialized backing storage.
-	///
-	/// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
-	pub fn clear(&mut self) {
-		self.tag = [0u8; PFX];
-		self.value = MaybeUninit::zeroed();
-	}
+    /// Removes the value, leaving the option absent.
+    ///
+    /// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Every container starts with fully initialized backing storage.
+    ///
+    /// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
+    pub fn clear(&mut self) {
+        self.tag = [0u8; PFX];
+        self.value = MaybeUninit::zeroed();
+    }
 
-	/// Returns the payload, or `default` when the tag does not encode a present value.
-	pub fn unwrap_or(self, default: T) -> T {
-		match self.get() {
-			Some(v) => v,
-			None => default,
-		}
-	}
+    /// Returns the payload, or `default` when the tag does not encode a present value.
+    pub fn unwrap_or(self, default: T) -> T {
+        match self.get() {
+            Some(v) => v,
+            None => default,
+        }
+    }
 
-	/// Applies `f` to the payload, or returns `default` when the tag does not encode a
-	/// present value.
-	pub fn map_or<U>(&self, default: U, f: impl FnOnce(T) -> U) -> U {
-		match self.get() {
-			Some(v) => f(v),
-			None => default,
-		}
-	}
+    /// Applies `f` to the payload, or returns `default` when the tag does not encode a
+    /// present value.
+    pub fn map_or<U>(&self, default: U, f: impl FnOnce(T) -> U) -> U {
+        match self.get() {
+            Some(v) => f(v),
+            None => default,
+        }
+    }
 }
 
 impl<T: ZcElem, const PFX: usize> Default for PodOption<T, PFX> {
-	fn default() -> Self {
-		Self::none()
-	}
+    fn default() -> Self {
+        Self::none()
+    }
 }
 
 impl<T: ZcElem + PartialEq, const PFX: usize> PartialEq for PodOption<T, PFX> {
-	fn eq(&self, other: &Self) -> bool {
-		match (self.get(), other.get()) {
-			(Some(a), Some(b)) => a == b,
-			(None, None) => true,
-			_ => false,
-		}
-	}
+    fn eq(&self, other: &Self) -> bool {
+        match (self.get(), other.get()) {
+            (Some(a), Some(b)) => a == b,
+            (None, None) => true,
+            _ => false,
+        }
+    }
 }
 
 impl<T: ZcElem + Eq, const PFX: usize> Eq for PodOption<T, PFX> {}
 
 impl<T: ZcElem + PartialEq, const PFX: usize> PartialEq<Option<T>> for PodOption<T, PFX> {
-	fn eq(&self, other: &Option<T>) -> bool {
-		match (self.get(), other) {
-			(Some(a), Some(b)) => a == *b,
-			(None, None) => true,
-			_ => false,
-		}
-	}
+    fn eq(&self, other: &Option<T>) -> bool {
+        match (self.get(), other) {
+            (Some(a), Some(b)) => a == *b,
+            (None, None) => true,
+            _ => false,
+        }
+    }
 }
 
 impl<T: ZcElem + core::fmt::Debug, const PFX: usize> core::fmt::Debug for PodOption<T, PFX> {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self.get() {
-			Some(v) => write!(f, "Some({:?})", v),
-			None => write!(f, "None"),
-		}
-	}
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self.get() {
+            Some(v) => write!(f, "Some({:?})", v),
+            None => write!(f, "None"),
+        }
+    }
 }
 
 #[cfg(all(kani, feature = "kani"))]
 mod kani_proofs {
-	use super::*;
+    use super::*;
 
-	// Macro to generate a proof for each PFX value (1, 2, 4, 8).
-	macro_rules! pfx_proofs {
-		($base:ident, $body:expr) => {
-			mod $base {
-				use super::*;
+    // Macro to generate a proof for each PFX value (1, 2, 4, 8).
+    macro_rules! pfx_proofs {
+        ($base:ident, $body:expr) => {
+            mod $base {
+                use super::*;
 
-				#[kani::proof]
-				fn pfx1() {
-					const PFX: usize = 1;
-					$body
-				}
-				#[kani::proof]
-				fn pfx2() {
-					const PFX: usize = 2;
-					$body
-				}
-				#[kani::proof]
-				fn pfx4() {
-					const PFX: usize = 4;
-					$body
-				}
-				#[kani::proof]
-				fn pfx8() {
-					const PFX: usize = 8;
-					$body
-				}
-			}
-		};
-	}
+                #[kani::proof]
+                fn pfx1() {
+                    const PFX: usize = 1;
+                    $body
+                }
+                #[kani::proof]
+                fn pfx2() {
+                    const PFX: usize = 2;
+                    $body
+                }
+                #[kani::proof]
+                fn pfx4() {
+                    const PFX: usize = 4;
+                    $body
+                }
+                #[kani::proof]
+                fn pfx8() {
+                    const PFX: usize = 8;
+                    $body
+                }
+            }
+        };
+    }
 
-	pfx_proofs!(some_roundtrip, {
-		let v: u8 = kani::any();
-		let pod = PodOption::<u8, PFX>::some(v);
-		assert!(pod.is_some());
-		assert!(!pod.is_none());
-		assert!(pod.get() == Some(v), "some roundtrip must preserve value");
-	});
+    pfx_proofs!(some_roundtrip, {
+        let v: u8 = kani::any();
+        let pod = PodOption::<u8, PFX>::some(v);
+        assert!(pod.is_some());
+        assert!(!pod.is_none());
+        assert!(pod.get() == Some(v), "some roundtrip must preserve value");
+    });
 
-	pfx_proofs!(none_roundtrip, {
-		let pod = PodOption::<u8, PFX>::none();
-		assert!(pod.is_none());
-		assert!(!pod.is_some());
-		assert!(pod.get() == None, "none must return None");
-	});
+    pfx_proofs!(none_roundtrip, {
+        let pod = PodOption::<u8, PFX>::none();
+        assert!(pod.is_none());
+        assert!(!pod.is_some());
+        assert!(pod.get() == None, "none must return None");
+    });
 
-	pfx_proofs!(set_some_then_get, {
-		let v: u8 = kani::any();
-		let mut pod = PodOption::<u8, PFX>::none();
-		pod.set(Some(v));
-		assert!(
-			pod.get() == Some(v),
-			"set(Some(v)) then get() must return Some(v)"
-		);
-	});
+    pfx_proofs!(set_some_then_get, {
+        let v: u8 = kani::any();
+        let mut pod = PodOption::<u8, PFX>::none();
+        pod.set(Some(v));
+        assert!(
+            pod.get() == Some(v),
+            "set(Some(v)) then get() must return Some(v)"
+        );
+    });
 
-	pfx_proofs!(set_none_then_get, {
-		let v: u8 = kani::any();
-		let mut pod = PodOption::<u8, PFX>::some(v);
-		pod.set(None);
-		assert!(pod.get() == None, "set(None) then get() must return None");
-	});
+    pfx_proofs!(set_none_then_get, {
+        let v: u8 = kani::any();
+        let mut pod = PodOption::<u8, PFX>::some(v);
+        pod.set(None);
+        assert!(pod.get() == None, "set(None) then get() must return None");
+    });
 
-	pfx_proofs!(take_returns_value_and_clears, {
-		let v: u8 = kani::any();
-		let mut pod = PodOption::<u8, PFX>::some(v);
-		let taken = pod.take();
-		assert!(taken == Some(v), "take must return the value");
-		assert!(pod.is_none(), "take must clear to None");
-	});
+    pfx_proofs!(take_returns_value_and_clears, {
+        let v: u8 = kani::any();
+        let mut pod = PodOption::<u8, PFX>::some(v);
+        let taken = pod.take();
+        assert!(taken == Some(v), "take must return the value");
+        assert!(pod.is_none(), "take must clear to None");
+    });
 
-	pfx_proofs!(replace_returns_old, {
-		let old: u8 = kani::any();
-		let new: u8 = kani::any();
-		let mut pod = PodOption::<u8, PFX>::some(old);
-		let returned = pod.replace(new);
-		assert!(returned == Some(old), "replace must return old value");
-		assert!(pod.get() == Some(new), "replace must set new value");
-	});
+    pfx_proofs!(replace_returns_old, {
+        let old: u8 = kani::any();
+        let new: u8 = kani::any();
+        let mut pod = PodOption::<u8, PFX>::some(old);
+        let returned = pod.replace(new);
+        assert!(returned == Some(old), "replace must return old value");
+        assert!(pod.get() == Some(new), "replace must set new value");
+    });
 
-	pfx_proofs!(replace_on_none_returns_none, {
-		let v: u8 = kani::any();
-		let mut pod = PodOption::<u8, PFX>::none();
-		let returned = pod.replace(v);
-		assert!(returned == None, "replace on None must return None");
-		assert!(pod.get() == Some(v), "replace must set value");
-	});
+    pfx_proofs!(replace_on_none_returns_none, {
+        let v: u8 = kani::any();
+        let mut pod = PodOption::<u8, PFX>::none();
+        let returned = pod.replace(v);
+        assert!(returned == None, "replace on None must return None");
+        assert!(pod.get() == Some(v), "replace must set value");
+    });
 
-	pfx_proofs!(unwrap_or_some, {
-		let v: u8 = kani::any();
-		let default: u8 = kani::any();
-		let pod = PodOption::<u8, PFX>::some(v);
-		assert!(
-			pod.unwrap_or(default) == v,
-			"unwrap_or on Some must return value"
-		);
-	});
+    pfx_proofs!(unwrap_or_some, {
+        let v: u8 = kani::any();
+        let default: u8 = kani::any();
+        let pod = PodOption::<u8, PFX>::some(v);
+        assert!(
+            pod.unwrap_or(default) == v,
+            "unwrap_or on Some must return value"
+        );
+    });
 
-	pfx_proofs!(unwrap_or_none, {
-		let default: u8 = kani::any();
-		let pod = PodOption::<u8, PFX>::none();
-		assert!(
-			pod.unwrap_or(default) == default,
-			"unwrap_or on None must return default"
-		);
-	});
+    pfx_proofs!(unwrap_or_none, {
+        let default: u8 = kani::any();
+        let pod = PodOption::<u8, PFX>::none();
+        assert!(
+            pod.unwrap_or(default) == default,
+            "unwrap_or on None must return default"
+        );
+    });
 
-	pfx_proofs!(default_is_none, {
-		let pod = PodOption::<u8, PFX>::default();
-		assert!(pod.is_none(), "default must be None");
-		assert!(pod.raw_tag() == 0, "default tag must be 0");
-	});
+    pfx_proofs!(default_is_none, {
+        let pod = PodOption::<u8, PFX>::default();
+        assert!(pod.is_none(), "default must be None");
+        assert!(pod.raw_tag() == 0, "default tag must be 0");
+    });
 
-	pfx_proofs!(clear_makes_none, {
-		let v: u8 = kani::any();
-		let mut pod = PodOption::<u8, PFX>::some(v);
-		pod.clear();
-		assert!(pod.is_none(), "clear must make None");
-	});
+    pfx_proofs!(clear_makes_none, {
+        let v: u8 = kani::any();
+        let mut pod = PodOption::<u8, PFX>::some(v);
+        pod.clear();
+        assert!(pod.is_none(), "clear must make None");
+    });
 
-	pfx_proofs!(get_ref_borrow, {
-		let v: u8 = kani::any();
-		let pod = PodOption::<u8, PFX>::some(v);
-		assert!(pod.get_ref() == Some(&v), "get_ref must borrow the value");
-		let none_pod = PodOption::<u8, PFX>::none();
-		assert!(none_pod.get_ref().is_none(), "get_ref on None must be None");
-	});
+    pfx_proofs!(get_ref_borrow, {
+        let v: u8 = kani::any();
+        let pod = PodOption::<u8, PFX>::some(v);
+        assert!(pod.get_ref() == Some(&v), "get_ref must borrow the value");
+        let none_pod = PodOption::<u8, PFX>::none();
+        assert!(none_pod.get_ref().is_none(), "get_ref on None must be None");
+    });
 
-	// PFX=1 specific: invalid tag (not 0 or 1) — must not be Some.
-	#[kani::proof]
-	fn invalid_tag_pfx1() {
-		let tag: u8 = kani::any();
-		kani::assume(tag != 0 && tag != 1);
-		let mut buf = [0u8; 2]; // PodOption<u8, 1>: 1 tag + 1 value
-		buf[0] = tag;
-		buf[1] = kani::any();
-		let pod = unsafe { &*(buf.as_ptr() as *const PodOption<u8, 1>) };
-		assert!(!pod.is_some(), "invalid tag must not be Some");
-		assert!(pod.get() == None, "invalid tag must return None from get()");
-	}
+    // PFX=1 specific: invalid tag (not 0 or 1) — must not be Some.
+    #[kani::proof]
+    fn invalid_tag_pfx1() {
+        let tag: u8 = kani::any();
+        kani::assume(tag != 0 && tag != 1);
+        let mut buf = [0u8; 2]; // PodOption<u8, 1>: 1 tag + 1 value
+        buf[0] = tag;
+        buf[1] = kani::any();
+        let pod = unsafe { &*(buf.as_ptr() as *const PodOption<u8, 1>) };
+        assert!(!pod.is_some(), "invalid tag must not be Some");
+        assert!(pod.get() == None, "invalid tag must return None from get()");
+    }
 
-	// PFX=4: any 4-byte tag > 1 rejected.
-	#[kani::proof]
-	fn tag_rejection_pfx4() {
-		let tag: u32 = kani::any();
-		kani::assume(tag > 1);
-		let mut buf = [0u8; 5]; // PodOption<u8, 4>: 4 tag + 1 value
-		buf[..4].copy_from_slice(&tag.to_le_bytes());
-		buf[4] = kani::any();
-		let pod = unsafe { &*(buf.as_ptr() as *const PodOption<u8, 4>) };
-		assert!(!pod.is_some(), "tag > 1 must not be Some");
-	}
+    // PFX=4: any 4-byte tag > 1 rejected.
+    #[kani::proof]
+    fn tag_rejection_pfx4() {
+        let tag: u32 = kani::any();
+        kani::assume(tag > 1);
+        let mut buf = [0u8; 5]; // PodOption<u8, 4>: 4 tag + 1 value
+        buf[..4].copy_from_slice(&tag.to_le_bytes());
+        buf[4] = kani::any();
+        let pod = unsafe { &*(buf.as_ptr() as *const PodOption<u8, 4>) };
+        assert!(!pod.is_some(), "tag > 1 must not be Some");
+    }
 
-	// PFX=4: none() produces all-zero payload.
-	#[kani::proof]
-	fn none_zeroed_pfx4() {
-		let pod = PodOption::<u8, 4>::none();
-		let bytes = unsafe {
-			core::slice::from_raw_parts(&pod as *const _ as *const u8, core::mem::size_of_val(&pod))
-		};
-		for &b in bytes {
-			assert!(b == 0, "none() must produce all-zero bytes");
-		}
-	}
+    // PFX=4: none() produces all-zero payload.
+    #[kani::proof]
+    fn none_zeroed_pfx4() {
+        let pod = PodOption::<u8, 4>::none();
+        let bytes = unsafe {
+            core::slice::from_raw_parts(&pod as *const _ as *const u8, core::mem::size_of_val(&pod))
+        };
+        for &b in bytes {
+            assert!(b == 0, "none() must produce all-zero bytes");
+        }
+    }
 
-	pfx_proofs!(inactive_string_payload_is_not_exposed, {
-		let mut bytes = [0u8; PFX + 2];
-		bytes[PFX] = kani::any();
-		bytes[PFX + 1] = kani::any();
+    pfx_proofs!(inactive_string_payload_is_not_exposed, {
+        let mut bytes = [0u8; PFX + 2];
+        bytes[PFX] = kani::any();
+        bytes[PFX + 1] = kani::any();
 
-		// SAFETY: The complete representation is initialized and alignment one.
-		// Its zero tag makes the arbitrary string payload inactive.
-		let pod = unsafe { &*(bytes.as_ptr() as *const PodOption<crate::pod::PodString<1>, PFX>) };
+        // SAFETY: The complete representation is initialized and alignment one.
+        // Its zero tag makes the arbitrary string payload inactive.
+        let pod = unsafe { &*(bytes.as_ptr() as *const PodOption<crate::pod::PodString<1>, PFX>) };
 
-		assert!(crate::ZcValidate::validate_ref(pod).is_ok());
-		assert!(pod.get().is_none());
-		assert!(pod.get_ref().is_none());
-	});
+        assert!(crate::ZcValidate::validate_ref(pod).is_ok());
+        assert!(pod.get().is_none());
+        assert!(pod.get_ref().is_none());
+    });
 }
