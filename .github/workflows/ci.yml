@@ -283,5 +283,26 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: preview release
         if: hashFiles('.changeset/*.md') != ''
-        run: monochange step prepare-release --dry-run --format json
+        run: |
+          set -euo pipefail
+
+          # A changeset that only carries `docs` or `none` intent produces no
+          # version bump, and `prepare-release` reports that as a config error
+          # rather than an empty plan. That is the expected outcome for a
+          # documentation-only pull request, so treat it as a successful
+          # no-op instead of failing the build. Every other failure still fails.
+          #
+          # The step runs inside `devenv shell`, which does not carry the
+          # runner's `RUNNER_TEMP` into the shell, so use a plain temp file.
+          output="$(mktemp)"
+          if ! monochange step prepare-release --dry-run --format json > "$output" 2>&1; then
+            if grep -q 'no releaseable packages were found in discovered changesets' "$output"; then
+              echo "All changeset bumps are 'none'; nothing to release."
+              exit 0
+            fi
+
+            cat "$output" >&2
+            exit 1
+          fi
+          cat "$output"
         shell: devenv shell -c -- bash -e {0}
