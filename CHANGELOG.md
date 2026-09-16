@@ -2,6 +2,94 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.0) (2026-09-16)
+
+Grouped release for `pinapod-workspace`.
+
+### Breaking Changes
+
+#### support typed fixed arrays `[T; N]` in every schema position
+
+_Packages:_ _pinapod_, _pinapod-derive_
+
+`ZcElem`, `ZcValidate`, and `ZcField` are now implemented for arrays of any pod element, not only `[u8; N]`. A field declared `[u64; 4]` stores `[PodU64; 4]` little-endian with no length prefix, validation recurses per element, and the identity mapping for `[u8; N]` is preserved exactly. Nested arrays such as `[[u8; 4]; 2]`, pod-spelled arrays such as `[PodU64; 4]`, arrays of `PodBool`, and `Option<[u64; N]>` all resolve through the same composition rules.
+
+The derive now maps array fields element-wise (`[u64; 4]` emits `[PodU64; 4]` storage), recurses capacity checks into array elements, and compact patch builders accept both native and pod spellings through a new hidden `IntoPodArray` conversion trait — `.weights([5, 6])` and `.weights([PodU64::from(5), PodU64::from(6)])` both compile. Fixed-schema accessors return the pod array by reference, matching the existing `Vec<T, N>` accessor shape.
+
+For example, the field type now carries the element type instead of forcing raw bytes, with no change to the wire size:
+
+```rust
+// Before: only `[u8; N]` was supported, so a fixed u64 array was raw bytes.
+#[derive(PinaPod)]
+#[pinapod(compact)]
+struct Table {
+    weights: [u8; 16],
+}
+```
+
+```rust
+// After: the native element type is accepted throughout, storing `[PodU64; 2]`.
+#[derive(PinaPod)]
+#[pinapod(compact)]
+struct Table {
+    weights: [u64; 2],
+}
+
+fn round_trip() {
+    let mut buffer = [0u8; Table::MAX_SIZE];
+    let patch = TablePatch::new().weights([5_u64, 6]);
+    let encoded_len = Table::initialize(&mut buffer, &patch).unwrap();
+    let table = Table::read_prefix(&buffer[..encoded_len]).unwrap();
+    assert_eq!(table.weights[0].get(), 5);
+}
+```
+
+Soundness of the generalized `ZcElem` rests on the documented array layout rules: `[T; N]` inherits alignment 1 from `T`, its size is exactly `N * size_of::<T>()` so no padding can exist between elements, and per-element bit validity composes. The `[u8; N]`-specific impls were replaced by the generic ones, so downstream crates that hand-wrote `ZcField`/`ZcValidate` impls for their own array types will now conflict with the blanket impls — the closed-world safety guidance already rules that pattern out, but it is the one theoretically breaking edge and the reason both crates bump together.
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #22](https://github.com/pina-rs/pinapod/pull/22)
+
+### Documentation
+
+#### document the public API and enforce `missing_docs`
+
+_Packages:_ _pinapod_, _pinapod-derive_
+
+Every publicly reachable item in `pinapod` now carries documentation: the crate root, both public modules, each pod type and container method, the error variants, and every trait, associated type, constant, and method in `traits.rs`. The derive crate documents its crate root, the `PinaPod` macro, and every struct and field option it accepts.
+
+The workspace lint policy denies `missing_docs` alongside `unsafe_code`, so an undocumented public item in either library fails the build instead of shipping an undocumented entry in the wire-format contract. Test, benchmark, and fixture targets opt out with a reasoned `#[allow(missing_docs, reason = "...")]`, matching how `unsafe_code` is scoped.
+
+Shared wording lives in one place. `mdt` providers in `api-docs.t.md` (API contracts expanded into rustdoc) and `templates/` (tables and contracts expanded into the README and the book) replace the text that was previously repeated across the pod containers, the error table, the float bit-pattern rules, and the prefix-width rules. `devenv shell docs:sync` rewrites the consumers, and `verify:docs` runs `mdt check` so a stale block fails CI. No API, wire format, or runtime behavior changes.
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #23](https://github.com/pina-rs/pinapod/pull/23) · _Related issues:_ [#23](https://github.com/pina-rs/pinapod/issues/23)
+
+### Notes
+
+#### run Kani proofs against pinned Kani and modern solvers
+
+_Packages:_ _pinapod_
+
+The CI job installed z3 with `apt-get`, which on ubuntu-24.04 resolves to a 2021 release whose wide bitvector reasoning is far too slow. The `kani (u128)` and `kani (i128)` shards took 31.7 and 50.7 minutes and had begun timing out. Two changes fix that.
+
+Each arithmetic harness is split so every expensive operation gets its own verification condition instead of accumulating one large formula, and the resulting harnesses request `cvc5` rather than `z3`. On the same formulas `z3` could not finish the signed 128-bit division proof within 25 minutes, while `cvc5` verifies it in 14 seconds; `z3` 5.1.0 did not help, so this is not a solver-version problem. The u128 shard now verifies 10 harnesses in about 30 seconds and the i128 shard 11 harnesses in about 22 seconds.
+
+CI installs both solvers from their GitHub releases through a new `kani-solvers` action, pinned by SHA-256 per platform so a moved or compromised release asset cannot silently change what the proofs ran against. The Kani version is pinned alongside them. Proofs no longer run through the `devenv` environment, which saves roughly ten minutes per shard and keeps the devenv setup for local runs, where the same profile pins `cvc5` and `z3` for investigation.
+
+Every assertion is preserved: each operation is still proven equal to its native counterpart, including signed overflow and division-by-zero cases. Nothing was weakened, bounded, or removed to make the proofs fit. No public API changes — the split harnesses live behind `#[cfg(kani)]` and the shard scripts make proofs runnable locally for the first time.
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #26](https://github.com/pina-rs/pinapod/pull/26) · _Related issues:_ [#22](https://github.com/pina-rs/pinapod/issues/22), [#8083](https://github.com/pina-rs/pinapod/issues/8083)
+
+#### finish the tabs-to-spaces switch and fix style fallout
+
+_Packages:_ _pinapod_, _pinapod-derive_
+
+The `hard_tabs = false` switch left most of the workspace formatted under the previous tab style, so `lint:format` (`dprint check`) failed across benches, tests, and both crates. `dprint fmt` completes the conversion, including the `tests/ui` fixtures, and `mdt check` stays green because the mdt `indent:"    "` directives now match the enforced style.
+
+The compile-fail snapshots are re-blessed for the resulting span shifts and for the richer const-eval diagnostics of the pinned nightly, which also renders the containers' forced capacity assertions differently.
+
+Two new tool lints needed reasoned workspace-policy entries. `rustdoc::invalid_markdown_table` rejects mdt's block close markers when they sit inline after the final row of a generated table, but the marker is an invisible synchronization delimiter, so the lint is always a false positive here. `clippy::used_underscore_items` misreads the containers' `let _ = Self::_CAP_CHECK` idiom, which references an underscore-prefixed const on purpose to force its compile-time assertion. No public API, wire format, or runtime behavior changes.
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #28](https://github.com/pina-rs/pinapod/pull/28)
+
 ## [0.3.3](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.3.3) (2026-09-14)
 
 Grouped release for `pinapod-workspace`.
