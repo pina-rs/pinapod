@@ -107,12 +107,6 @@
 //! This section is synchronized by `mdt` and expands from `api-docs.t.md`. Edit the provider, then run `devenv shell docs:sync`.<!-- {/podMdtManagedDocNote} -->
 
 #![no_std]
-// The public API is the wire-format contract that downstream programs compile
-// against, so an undocumented item is a leak in the surface rather than a style
-// nit. This is a crate-level lint rather than a workspace lint because the test and
-// benchmark targets inherit workspace lints, and their fixtures do not document
-// themselves.
-#![deny(missing_docs)]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![cfg_attr(
     kani,

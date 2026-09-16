@@ -1,4 +1,8 @@
 //! Ergonomics tests for `PinaPod` storage types.
+#![allow(
+    missing_docs,
+    reason = "these are test fixtures rather than a published surface, so their schemas stay undocumented"
+)]
 
 use pinapod::{pod::*, PinaPod};
 

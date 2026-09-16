@@ -1,7 +1,8 @@
 #![allow(
     unsafe_code,
     unused_qualifications,
-    reason = "the invalid-element regression constructs an audited raw PodBool and layout assertions intentionally spell out trait paths"
+    missing_docs,
+    reason = "the invalid-element regression constructs an audited raw PodBool, layout assertions intentionally spell out trait paths, and these test fixtures are not a published surface"
 )]
 
 use pinapod::{PinaPod, PinaPodCompact};

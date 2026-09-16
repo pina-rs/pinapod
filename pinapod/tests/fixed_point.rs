@@ -1,4 +1,8 @@
 #![cfg(feature = "fixed")]
+#![allow(
+    missing_docs,
+    reason = "these are test fixtures rather than a published surface, so their schemas stay undocumented"
+)]
 
 use {
     core::mem::{align_of, size_of},

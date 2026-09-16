@@ -2,7 +2,8 @@
 //! Verifies the `ZcElem` boundary, error specificity, and compact contract.
 #![allow(
     unsafe_code,
-    reason = "the derive macro emits audited zero-copy validation implementations"
+    missing_docs,
+    reason = "the derive macro emits audited zero-copy validation implementations and these test fixtures are not a published surface"
 )]
 
 use pinapod::{pod::*, PinaPod, PinaPodError};
