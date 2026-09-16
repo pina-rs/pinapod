@@ -207,6 +207,11 @@ fn fixed_capacity_checks(ty: &Type) -> Vec<TokenStream> {
 }
 
 fn collect_fixed_capacity_checks(ty: &Type, checks: &mut Vec<TokenStream>) {
+    if let Type::Array(array) = ty {
+        collect_fixed_capacity_checks(&array.elem, checks);
+        return;
+    }
+
     let Type::Path(type_path) = ty else {
         return;
     };

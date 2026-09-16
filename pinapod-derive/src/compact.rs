@@ -987,6 +987,22 @@ fn generate_patch(
                             self
                         }
                     });
+                } else if let syn::Type::Array(array) = &field.ty {
+                    // Native and pod element spellings both resolve through
+                    // the blanket `IntoPodArray` impl.
+                    let element = &array.elem;
+                    let length = &array.len;
+                    builders.push(quote! {
+                        pub fn #name(
+                            mut self,
+                            value: impl pinapod::traits::IntoPodArray<#element, #length>,
+                        ) -> Self {
+                            self.#name = Some(
+                                pinapod::traits::IntoPodArray::into_pod_array(value),
+                            );
+                            self
+                        }
+                    });
                 } else {
                     builders.push(quote! {
                         pub fn #name(mut self, value: impl Into<#pod_ty>) -> Self {
