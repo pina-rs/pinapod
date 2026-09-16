@@ -1,5 +1,17 @@
 use core::fmt;
 
+/// Alignment-one boolean storage for a schema field declared as `bool`.
+///
+/// The stored value is a single byte that is either `0` or `1`, so `PodBool` is
+/// `#[repr(transparent)]` over `[u8; 1]` and can be read at any byte offset.
+///
+/// [`get`](Self::get) treats any non-zero byte as `true`, while validation rejects a
+/// byte above `1`. A forged `2` is therefore a read error rather than a truthy value.
+///
+/// A schema field declared as `bool` maps to this pod through the [`ZcField`]
+/// implementation, so `PinaPod` derives accept the native spelling.
+///
+/// [`ZcField`]: crate::ZcField
 #[repr(transparent)]
 #[derive(Copy, Clone, Default)]
 pub struct PodBool([u8; 1]);
@@ -11,16 +23,22 @@ impl PodBool {
         self.0[0] != 0
     }
 
+    /// Returns `true` when the stored byte is non-zero.
+    ///
+    /// This is the same comparison as [`get`](Self::get), named for call sites that
+    /// read as a predicate.
     #[inline(always)]
     pub fn is_true(&self) -> bool {
         self.get()
     }
 
+    /// Returns `true` when the stored byte is zero.
     #[inline(always)]
     pub fn is_false(&self) -> bool {
         !self.get()
     }
 
+    /// Replaces the stored byte with `0` for `false` or `1` for `true`.
     #[inline(always)]
     pub fn set(&mut self, value: bool) {
         self.0 = [value as u8];

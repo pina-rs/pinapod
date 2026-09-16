@@ -19,6 +19,7 @@ in
     git
     gitleaks
     mdbook
+    custom.mdt
     custom.monochange
     nixfmt-rfc-style
     rustup
@@ -122,8 +123,9 @@ in
       exec = ''
         set -euo pipefail
         dprint fmt --config "$DEVENV_ROOT/dprint.json"
+        docs:sync
       '';
-      description = "Format every supported source and configuration file.";
+      description = "Format every supported source and configuration file, then re-sync mdt-managed docs.";
       binary = "bash";
     };
     "fix:clippy" = {
@@ -174,15 +176,32 @@ in
       description = "Build public API documentation and reject warnings.";
       binary = "bash";
     };
+    "docs:sync" = {
+      exec = ''
+        set -euo pipefail
+        mdt update --path "$DEVENV_ROOT"
+      '';
+      description = "Sync reusable documentation blocks with mdt.";
+      binary = "bash";
+    };
+    "docs:check" = {
+      exec = ''
+        set -euo pipefail
+        mdt check --path ${lib.escapeShellArg currentDir}
+      '';
+      description = "Check that reusable documentation blocks are synchronized.";
+      binary = "bash";
+    };
     "verify:docs" = {
       exec = ''
         set -euo pipefail
+        docs:check
         [ -f "$DEVENV_ROOT/docs/book.toml" ]
         [ -f "$DEVENV_ROOT/docs/src/SUMMARY.md" ]
         mdbook build "$DEVENV_ROOT/docs" -d "$DEVENV_ROOT/target/mdbook"
         docs:api
       '';
-      description = "Verify the mdBook structure and public API documentation.";
+      description = "Verify the mdBook structure, reusable blocks, and public API documentation.";
       binary = "bash";
     };
     "lint:all" = {

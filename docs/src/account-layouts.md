@@ -4,7 +4,17 @@ Fixed and compact accounts use the same field representations. They differ in wh
 
 ## Fixed accounts reserve capacity in the account
 
-A fixed account always occupies `Schema::SIZE` bytes. `String<32>` reserves its one-byte prefix and all 32 payload bytes. `Vec<u64, 8>` reserves its two-byte prefix and space for all eight elements. `Option<T>` reserves its tag and the complete representation of `T`, even when the value is absent.
+A fixed account always occupies `Schema::SIZE` bytes.
+
+<!-- {=podContainerFootprintContract} -->
+
+A container reserves its full capacity wherever it appears, so a smaller value never shrinks the representation.
+
+`String<32>` occupies its one-byte prefix plus all 32 payload bytes, and `Vec<u64, 8>` occupies its two-byte prefix plus space for all eight elements.
+
+<!-- {/podContainerFootprintContract} -->
+
+`Option<T>` also reserves its tag and the complete representation of `T`, even when the value is absent.
 
 This layout is the better default when the maximum allocation is small or the program does not need reallocations. A field offset never moves, so each access is direct after validation.
 

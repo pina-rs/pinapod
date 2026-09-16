@@ -2,6 +2,28 @@
 
 Most schema code imports only `PinaPod`. The lower-level traits exist for generic framework code and audited representation extensions.
 
+## Feature flags
+
+<!-- {=podFeatureTable} -->
+
+| Feature                | Adds                                                     |
+| ---------------------- | -------------------------------------------------------- |
+| `fixed`                | Mappings for signed and unsigned `fixed` 1.30.0 values   |
+| `floats`               | `PodF32`/`PodF64` and mappings for native `f32`/`f64`    |
+| `solana-address`       | A mapping for `solana_address::Address`                  |
+| `solana-program-error` | Conversion from `PinaPodError` to `ProgramError`         |
+| `wincode`              | Canonical `SchemaRead` and `SchemaWrite` implementations |
+
+<!-- {/podFeatureTable} -->
+
+<!-- {=podFeatureDefaultsContract} -->
+
+No feature is enabled by default, so the core crate stays `no_std` and dependency-free.
+
+Enable only what a program reads from or writes to the wire.
+
+<!-- {/podFeatureDefaultsContract} -->
+
 ## Traits
 
 | Trait            | Contract                                                               |
@@ -19,6 +41,8 @@ Most schema code imports only `PinaPod`. The lower-level traits exist for generi
 
 Safe operations return `PinaPodError`:
 
+<!-- {=podErrorContract} -->
+
 | Variant               | Meaning                                                                      |
 | --------------------- | ---------------------------------------------------------------------------- |
 | `BufferTooSmall`      | The supplied slice cannot contain the required header, value, or active tail |
@@ -29,7 +53,36 @@ Safe operations return `PinaPodError`:
 | `InvalidLength`       | A stored length exceeds capacity or violates the read contract               |
 | `InvalidUtf8`         | Active string bytes are not UTF-8                                            |
 
-The `solana-program-error` feature maps a small buffer to `ProgramError::AccountDataTooSmall`. It maps every invalid representation or write overflow to `ProgramError::InvalidAccountData`.
+<!-- {/podErrorContract} -->
+
+<!-- {=podErrorProgramErrorMapping} -->
+
+The `solana-program-error` feature maps a small buffer to `ProgramError::AccountDataTooSmall`.
+
+It maps every invalid representation and every write overflow to `ProgramError::InvalidAccountData`.
+
+<!-- {/podErrorProgramErrorMapping} -->
+
+## Pod types
+
+Every schema field maps to one of these alignment-one representations. `PFX` is a prefix width in bytes.
+
+<!-- {=podTypesTable} -->
+
+| Type                       |                     Stored size | Meaning                                     |
+| -------------------------- | ------------------------------: | ------------------------------------------- |
+| `PodU16` through `PodU128` |              2 through 16 bytes | Unsigned, little-endian integer             |
+| `PodI16` through `PodI128` |              2 through 16 bytes | Signed, little-endian integer               |
+| `PodBool`                  |                          1 byte | Boolean with a `0` or `1` byte              |
+| `PodF32`                   |                         4 bytes | IEEE-754 binary32 stored as its bit pattern |
+| `PodF64`                   |                         8 bytes | IEEE-754 binary64 stored as its bit pattern |
+| `PodOption<T, PFX>`        |          `PFX + size_of::<T>()` | Optional fixed representation               |
+| `PodString<N, PFX>`        |                       `PFX + N` | UTF-8 string with at most `N` bytes         |
+| `PodVec<T, N, PFX>`        | `PFX + N * mapped element size` | Vector with at most `N` mapped pod elements |
+
+<!-- {/podTypesTable} -->
+
+A schema field declared as a native type maps to its pod through `ZcField`, so the derive accepts spellings such as `u64`, `bool`, `f32`, and `[u8; 32]` directly. Pod types that appear in a schema without a mapping are stored as-is.
 
 ## Numeric pods
 
@@ -129,9 +182,23 @@ assert_eq!(reading.depth(), 3.125);
 # Ok::<(), pinapod::PinaPodError>(())
 ```
 
-Storage is the complete IEEE-754 bit pattern little-endian: `f32` in four bytes and `f64` in eight. `get` and `set` convert to and from the native float; `to_bits` and `set_bits` expose the raw pattern. Every bit pattern is a valid value, so validation never rejects a NaN, an infinity, or the sign of zero, and an all-zero field decodes as `+0.0`.
+`get` and `set` convert to and from the native float; `to_bits` and `set_bits` expose the raw pattern.
 
-Pod equality is bitwise rather than float-valued. That keeps `Eq` sound in the presence of NaN payloads and preserves the distinction between `+0.0` and `-0.0`. The pods deliberately implement no `PartialOrd` or `Ord`: bitwise equality and float ordering cannot both hold, because ordering would have to rank NaN payloads and separate `+0.0` from `-0.0`. Decode with `get` and compare the natives when an ordering is needed.
+<!-- {=podFloatBitPatternContract} -->
+
+Storage is the complete IEEE-754 bit pattern, little-endian.
+
+Every bit pattern is a valid stored value, so validation never rejects a NaN, an infinity, or the sign of zero, and an all-zero field decodes as `+0.0`.
+
+<!-- {/podFloatBitPatternContract} -->
+
+<!-- {=podFloatBitwiseEqualityContract} -->
+
+Equality compares stored bit patterns rather than decoded floats.
+
+That keeps `Eq` sound in the presence of NaN payloads and preserves the distinction between `+0.0` and `-0.0`. The pods deliberately implement no `PartialOrd` or `Ord`, because bitwise equality and float ordering cannot both hold: an ordering would have to rank NaN payloads and separate `+0.0` from `-0.0`. Decode with `get` and compare the natives when an ordering is needed.
+
+<!-- {/podFloatBitwiseEqualityContract} -->
 
 `PodF32` and `PodF64` are byte containers, not arithmetic types: they provide no operators, so multi-step float math belongs at the call site on the decoded natives.
 

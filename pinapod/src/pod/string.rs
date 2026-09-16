@@ -13,6 +13,21 @@ pub(crate) const fn max_n_for_pfx(pfx: usize) -> usize {
     }
 }
 
+/// Alignment-one fixed-capacity UTF-8 string for a schema field.
+///
+/// The representation is a `PFX`-byte little-endian length followed by `N` payload
+/// bytes, so `PodString<N, PFX>` occupies `PFX + N` bytes with alignment one and can be
+/// read at any byte offset. Active bytes are always valid UTF-8: a reader validates them,
+/// and every writer takes a `&str`.
+///
+/// <!-- {=podPrefixWidthContract|trim|linePrefix:"/// ":true} -->
+/// `PFX` is the length-prefix width in bytes and must be `1`, `2`, `4`, or `8`.
+///
+/// The capacity must fit that prefix: `String<255>` is valid, `String<256>` is not, and `PodString<256, 2>` restores it.<!-- {/podPrefixWidthContract} -->
+///
+/// The default prefix is one byte, so the [`String`](crate::String) alias is
+/// `PodString<N, 1>`. Safe accessors clamp the decoded length to `N`; call
+/// [`decode_len`](Self::decode_len) for the unvalidated prefix.
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct PodString<const N: usize, const PFX: usize = 1> {
@@ -34,6 +49,12 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
         );
     };
 
+    /// Compile-time assertion that this capacity and prefix are representable.
+    ///
+    /// The associated constant is the only way to name the check: referring to
+    /// `PodString::<N, PFX>::VALID` forces the compiler to evaluate it, which rejects an
+    /// unsupported prefix width or a capacity that does not fit the prefix. Generated
+    /// code references it so a bad schema fails at the declaration site.
     pub const VALID: () = Self::_CAP_CHECK;
 }
 
@@ -78,12 +99,10 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
         }
     }
 
+    /// <!-- {=podRawDecodeLenContract|trim|linePrefix:"/// ":true|indent:"    "} -->
     /// The raw decoded length prefix.
     ///
-    /// This is the unvalidated prefix value. On a prefix wider than `usize`
-    /// (eight-byte prefixes on 32-bit targets), the sentinel `usize::MAX` is
-    /// returned. Safe accessors such as [`len`](Self::len) clamp the value to
-    /// the capacity; readers reject it during validation.
+    /// This is the unvalidated prefix value. On a prefix wider than `usize` (eight-byte prefixes on 32-bit targets) the sentinel `usize::MAX` is returned. Safe accessors such as [`len`](Self::len) clamp the value to the capacity; readers reject it during validation.<!-- {/podRawDecodeLenContract} -->
     #[inline(always)]
     pub fn decode_len(&self) -> usize {
         self.try_decode_len().unwrap_or(usize::MAX)
@@ -112,13 +131,10 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
         self.data[range].fill(MaybeUninit::zeroed());
     }
 
-    /// The number of active bytes, clamped to the fixed capacity `N`.
+    /// <!-- {=podClampedLenContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// The active length, clamped to the fixed capacity `N`.
     ///
-    /// A forged or corrupt prefix can decode above `N`; this accessor never
-    /// trusts it. Callers that need to distinguish a corrupt prefix from a
-    /// valid one must validate through a reader first (see [`ZcValidate`]).
-    ///
-    /// [`ZcValidate`]: crate::ZcValidate
+    /// A forged or corrupt prefix can decode above `N`; this accessor never trusts it. Callers that need to distinguish a corrupt prefix from a valid one must validate through a reader first (see [`ZcValidate`](crate::ZcValidate)).<!-- {/podClampedLenContract} -->
     #[inline(always)]
     pub fn len(&self) -> usize {
         #[allow(clippy::let_unit_value)]
@@ -126,16 +142,22 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
         self.decode_len().min(N)
     }
 
+    /// Returns `true` when no bytes are active.
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    /// The fixed payload capacity `N`, in bytes.
     #[inline(always)]
     pub const fn capacity(&self) -> usize {
         N
     }
 
+    /// Borrows the active bytes as a UTF-8 string slice.
+    ///
+    /// The length is clamped to the capacity, so this never reads past `N`. Validate
+    /// through a reader first when the prefix itself must be trusted.
     #[inline(always)]
     pub fn as_str(&self) -> &str {
         let len = self.len();
@@ -145,6 +167,7 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
         }
     }
 
+    /// Borrows the active bytes, excluding the prefix and the inactive capacity.
     #[inline(always)]
     pub fn as_bytes(&self) -> &[u8] {
         let len = self.len();
@@ -155,7 +178,10 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
     ///
     /// # Errors
     ///
-    /// Returns [`PinaPodError::Overflow`] when `value` exceeds the fixed capacity.
+    /// <!-- {=podWriteCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Returns [`PinaPodError::Overflow`](crate::PinaPodError::Overflow) when the write would exceed the fixed capacity.
+    ///
+    /// The destination keeps its previous contents, so a rejected write is a no-op.<!-- {/podWriteCapacityContract} -->
     pub fn try_set(&mut self, value: &str) -> Result<(), PinaPodError> {
         let vlen = value.len();
         if vlen > N {
@@ -176,7 +202,10 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
     ///
     /// # Errors
     ///
-    /// Returns [`PinaPodError::Overflow`] when the combined contents exceed the fixed capacity.
+    /// <!-- {=podWriteCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Returns [`PinaPodError::Overflow`](crate::PinaPodError::Overflow) when the write would exceed the fixed capacity.
+    ///
+    /// The destination keeps its previous contents, so a rejected write is a no-op.<!-- {/podWriteCapacityContract} -->
     pub fn try_push_str(&mut self, value: &str) -> Result<(), PinaPodError> {
         let cur = self.len();
         let vlen = value.len();
@@ -195,16 +224,27 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
         Ok(())
     }
 
+    /// Iterates the active characters.
     #[inline(always)]
     pub fn chars(&self) -> core::str::Chars<'_> {
         self.as_str().chars()
     }
 
+    /// Iterates the active bytes.
     #[inline(always)]
     pub fn bytes(&self) -> core::str::Bytes<'_> {
         self.as_str().bytes()
     }
 
+    /// Shortens the active bytes to at most `new_len`.
+    ///
+    /// The new length is rounded down to the nearest UTF-8 character boundary, so the
+    /// result stays a valid string.
+    ///
+    /// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Every container starts with fully initialized backing storage.
+    ///
+    /// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
     #[inline(always)]
     pub fn truncate(&mut self, new_len: usize) {
         if new_len >= self.len() {
@@ -219,6 +259,12 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
         self.encode_len(boundary);
     }
 
+    /// Removes every active byte.
+    ///
+    /// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Every container starts with fully initialized backing storage.
+    ///
+    /// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
     #[inline(always)]
     pub fn clear(&mut self) {
         self.zero_range(0..self.len());

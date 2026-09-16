@@ -13,6 +13,18 @@ use {
 /// `PodVec<PodU64, 8, 2>` remains valid through the identity [`ZcField`]
 /// mapping. The second form exists for source compatibility; schema code
 /// should normally use the native element type.
+///
+/// The representation is a `PFX`-byte little-endian element count followed by
+/// `N` fixed-size element slots, so `PodVec<T, N, PFX>` occupies
+/// `PFX + N * size_of::<T::Pod>()` bytes with alignment one.
+///
+/// <!-- {=podPrefixWidthContract|trim|linePrefix:"/// ":true} -->
+/// `PFX` is the length-prefix width in bytes and must be `1`, `2`, `4`, or `8`.
+///
+/// The capacity must fit that prefix: `String<255>` is valid, `String<256>` is not, and `PodString<256, 2>` restores it.<!-- {/podPrefixWidthContract} -->
+///
+/// The default prefix is two bytes, so the [`Vec`](crate::Vec) alias is
+/// `PodVec<T, N, 2>`.
 pub type PodVec<T, const N: usize, const PFX: usize = 2> = PodVecRepr<<T as ZcField>::Pod, N, PFX>;
 
 /// Raw fixed-capacity vector representation.
@@ -20,6 +32,15 @@ pub type PodVec<T, const N: usize, const PFX: usize = 2> = PodVecRepr<<T as ZcFi
 /// This backing type is public because it appears through [`PodVec`], but it
 /// is not the schema-facing API. Prefer [`PodVec`] so native element types map
 /// to their alignment-one PinaPod representation.
+///
+/// The representation is a `PFX`-byte little-endian element count followed by
+/// `N` element slots of type `T`, so `PodVecRepr<T, N, PFX>` occupies
+/// `PFX + N * size_of::<T>()` bytes with alignment one.
+///
+/// <!-- {=podPrefixWidthContract|trim|linePrefix:"/// ":true} -->
+/// `PFX` is the length-prefix width in bytes and must be `1`, `2`, `4`, or `8`.
+///
+/// The capacity must fit that prefix: `String<255>` is valid, `String<256>` is not, and `PodString<256, 2>` restores it.<!-- {/podPrefixWidthContract} -->
 ///
 /// # Stability
 ///
@@ -60,6 +81,12 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
         );
     };
 
+    /// Compile-time assertion that this capacity and prefix are representable.
+    ///
+    /// The associated constant is the only way to name the check: referring to
+    /// `PodVec::<T, N, PFX>::VALID` forces the compiler to evaluate it, which rejects an
+    /// unsupported prefix width or a capacity that does not fit the prefix. Generated
+    /// code references it so a bad schema fails at the declaration site.
     pub const VALID: () = Self::_CAP_CHECK;
 
     #[inline(always)]
@@ -82,12 +109,10 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
         }
     }
 
+    /// <!-- {=podRawDecodeLenContract|trim|linePrefix:"/// ":true|indent:"    "} -->
     /// The raw decoded length prefix.
     ///
-    /// This is the unvalidated prefix value. On a prefix wider than `usize`
-    /// (eight-byte prefixes on 32-bit targets), the sentinel `usize::MAX` is
-    /// returned. Safe accessors such as [`len`](Self::len) clamp the value to
-    /// the capacity; readers reject it during validation.
+    /// This is the unvalidated prefix value. On a prefix wider than `usize` (eight-byte prefixes on 32-bit targets) the sentinel `usize::MAX` is returned. Safe accessors such as [`len`](Self::len) clamp the value to the capacity; readers reject it during validation.<!-- {/podRawDecodeLenContract} -->
     #[inline(always)]
     pub fn decode_len(&self) -> usize {
         self.try_decode_len().unwrap_or(usize::MAX)
@@ -116,13 +141,10 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
         self.data[range].fill(MaybeUninit::zeroed());
     }
 
-    /// The number of active elements, clamped to the fixed capacity `N`.
+    /// <!-- {=podClampedLenContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// The active length, clamped to the fixed capacity `N`.
     ///
-    /// A forged or corrupt prefix can decode above `N`; this accessor never
-    /// trusts it. Callers that need to distinguish a corrupt prefix from a
-    /// valid one must validate through a reader first (see [`ZcValidate`]).
-    ///
-    /// [`ZcValidate`]: crate::ZcValidate
+    /// A forged or corrupt prefix can decode above `N`; this accessor never trusts it. Callers that need to distinguish a corrupt prefix from a valid one must validate through a reader first (see [`ZcValidate`](crate::ZcValidate)).<!-- {/podClampedLenContract} -->
     #[inline(always)]
     pub fn len(&self) -> usize {
         #[allow(clippy::let_unit_value)]
@@ -130,16 +152,22 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
         self.decode_len().min(N)
     }
 
+    /// Returns `true` when no elements are active.
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    /// The fixed element capacity `N`.
     #[inline(always)]
     pub const fn capacity(&self) -> usize {
         N
     }
 
+    /// Borrows the active elements.
+    ///
+    /// The length is clamped to the capacity, so this never reads past `N`. Validate
+    /// through a reader first when the prefix itself must be trusted.
     #[inline(always)]
     pub fn as_slice(&self) -> &[T] {
         let len = self.len();
@@ -148,27 +176,34 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
         unsafe { core::slice::from_raw_parts(self.data.as_ptr() as *const T, len) }
     }
 
+    /// Mutably borrows the active elements.
+    ///
+    /// Only the active range is exposed; inactive capacity stays out of reach.
     #[inline(always)]
     pub fn as_slice_mut(&mut self) -> &mut [T] {
         let len = self.len();
         unsafe { core::slice::from_raw_parts_mut(self.data.as_mut_ptr() as *mut T, len) }
     }
 
+    /// Returns a reference to the element at `index`, or `None` when out of bounds.
     #[inline(always)]
     pub fn get(&self, index: usize) -> Option<&T> {
         self.as_slice().get(index)
     }
 
+    /// Returns a mutable reference to the element at `index`, or `None` when out of bounds.
     #[inline(always)]
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         self.as_slice_mut().get_mut(index)
     }
 
+    /// Iterates the active elements.
     #[inline(always)]
     pub fn iter(&self) -> core::slice::Iter<'_, T> {
         self.as_slice().iter()
     }
 
+    /// Mutably iterates the active elements.
     #[inline(always)]
     pub fn iter_mut(&mut self) -> core::slice::IterMut<'_, T> {
         self.as_slice_mut().iter_mut()
@@ -178,7 +213,10 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
     ///
     /// # Errors
     ///
-    /// Returns [`PinaPodError::Overflow`] when the vector is full.
+    /// <!-- {=podWriteCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Returns [`PinaPodError::Overflow`](crate::PinaPodError::Overflow) when the write would exceed the fixed capacity.
+    ///
+    /// The destination keeps its previous contents, so a rejected write is a no-op.<!-- {/podWriteCapacityContract} -->
     pub fn try_push<V: Into<T>>(&mut self, value: V) -> Result<(), PinaPodError> {
         let cur = self.len();
         if cur >= N {
@@ -193,7 +231,10 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
     ///
     /// # Errors
     ///
-    /// Returns [`PinaPodError::Overflow`] when `values` exceeds the fixed capacity.
+    /// <!-- {=podWriteCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Returns [`PinaPodError::Overflow`](crate::PinaPodError::Overflow) when the write would exceed the fixed capacity.
+    ///
+    /// The destination keeps its previous contents, so a rejected write is a no-op.<!-- {/podWriteCapacityContract} -->
     pub fn try_set_from_slice(&mut self, values: &[T]) -> Result<(), PinaPodError> {
         let vlen = values.len();
         if vlen > N {
@@ -219,7 +260,10 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
     ///
     /// # Errors
     ///
-    /// Returns [`PinaPodError::Overflow`] when `values` exceeds the fixed capacity.
+    /// <!-- {=podWriteCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Returns [`PinaPodError::Overflow`](crate::PinaPodError::Overflow) when the write would exceed the fixed capacity.
+    ///
+    /// The destination keeps its previous contents, so a rejected write is a no-op.<!-- {/podWriteCapacityContract} -->
     pub fn try_set<V>(&mut self, values: impl AsRef<[V]>) -> Result<(), PinaPodError>
     where
         V: Copy + Into<T>,
@@ -246,7 +290,10 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
     ///
     /// # Errors
     ///
-    /// Returns [`PinaPodError::Overflow`] when the combined length exceeds the fixed capacity.
+    /// <!-- {=podWriteCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Returns [`PinaPodError::Overflow`](crate::PinaPodError::Overflow) when the write would exceed the fixed capacity.
+    ///
+    /// The destination keeps its previous contents, so a rejected write is a no-op.<!-- {/podWriteCapacityContract} -->
     pub fn try_extend_from_slice(&mut self, values: &[T]) -> Result<(), PinaPodError> {
         let cur = self.len();
         let new_len = cur
@@ -268,7 +315,10 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
     ///
     /// # Errors
     ///
-    /// Returns [`PinaPodError::Overflow`] when the combined length exceeds the fixed capacity.
+    /// <!-- {=podWriteCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Returns [`PinaPodError::Overflow`](crate::PinaPodError::Overflow) when the write would exceed the fixed capacity.
+    ///
+    /// The destination keeps its previous contents, so a rejected write is a no-op.<!-- {/podWriteCapacityContract} -->
     pub fn try_extend<V>(&mut self, values: impl AsRef<[V]>) -> Result<(), PinaPodError>
     where
         V: Copy + Into<T>,
@@ -289,6 +339,12 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
         Ok(())
     }
 
+    /// Removes and returns the last element, or `None` when the vector is empty.
+    ///
+    /// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Every container starts with fully initialized backing storage.
+    ///
+    /// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
     #[must_use = "returns None if the vector is empty"]
     #[inline(always)]
     pub fn pop(&mut self) -> Option<T> {
@@ -303,6 +359,15 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
         Some(val)
     }
 
+    /// Removes the element at `index` and returns it, filling the gap with the last element.
+    ///
+    /// This moves only one element but does not preserve order. Returns `None` when
+    /// `index` is out of bounds.
+    ///
+    /// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Every container starts with fully initialized backing storage.
+    ///
+    /// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
     #[must_use = "returns None if index is out of bounds"]
     #[inline(always)]
     pub fn swap_remove(&mut self, index: usize) -> Option<T> {
@@ -320,6 +385,15 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
         Some(removed)
     }
 
+    /// Removes the element at `index` and returns it, shifting the later elements down.
+    ///
+    /// This preserves order and moves every element after `index`. Returns `None` when
+    /// `index` is out of bounds.
+    ///
+    /// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Every container starts with fully initialized backing storage.
+    ///
+    /// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
     #[must_use = "returns None if index is out of bounds"]
     #[inline(always)]
     pub fn remove(&mut self, index: usize) -> Option<T> {
@@ -344,6 +418,12 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
         Some(removed)
     }
 
+    /// Shortens the active elements to at most `new_len`.
+    ///
+    /// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Every container starts with fully initialized backing storage.
+    ///
+    /// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
     #[inline(always)]
     pub fn truncate(&mut self, new_len: usize) {
         let cur = self.len();
@@ -353,6 +433,12 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
         }
     }
 
+    /// Keeps only the elements for which `f` returns `true`, preserving their order.
+    ///
+    /// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Every container starts with fully initialized backing storage.
+    ///
+    /// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
     pub fn retain(&mut self, mut f: impl FnMut(&T) -> bool) {
         let mut write = 0;
         let cur = self.len();
@@ -367,6 +453,12 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
         self.encode_len(write);
     }
 
+    /// Removes every element.
+    ///
+    /// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Every container starts with fully initialized backing storage.
+    ///
+    /// Operations that shorten or clear active data zero the bytes they vacate, so a later raw read or canonical serialization cannot disclose a previous value.<!-- {/podZeroedInactiveCapacityContract} -->
     #[inline(always)]
     pub fn clear(&mut self) {
         self.zero_range(0..self.len());

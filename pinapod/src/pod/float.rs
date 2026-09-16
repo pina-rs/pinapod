@@ -86,11 +86,10 @@ macro_rules! define_pod_float {
         }
 
         impl PartialEq for $name {
-            /// Compares the stored bit patterns, not the decoded values.
+            /// <!-- {=podFloatBitwiseEqualityContract|trim|linePrefix:"/// ":true|indent:"            "} -->
+            /// Equality compares stored bit patterns rather than decoded floats.
             ///
-            /// This keeps `Eq` sound in the presence of NaN payloads and
-            /// preserves the distinction between `+0.0` and `-0.0`. Decode
-            /// with [`get`](Self::get) to compare with float semantics.
+            /// That keeps `Eq` sound in the presence of NaN payloads and preserves the distinction between `+0.0` and `-0.0`. The pods deliberately implement no `PartialOrd` or `Ord`, because bitwise equality and float ordering cannot both hold: an ordering would have to rank NaN payloads and separate `+0.0` from `-0.0`. Decode with `get` and compare the natives when an ordering is needed.<!-- {/podFloatBitwiseEqualityContract} -->
             #[inline(always)]
             fn eq(&self, other: &Self) -> bool {
                 self.0 == other.0
@@ -181,28 +180,31 @@ macro_rules! define_pod_float {
 }
 
 define_pod_float!(
-    #[doc = "Alignment-one storage for a 32-bit IEEE-754 float schema field."]
-    #[doc = ""]
-    #[doc = "`get` and `set` convert through the bit pattern, while `to_bits` and"]
-    #[doc = "`set_bits` expose it directly. Storage is the little-endian"]
-    #[doc = "`f32::to_bits()` value in 4 bytes. Every bit pattern is valid, so an"]
-    #[doc = "all-zero field decodes as `+0.0` and validation never rejects a NaN."]
-    #[doc = ""]
-    #[doc = "A schema field declared as `f32` maps to this pod through the [`ZcField`]"]
-    #[doc = "implementation below, so `PinaPod` derives accept the native spelling."]
-    #[doc = ""]
-    #[doc = "```"]
-    #[doc = "use pinapod::pod::PodF32;"]
-    #[doc = ""]
-    #[doc = "let mut pod = PodF32::ZERO;"]
-    #[doc = "pod.set(-1.5);"]
-    #[doc = "assert_eq!(pod.get(), -1.5);"]
-    #[doc = "assert_eq!(pod.to_bits(), (-1.5_f32).to_bits());"]
-    #[doc = ""]
-    #[doc = "// Raw bit patterns survive a round trip, including a signaling NaN."]
-    #[doc = "pod.set_bits(0x7f80_0001);"]
-    #[doc = "assert_eq!(pod.to_bits(), 0x7f80_0001);"]
-    #[doc = "```"]
+    /// Alignment-one storage for a 32-bit IEEE-754 float schema field.
+    ///
+    /// `get` and `set` convert through the bit pattern, while `to_bits` and `set_bits`
+    /// expose it directly. The pod is exactly four bytes wide.
+    ///
+    /// <!-- {=podFloatBitPatternContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Storage is the complete IEEE-754 bit pattern, little-endian.
+    ///
+    /// Every bit pattern is a valid stored value, so validation never rejects a NaN, an infinity, or the sign of zero, and an all-zero field decodes as `+0.0`.<!-- {/podFloatBitPatternContract} -->
+    ///
+    /// A schema field declared as `f32` maps to this pod through the [`ZcField`]
+    /// implementation below, so `PinaPod` derives accept the native spelling.
+    ///
+    /// ```
+    /// use pinapod::pod::PodF32;
+    ///
+    /// let mut pod = PodF32::ZERO;
+    /// pod.set(-1.5);
+    /// assert_eq!(pod.get(), -1.5);
+    /// assert_eq!(pod.to_bits(), (-1.5_f32).to_bits());
+    ///
+    /// // Raw bit patterns survive a round trip, including a signaling NaN.
+    /// pod.set_bits(0x7f80_0001);
+    /// assert_eq!(pod.to_bits(), 0x7f80_0001);
+    /// ```
     PodF32,
     f32,
     u32,
@@ -210,24 +212,27 @@ define_pod_float!(
 );
 
 define_pod_float!(
-    #[doc = "Alignment-one storage for a 64-bit IEEE-754 float schema field."]
-    #[doc = ""]
-    #[doc = "`get` and `set` convert through the bit pattern, while `to_bits` and"]
-    #[doc = "`set_bits` expose it directly. Storage is the little-endian"]
-    #[doc = "`f64::to_bits()` value in 8 bytes. Every bit pattern is valid, so an"]
-    #[doc = "all-zero field decodes as `+0.0` and validation never rejects a NaN."]
-    #[doc = ""]
-    #[doc = "A schema field declared as `f64` maps to this pod through the [`ZcField`]"]
-    #[doc = "implementation below, so `PinaPod` derives accept the native spelling."]
-    #[doc = ""]
-    #[doc = "```"]
-    #[doc = "use pinapod::pod::PodF64;"]
-    #[doc = ""]
-    #[doc = "let mut pod = PodF64::ZERO;"]
-    #[doc = "pod.set(3.125);"]
-    #[doc = "assert_eq!(pod.get(), 3.125);"]
-    #[doc = "assert_eq!(pod.to_bits(), 3.125_f64.to_bits());"]
-    #[doc = "```"]
+    /// Alignment-one storage for a 64-bit IEEE-754 float schema field.
+    ///
+    /// `get` and `set` convert through the bit pattern, while `to_bits` and `set_bits`
+    /// expose it directly. The pod is exactly eight bytes wide.
+    ///
+    /// <!-- {=podFloatBitPatternContract|trim|linePrefix:"/// ":true|indent:"    "} -->
+    /// Storage is the complete IEEE-754 bit pattern, little-endian.
+    ///
+    /// Every bit pattern is a valid stored value, so validation never rejects a NaN, an infinity, or the sign of zero, and an all-zero field decodes as `+0.0`.<!-- {/podFloatBitPatternContract} -->
+    ///
+    /// A schema field declared as `f64` maps to this pod through the [`ZcField`]
+    /// implementation below, so `PinaPod` derives accept the native spelling.
+    ///
+    /// ```
+    /// use pinapod::pod::PodF64;
+    ///
+    /// let mut pod = PodF64::ZERO;
+    /// pod.set(3.125);
+    /// assert_eq!(pod.get(), 3.125);
+    /// assert_eq!(pod.to_bits(), 3.125_f64.to_bits());
+    /// ```
     PodF64,
     f64,
     u64,

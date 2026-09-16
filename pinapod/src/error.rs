@@ -1,17 +1,51 @@
+//! The error type shared by every `PinaPod` read, validation, and update.
+
 /// The error type returned by every `PinaPod` read, validation, and update.
 ///
-/// The enum is `non_exhaustive` so new validation variants can be added in
-/// minor releases. Downstream code that inspects variants must keep a
-/// wildcard arm.
+/// The enum is `non_exhaustive` so new validation variants can be added in minor
+/// releases. Downstream code that inspects variants must keep a wildcard arm.
+///
+/// <!-- {=podErrorContract|trim|linePrefix:"/// ":true} -->
+/// | Variant               | Meaning                                                                      |
+/// | --------------------- | ---------------------------------------------------------------------------- |
+/// | `BufferTooSmall`      | The supplied slice cannot contain the required header, value, or active tail |
+/// | `Overflow`            | A requested write exceeds a field capacity or checked arithmetic fails       |
+/// | `InvalidBool`         | A stored boolean byte is not zero or one                                     |
+/// | `InvalidTag`          | A stored option tag is not zero or one                                       |
+/// | `InvalidDiscriminant` | A stored enum value has no declared variant                                  |
+/// | `InvalidLength`       | A stored length exceeds capacity or violates the read contract               |
+/// | `InvalidUtf8`         | Active string bytes are not UTF-8                                            |<!-- {/podErrorContract} -->
+///
+/// <!-- {=podErrorProgramErrorMapping|trim|linePrefix:"/// ":true} -->
+/// The `solana-program-error` feature maps a small buffer to `ProgramError::AccountDataTooSmall`.
+///
+/// It maps every invalid representation and every write overflow to `ProgramError::InvalidAccountData`.<!-- {/podErrorProgramErrorMapping} -->
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum PinaPodError {
+    /// The supplied slice cannot contain the required header, value, or active tail.
+    ///
+    /// A fixed exact read of a longer slice reports [`Self::InvalidLength`] instead,
+    /// because the slice has the wrong size rather than too little data.
     BufferTooSmall,
+    /// A requested write exceeds a field capacity, or the checked arithmetic that
+    /// calculates the new length fails.
+    ///
+    /// The destination keeps its previous contents, so a rejected write is a no-op.
     Overflow,
+    /// A stored boolean byte is not zero or one.
     InvalidBool,
+    /// A stored option tag is not zero or one.
     InvalidTag,
+    /// A stored enum value has no declared variant.
     InvalidDiscriminant,
+    /// A stored length exceeds the field capacity or violates the read contract.
+    ///
+    /// A reader returns this for a forged prefix, for a compact allocation whose size
+    /// breaks the schema's size or tail-granularity rule, and for an eight-byte prefix
+    /// that does not fit `usize` on a 32-bit target.
     InvalidLength,
+    /// Active string bytes are not UTF-8.
     InvalidUtf8,
 }
 

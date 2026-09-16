@@ -1,3 +1,20 @@
+//! The representation contracts that a `PinaPod` schema implements.
+//!
+//! [`PinaPod`] marks a generated schema. [`PinaPodFixed`] and [`PinaPodCompact`] add the
+//! read, validation, and update operations for the two layouts, and [`PinaPodPatch`]
+//! carries one preflighted compact update.
+//!
+//! The remaining traits describe storage: [`ZcValidate`] checks that initialized bytes
+//! hold a semantic value, [`ZcElem`] states the unsafe representation contract for a
+//! stored type, and [`ZcField`] maps a native schema field to its stored pod.
+//!
+//! Implementing [`PinaPodFixed`], [`PinaPodCompact`], [`ZcElem`], or [`ZcField`] by hand
+//! is unsafe, because each carries a contract that safe readers rely on. Prefer
+//! `#[derive(PinaPod)]`.
+//!
+//! <!-- {=podMdtManagedDocNote|trim|linePrefix:"//! ":true} -->
+//! This section is synchronized by `mdt` and expands from `api-docs.t.md`. Edit the provider, then run `devenv shell docs:sync`.<!-- {/podMdtManagedDocNote} -->
+
 use crate::{error::PinaPodError, pod::*};
 
 /// Validation trait for stored (pod) types.
@@ -255,6 +272,11 @@ pub trait PinaPod: Sized {}
 /// `Self`. Its byte size and validation rules must not depend on runtime state.
 /// Prefer `#[derive(PinaPod)]`; manual implementations are an advanced raw API.
 pub unsafe trait PinaPodFixed: PinaPod {
+    /// The complete fixed representation of this schema.
+    ///
+    /// `size_of::<Zc>()` is the schema's size, so the size must not depend on runtime
+    /// state. A derive generates a companion struct whose fields are the mapped pods in
+    /// declaration order.
     type Zc: ZcElem;
 
     /// Read one fixed value and reject both truncated and trailing bytes.
@@ -381,6 +403,9 @@ pub unsafe trait PinaPodFixed: PinaPod {
 /// the same representation. Dynamic length metadata must not be exposed for
 /// direct mutable access.
 pub unsafe trait PinaPodCompact: PinaPod {
+    /// The fixed header that precedes the dynamic tails.
+    ///
+    /// Its size must equal [`HEADER_SIZE`](Self::HEADER_SIZE).
     type Header: ZcElem;
 
     /// Smallest valid allocation for this compact schema.
@@ -392,6 +417,10 @@ pub unsafe trait PinaPodCompact: PinaPod {
     /// Byte granularity of valid allocation growth beyond [`Self::MIN_SIZE`].
     const TAIL_ALIGNMENT: usize;
 
+    /// Byte size of [`Header`](Self::Header).
+    ///
+    /// Implementations must keep this equal to `size_of::<Self::Header>()`;
+    /// [`validate`](Self::validate) relies on it to locate the first tail.
     const HEADER_SIZE: usize;
 
     /// Validate the physical allocation independently of its active contents.
@@ -407,6 +436,18 @@ pub unsafe trait PinaPodCompact: PinaPod {
         Ok(())
     }
 
+    /// Validate one complete compact representation.
+    ///
+    /// Implementations must check the allocation through
+    /// [`validate_storage_len`](Self::validate_storage_len) first, then walk the header
+    /// and every tail: option tags, length prefixes, field capacities, offsets, and
+    /// UTF-8. A caller may form references only after this returns `Ok`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PinaPodError::InvalidLength`] for an allocation outside the schema's
+    /// size bounds or tail granularity, and another [`PinaPodError`] variant when a
+    /// stored value is not a valid representation.
     fn validate(data: &[u8]) -> Result<(), PinaPodError>;
 }
 
@@ -417,8 +458,37 @@ pub unsafe trait PinaPodCompact: PinaPod {
 /// trait to plan a resize, release the old borrow, and apply the same patch to
 /// the resized allocation.
 pub trait PinaPodPatch<T: PinaPodCompact> {
+    /// The allocation size [`update`](Self::update) would produce, without changing `data`.
+    ///
+    /// Frameworks call this to plan a resize, release the old borrow, and then apply the
+    /// same patch to the resized allocation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PinaPodError`] when the supplied values cannot be encoded or `data` is
+    /// not a valid existing representation.
     fn updated_len(&self, data: &[u8]) -> Result<usize, PinaPodError>;
+    /// Applies the patch to an existing representation and returns the new length.
+    ///
+    /// Capacity, arithmetic, and supplied-value checks all run before the first byte
+    /// changes, so a rejected patch leaves `data` untouched.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PinaPodError::BufferTooSmall`] when the resized value does not fit
+    /// `data`, and another [`PinaPodError`] variant when `data` is not a valid existing
+    /// representation or a supplied value cannot be encoded.
     fn update(&self, data: &mut [u8]) -> Result<usize, PinaPodError>;
+    /// Writes the patch into a destination without reading a previous representation.
+    ///
+    /// Use this for a fresh allocation or for a destination left zeroed by a failed
+    /// update. The destination is zeroed before configuration and validated after it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PinaPodError`] when the allocation size is invalid, the encoded value
+    /// does not fit `data`, or a supplied value cannot be encoded. A failure leaves the
+    /// destination zeroed rather than partially patched.
     fn initialize(&self, data: &mut [u8]) -> Result<usize, PinaPodError>;
 }
 
@@ -448,18 +518,24 @@ where
 /// validation requirements through [`ZcElem`]. Its size is always derived with
 /// `size_of::<Self::Pod>()`; implementors cannot provide conflicting metadata.
 pub unsafe trait ZcField: Sized {
+    /// The alignment-one pod that stores this type in a schema.
+    ///
+    /// A field declared as `Self` is stored as `Pod`. The mapping must not depend on
+    /// runtime state, because a representation's layout is fixed at compile time and its
+    /// size is always derived from `size_of::<Self::Pod>()`.
     type Pod: ZcElem;
 }
 
 /// Converts a compact patch argument for a native [`Option<T>`] field into
 /// its stored representation.
 ///
-/// This trait is public only because generated code expands in downstream
-/// crates. It is not part of the hand-written PinaPod API. Its shape follows
-/// the generated compact patches and changes only in breaking releases, in
-/// lockstep with the derive.
+/// <!-- {=podDeriveSupportTraitContract|trim|linePrefix:"/// ":true} -->
+/// This trait is public only because generated code expands in downstream crates.
+///
+/// It is not part of the hand-written PinaPod API. Its shape follows the generated output and changes only in breaking releases, in lockstep with the derive.<!-- {/podDeriveSupportTraitContract} -->
 #[doc(hidden)]
 pub trait IntoPodOption<T: ZcField> {
+    /// Converts `Option<T>` or an already-stored [`PodOption`] into the stored form.
     fn into_pod_option(self) -> PodOption<T::Pod>;
 }
 
@@ -547,16 +623,17 @@ unsafe impl<T: ZcField, const N: usize> ZcField for [T; N] {
 /// Converts a native or pod-spelled array into its stored representation,
 /// element-wise.
 ///
-/// This trait is public only because generated code expands in downstream
-/// crates. It is not part of the hand-written PinaPod API. Its shape follows
-/// the generated compact patches and changes only in breaking releases, in
-/// lockstep with the derive.
+/// <!-- {=podDeriveSupportTraitContract|trim|linePrefix:"/// ":true} -->
+/// This trait is public only because generated code expands in downstream crates.
+///
+/// It is not part of the hand-written PinaPod API. Its shape follows the generated output and changes only in breaking releases, in lockstep with the derive.<!-- {/podDeriveSupportTraitContract} -->
 ///
 /// The blanket impl covers both spellings: `[u64; N]` resolves through
 /// `PodU64: From<u64>`, while `[PodU64; N]` resolves through the reflexive
 /// `From`.
 #[doc(hidden)]
 pub trait IntoPodArray<T: ZcField, const N: usize> {
+    /// Converts each element through its [`ZcField`] mapping.
     fn into_pod_array(self) -> [<T as ZcField>::Pod; N];
 }
 

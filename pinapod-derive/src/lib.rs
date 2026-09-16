@@ -1,3 +1,63 @@
+//! Derive macros for `pinapod`.
+//!
+//! This crate provides `#[derive(PinaPod)]`, which generates the alignment-one storage
+//! companion, the reader, and the writer for a schema. Use it through the `pinapod`
+//! crate; the derive is re-exported there and expands paths against the dependency that
+//! is actually in scope.
+//!
+//! # Layouts
+//!
+//! A derive without arguments generates a fixed schema whose size is known at compile
+//! time. `#[pinapod(compact)]` generates a compact schema instead: fixed fields stay in a
+//! header while string and vector payloads move to dynamic tails, so the allocation
+//! tracks active data.
+//!
+//! ```ignore
+//! use pinapod::PinaPod;
+//!
+//! #[derive(PinaPod)]
+//! struct Fixed {
+//!     authority: [u8; 32],
+//!     amount: u64,
+//! }
+//!
+//! #[derive(PinaPod)]
+//! #[pinapod(compact)]
+//! struct Compact {
+//!     authority: [u8; 32],
+//!     note: pinapod::String<128>,
+//! }
+//! ```
+//!
+//! # Container fields
+//!
+//! A field is treated as a dynamic container when it is spelled `String<..>`, `Vec<..>`,
+//! or `Option<..>`, either unqualified or through a resolved `pinapod` path. Every other
+//! type must provide its own `ZcField` mapping, so a locally defined `String` is a fixed
+//! inline type rather than a `PinaPod` container.
+//!
+//! Prefix width belongs in the field type, not in an attribute:
+//!
+//! ```ignore
+//! use pinapod::PinaPod;
+//!
+//! #[derive(PinaPod)]
+//! struct Archive {
+//!     label: pinapod::PodString<300, 2>,
+//!     values: pinapod::PodVec<u64, 1024, 2>,
+//! }
+//! ```
+//!
+//! # Errors
+//!
+//! Every unsupported declaration is a compile error rather than a silent fallback. The
+//! derive rejects a wrong layout for a type, a capacity that cannot fit its prefix, an
+//! unsupported nesting inside a compact tail, and a caller-local type that shadows a
+//! primitive's name.
+
+// Generated code lands in downstream crates, so the derive's own surface has to
+// document itself for those crates to keep `missing_docs` enabled.
+#![deny(missing_docs)]
 #![allow(
     clippy::match_wildcard_for_single_variants,
     reason = "the wildcard preserves a concise fallback for future syn data variants"
@@ -17,6 +77,41 @@ mod fixed;
 mod schema;
 mod type_map;
 
+/// Generates the `PinaPod` storage, reader, and writer for a struct or enum.
+///
+/// # Struct options
+///
+/// Options are passed as arguments to the `pinapod` attribute, for example
+/// `#[pinapod(compact)]`.
+///
+/// - `compact` — generate a compact schema with a fixed header and dynamic tails.
+///   Without it, the schema is fixed and occupies `Type::SIZE` bytes.
+/// - `no_inherent` — suppress the inherent `impl` block, so the schema is usable only
+///   through the `PinaPodFixed` or `PinaPodCompact` trait constants and methods.
+///   Framework code sets this when it owns the inherent surface. It is rejected on enums.
+/// - `crate = path::to::pinapod` — override the resolved `pinapod` path. Re-exporting
+///   crates set this instead of relying on dependency-name resolution.
+///
+/// # Field options
+///
+/// - `skip_accessor` — keep the field in storage and validation, but generate no
+///   accessor method for it.
+/// - `skip_patch` — keep the field in storage and validation, but omit it from the
+///   compact patch API. Use it for framework-owned metadata such as a discriminator.
+///
+/// `prefix` is not a field option. Prefix width belongs in the field type, so
+/// `#[pinapod(prefix = u16)]` is rejected; write `pinapod::PodString<N, 2>` instead.
+///
+/// # Generated surface
+///
+/// The derive generates an inherent `impl` with schema helpers, plus the `pinapod` trait
+/// implementations for the chosen layout. A fixed schema gets a `SIZE` constant and
+/// forwarding read, validate, and initialize methods; a compact schema gets the size
+/// constants and its patch methods. The helpers forward to the trait, so a schema works
+/// with or without the trait in scope.
+///
+/// `no_inherent` removes the helpers while keeping the trait contract. Framework crates
+/// set it when they own the inherent surface for a schema.
 #[proc_macro_derive(PinaPod, attributes(pinapod))]
 pub fn derive_pina_pod(input: TokenStream) -> TokenStream {
     derive(input)
