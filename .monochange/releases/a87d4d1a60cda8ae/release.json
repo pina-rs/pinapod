@@ -1,0 +1,595 @@
+{
+  "schema_version": "0.6",
+  "kind": "monochange.releaseRecord",
+  "created_at": "2026-09-16T20:42:00Z",
+  "command": "release",
+  "version": "0.4.0",
+  "versions": {
+    "pinapod-workspace": "0.4.0"
+  },
+  "release_targets": [
+    {
+      "id": "pinapod-workspace",
+      "kind": "group",
+      "version": "0.4.0",
+      "version_format": "pinapod/v{{ version }}",
+      "tag": true,
+      "release": true,
+      "tag_name": "pinapod/v0.4.0",
+      "members": [
+        "pinapod",
+        "pinapod-derive"
+      ]
+    }
+  ],
+  "released_packages": [
+    "pinapod",
+    "pinapod-derive"
+  ],
+  "changed_files": [
+    "CHANGELOG.md",
+    "Cargo.lock",
+    "Cargo.toml",
+    "pinapod/Cargo.toml",
+    "pinapod/tests/renamed_dependency/Cargo.lock",
+    "pinapod-derive/Cargo.toml"
+  ],
+  "package_publications": [
+    {
+      "package": "pinapod",
+      "ecosystem": "cargo",
+      "registry": "crates_io",
+      "version": "0.4.0",
+      "mode": "builtin",
+      "trusted_publishing": {
+        "enabled": true,
+        "mode": "required",
+        "repository": "pina-rs/pinapod",
+        "workflow": "publish.yml",
+        "environment": "publisher"
+      }
+    },
+    {
+      "package": "pinapod-derive",
+      "ecosystem": "cargo",
+      "registry": "crates_io",
+      "version": "0.4.0",
+      "mode": "builtin",
+      "trusted_publishing": {
+        "enabled": true,
+        "mode": "required",
+        "repository": "pina-rs/pinapod",
+        "workflow": "publish.yml",
+        "environment": "publisher"
+      }
+    }
+  ],
+  "updated_changelogs": [
+    "CHANGELOG.md"
+  ],
+  "deleted_changesets": [
+    ".changeset/missing-docs-lint.md",
+    ".changeset/pinned-kani-solvers.md",
+    ".changeset/style-spaces-fallout.md",
+    ".changeset/typed-fixed-arrays.md"
+  ],
+  "changesets": [
+    {
+      "path": ".changeset/missing-docs-lint.md",
+      "summary": "document the public API and enforce `missing_docs`",
+      "details": "Every publicly reachable item in `pinapod` now carries documentation: the crate root, both public modules, each pod type and container method, the error variants, and every trait, associated type, constant, and method in `traits.rs`. The derive crate documents its crate root, the `PinaPod` macro, and every struct and field option it accepts.\n\nThe workspace lint policy denies `missing_docs` alongside `unsafe_code`, so an undocumented public item in either library fails the build instead of shipping an undocumented entry in the wire-format contract. Test, benchmark, and fixture targets opt out with a reasoned `#[allow(missing_docs, reason = \"...\")]`, matching how `unsafe_code` is scoped.\n\nShared wording lives in one place. `mdt` providers in `api-docs.t.md` (API contracts expanded into rustdoc) and `templates/` (tables and contracts expanded into the README and the book) replace the text that was previously repeated across the pod containers, the error table, the float bit-pattern rules, and the prefix-width rules. `devenv shell docs:sync` rewrites the consumers, and `verify:docs` runs `mdt check` so a stale block fails CI. No API, wire format, or runtime behavior changes.",
+      "targets": [
+        {
+          "id": "pinapod",
+          "kind": "package",
+          "bump": "none",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "docs"
+        },
+        {
+          "id": "pinapod-derive",
+          "kind": "package",
+          "bump": "none",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "docs"
+        }
+      ],
+      "context": {
+        "provider": "github",
+        "host": "github.com",
+        "capabilities": {
+          "commit_web_urls": true,
+          "actor_profiles": true,
+          "review_request_lookup": true,
+          "related_issues": true,
+          "issue_comments": true
+        },
+        "introduced": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "bc60a6bc2c2689fb784f62cdbff874b437ccdb7f",
+            "short_sha": "bc60a6b",
+            "url": "https://github.com/pina-rs/pinapod/commit/bc60a6bc2c2689fb784f62cdbff874b437ccdb7f",
+            "authored_at": "2026-09-16T12:24:03+01:00",
+            "committed_at": "2026-09-16T12:24:03+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#23",
+            "title": "docs: document the public API and enforce `missing_docs`",
+            "url": "https://github.com/pina-rs/pinapod/pull/23",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "last_updated": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "5f3b727d78549afa365d98e4e96dfd7d30a03658",
+            "short_sha": "5f3b727",
+            "url": "https://github.com/pina-rs/pinapod/commit/5f3b727d78549afa365d98e4e96dfd7d30a03658",
+            "authored_at": "2026-09-16T14:12:27+01:00",
+            "committed_at": "2026-09-16T14:12:27+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#25",
+            "title": "chore(lints): move `missing_docs` into the workspace lint policy",
+            "url": "https://github.com/pina-rs/pinapod/pull/25",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "related_issues": [
+          {
+            "provider": "github",
+            "host": "github.com",
+            "id": "#23",
+            "title": null,
+            "url": "https://github.com/pina-rs/pinapod/issues/23",
+            "relationship": "referenced_by_review_request"
+          }
+        ]
+      }
+    },
+    {
+      "path": ".changeset/pinned-kani-solvers.md",
+      "summary": "run Kani proofs against pinned Kani and modern solvers",
+      "details": "The CI job installed z3 with `apt-get`, which on ubuntu-24.04 resolves to a 2021 release whose wide bitvector reasoning is far too slow. The `kani (u128)` and `kani (i128)` shards took 31.7 and 50.7 minutes and had begun timing out. Two changes fix that.\n\nEach arithmetic harness is split so every expensive operation gets its own verification condition instead of accumulating one large formula, and the resulting harnesses request `cvc5` rather than `z3`. On the same formulas `z3` could not finish the signed 128-bit division proof within 25 minutes, while `cvc5` verifies it in 14 seconds; `z3` 5.1.0 did not help, so this is not a solver-version problem. The u128 shard now verifies 10 harnesses in about 30 seconds and the i128 shard 11 harnesses in about 22 seconds.\n\nCI installs both solvers from their GitHub releases through a new `kani-solvers` action, pinned by SHA-256 per platform so a moved or compromised release asset cannot silently change what the proofs ran against. The Kani version is pinned alongside them. Proofs no longer run through the `devenv` environment, which saves roughly ten minutes per shard and keeps the devenv setup for local runs, where the same profile pins `cvc5` and `z3` for investigation.\n\nEvery assertion is preserved: each operation is still proven equal to its native counterpart, including signed overflow and division-by-zero cases. Nothing was weakened, bounded, or removed to make the proofs fit. No public API changes — the split harnesses live behind `#[cfg(kani)]` and the shard scripts make proofs runnable locally for the first time.",
+      "targets": [
+        {
+          "id": "pinapod",
+          "kind": "package",
+          "bump": "none",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "none"
+        }
+      ],
+      "context": {
+        "provider": "github",
+        "host": "github.com",
+        "capabilities": {
+          "commit_web_urls": true,
+          "actor_profiles": true,
+          "review_request_lookup": true,
+          "related_issues": true,
+          "issue_comments": true
+        },
+        "introduced": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "0e5666d884ecd6ed3ba4e8da0e09525e9f430ea4",
+            "short_sha": "0e5666d",
+            "url": "https://github.com/pina-rs/pinapod/commit/0e5666d884ecd6ed3ba4e8da0e09525e9f430ea4",
+            "authored_at": "2026-09-16T16:26:43+01:00",
+            "committed_at": "2026-09-16T16:26:43+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#26",
+            "title": "perf(ci): run Kani proofs against modern pinned solvers",
+            "url": "https://github.com/pina-rs/pinapod/pull/26",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "last_updated": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "0e5666d884ecd6ed3ba4e8da0e09525e9f430ea4",
+            "short_sha": "0e5666d",
+            "url": "https://github.com/pina-rs/pinapod/commit/0e5666d884ecd6ed3ba4e8da0e09525e9f430ea4",
+            "authored_at": "2026-09-16T16:26:43+01:00",
+            "committed_at": "2026-09-16T16:26:43+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#26",
+            "title": "perf(ci): run Kani proofs against modern pinned solvers",
+            "url": "https://github.com/pina-rs/pinapod/pull/26",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "related_issues": [
+          {
+            "provider": "github",
+            "host": "github.com",
+            "id": "#22",
+            "title": null,
+            "url": "https://github.com/pina-rs/pinapod/issues/22",
+            "relationship": "referenced_by_review_request"
+          },
+          {
+            "provider": "github",
+            "host": "github.com",
+            "id": "#8083",
+            "title": null,
+            "url": "https://github.com/pina-rs/pinapod/issues/8083",
+            "relationship": "referenced_by_review_request"
+          }
+        ]
+      }
+    },
+    {
+      "path": ".changeset/style-spaces-fallout.md",
+      "summary": "finish the tabs-to-spaces switch and fix style fallout",
+      "details": "The `hard_tabs = false` switch left most of the workspace formatted under the previous tab style, so `lint:format` (`dprint check`) failed across benches, tests, and both crates. `dprint fmt` completes the conversion, including the `tests/ui` fixtures, and `mdt check` stays green because the mdt `indent:\"    \"` directives now match the enforced style.\n\nThe compile-fail snapshots are re-blessed for the resulting span shifts and for the richer const-eval diagnostics of the pinned nightly, which also renders the containers' forced capacity assertions differently.\n\nTwo new tool lints needed reasoned workspace-policy entries. `rustdoc::invalid_markdown_table` rejects mdt's block close markers when they sit inline after the final row of a generated table, but the marker is an invisible synchronization delimiter, so the lint is always a false positive here. `clippy::used_underscore_items` misreads the containers' `let _ = Self::_CAP_CHECK` idiom, which references an underscore-prefixed const on purpose to force its compile-time assertion. No public API, wire format, or runtime behavior changes.",
+      "targets": [
+        {
+          "id": "pinapod",
+          "kind": "package",
+          "bump": "none",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "none"
+        },
+        {
+          "id": "pinapod-derive",
+          "kind": "package",
+          "bump": "none",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "none"
+        }
+      ],
+      "context": {
+        "provider": "github",
+        "host": "github.com",
+        "capabilities": {
+          "commit_web_urls": true,
+          "actor_profiles": true,
+          "review_request_lookup": true,
+          "related_issues": true,
+          "issue_comments": true
+        },
+        "introduced": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "56dda3d244cd1f3f614d048f82d6126488f06dcc",
+            "short_sha": "56dda3d",
+            "url": "https://github.com/pina-rs/pinapod/commit/56dda3d244cd1f3f614d048f82d6126488f06dcc",
+            "authored_at": "2026-09-16T21:40:09+01:00",
+            "committed_at": "2026-09-16T21:40:09+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#28",
+            "title": "fix(ci): complete the tabs-to-spaces switch and repair style fallout",
+            "url": "https://github.com/pina-rs/pinapod/pull/28",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "last_updated": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "56dda3d244cd1f3f614d048f82d6126488f06dcc",
+            "short_sha": "56dda3d",
+            "url": "https://github.com/pina-rs/pinapod/commit/56dda3d244cd1f3f614d048f82d6126488f06dcc",
+            "authored_at": "2026-09-16T21:40:09+01:00",
+            "committed_at": "2026-09-16T21:40:09+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#28",
+            "title": "fix(ci): complete the tabs-to-spaces switch and repair style fallout",
+            "url": "https://github.com/pina-rs/pinapod/pull/28",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "related_issues": []
+      }
+    },
+    {
+      "path": ".changeset/typed-fixed-arrays.md",
+      "summary": "support typed fixed arrays `[T; N]` in every schema position",
+      "details": "`ZcElem`, `ZcValidate`, and `ZcField` are now implemented for arrays of any pod element, not only `[u8; N]`. A field declared `[u64; 4]` stores `[PodU64; 4]` little-endian with no length prefix, validation recurses per element, and the identity mapping for `[u8; N]` is preserved exactly. Nested arrays such as `[[u8; 4]; 2]`, pod-spelled arrays such as `[PodU64; 4]`, arrays of `PodBool`, and `Option<[u64; N]>` all resolve through the same composition rules.\n\nThe derive now maps array fields element-wise (`[u64; 4]` emits `[PodU64; 4]` storage), recurses capacity checks into array elements, and compact patch builders accept both native and pod spellings through a new hidden `IntoPodArray` conversion trait — `.weights([5, 6])` and `.weights([PodU64::from(5), PodU64::from(6)])` both compile. Fixed-schema accessors return the pod array by reference, matching the existing `Vec<T, N>` accessor shape.\n\nFor example, the field type now carries the element type instead of forcing raw bytes, with no change to the wire size:\n\n```rust\n// Before: only `[u8; N]` was supported, so a fixed u64 array was raw bytes.\n#[derive(PinaPod)]\n#[pinapod(compact)]\nstruct Table {\n    weights: [u8; 16],\n}\n```\n\n```rust\n// After: the native element type is accepted throughout, storing `[PodU64; 2]`.\n#[derive(PinaPod)]\n#[pinapod(compact)]\nstruct Table {\n    weights: [u64; 2],\n}\n\nfn round_trip() {\n    let mut buffer = [0u8; Table::MAX_SIZE];\n    let patch = TablePatch::new().weights([5_u64, 6]);\n    let encoded_len = Table::initialize(&mut buffer, &patch).unwrap();\n    let table = Table::read_prefix(&buffer[..encoded_len]).unwrap();\n    assert_eq!(table.weights[0].get(), 5);\n}\n```\n\nSoundness of the generalized `ZcElem` rests on the documented array layout rules: `[T; N]` inherits alignment 1 from `T`, its size is exactly `N * size_of::<T>()` so no padding can exist between elements, and per-element bit validity composes. The `[u8; N]`-specific impls were replaced by the generic ones, so downstream crates that hand-wrote `ZcField`/`ZcValidate` impls for their own array types will now conflict with the blanket impls — the closed-world safety guidance already rules that pattern out, but it is the one theoretically breaking edge and the reason both crates bump together.",
+      "targets": [
+        {
+          "id": "pinapod",
+          "kind": "package",
+          "bump": "major",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "major"
+        },
+        {
+          "id": "pinapod-derive",
+          "kind": "package",
+          "bump": "major",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "major"
+        }
+      ],
+      "context": {
+        "provider": "github",
+        "host": "github.com",
+        "capabilities": {
+          "commit_web_urls": true,
+          "actor_profiles": true,
+          "review_request_lookup": true,
+          "related_issues": true,
+          "issue_comments": true
+        },
+        "introduced": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "a2d99d65ccb5c195b7c3f0d13517e1ce1d52e087",
+            "short_sha": "a2d99d6",
+            "url": "https://github.com/pina-rs/pinapod/commit/a2d99d65ccb5c195b7c3f0d13517e1ce1d52e087",
+            "authored_at": "2026-09-16T10:17:06+01:00",
+            "committed_at": "2026-09-16T10:17:06+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#22",
+            "title": "feat(pod): support typed fixed arrays in every schema position",
+            "url": "https://github.com/pina-rs/pinapod/pull/22",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "last_updated": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "56dda3d244cd1f3f614d048f82d6126488f06dcc",
+            "short_sha": "56dda3d",
+            "url": "https://github.com/pina-rs/pinapod/commit/56dda3d244cd1f3f614d048f82d6126488f06dcc",
+            "authored_at": "2026-09-16T21:40:09+01:00",
+            "committed_at": "2026-09-16T21:40:09+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#28",
+            "title": "fix(ci): complete the tabs-to-spaces switch and repair style fallout",
+            "url": "https://github.com/pina-rs/pinapod/pull/28",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "related_issues": []
+      }
+    }
+  ],
+  "changelogs": [
+    {
+      "owner_id": "pinapod-workspace",
+      "owner_kind": "group",
+      "output": "default",
+      "stream": "default",
+      "path": "CHANGELOG.md",
+      "format": "keep_a_changelog",
+      "notes": {
+        "title": "[0.4.0](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.0) (2026-09-16)",
+        "summary": [
+          "Grouped release for `pinapod-workspace`."
+        ],
+        "sections": [
+          {
+            "title": "Breaking Changes",
+            "collapsed": false,
+            "entries": [
+              "#### support typed fixed arrays `[T; N]` in every schema position\n\n_Packages:_ _pinapod_, _pinapod-derive_\n\n`ZcElem`, `ZcValidate`, and `ZcField` are now implemented for arrays of any pod element, not only `[u8; N]`. A field declared `[u64; 4]` stores `[PodU64; 4]` little-endian with no length prefix, validation recurses per element, and the identity mapping for `[u8; N]` is preserved exactly. Nested arrays such as `[[u8; 4]; 2]`, pod-spelled arrays such as `[PodU64; 4]`, arrays of `PodBool`, and `Option<[u64; N]>` all resolve through the same composition rules.\n\nThe derive now maps array fields element-wise (`[u64; 4]` emits `[PodU64; 4]` storage), recurses capacity checks into array elements, and compact patch builders accept both native and pod spellings through a new hidden `IntoPodArray` conversion trait — `.weights([5, 6])` and `.weights([PodU64::from(5), PodU64::from(6)])` both compile. Fixed-schema accessors return the pod array by reference, matching the existing `Vec<T, N>` accessor shape.\n\nFor example, the field type now carries the element type instead of forcing raw bytes, with no change to the wire size:\n\n```rust\n// Before: only `[u8; N]` was supported, so a fixed u64 array was raw bytes.\n#[derive(PinaPod)]\n#[pinapod(compact)]\nstruct Table {\n    weights: [u8; 16],\n}\n```\n\n```rust\n// After: the native element type is accepted throughout, storing `[PodU64; 2]`.\n#[derive(PinaPod)]\n#[pinapod(compact)]\nstruct Table {\n    weights: [u64; 2],\n}\n\nfn round_trip() {\n    let mut buffer = [0u8; Table::MAX_SIZE];\n    let patch = TablePatch::new().weights([5_u64, 6]);\n    let encoded_len = Table::initialize(&mut buffer, &patch).unwrap();\n    let table = Table::read_prefix(&buffer[..encoded_len]).unwrap();\n    assert_eq!(table.weights[0].get(), 5);\n}\n```\n\nSoundness of the generalized `ZcElem` rests on the documented array layout rules: `[T; N]` inherits alignment 1 from `T`, its size is exactly `N * size_of::<T>()` so no padding can exist between elements, and per-element bit validity composes. The `[u8; N]`-specific impls were replaced by the generic ones, so downstream crates that hand-wrote `ZcField`/`ZcValidate` impls for their own array types will now conflict with the blanket impls — the closed-world safety guidance already rules that pattern out, but it is the one theoretically breaking edge and the reason both crates bump together.\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #22](https://github.com/pina-rs/pinapod/pull/22)"
+            ]
+          },
+          {
+            "title": "Documentation",
+            "collapsed": false,
+            "entries": [
+              "#### document the public API and enforce `missing_docs`\n\n_Packages:_ _pinapod_, _pinapod-derive_\n\nEvery publicly reachable item in `pinapod` now carries documentation: the crate root, both public modules, each pod type and container method, the error variants, and every trait, associated type, constant, and method in `traits.rs`. The derive crate documents its crate root, the `PinaPod` macro, and every struct and field option it accepts.\n\nThe workspace lint policy denies `missing_docs` alongside `unsafe_code`, so an undocumented public item in either library fails the build instead of shipping an undocumented entry in the wire-format contract. Test, benchmark, and fixture targets opt out with a reasoned `#[allow(missing_docs, reason = \"...\")]`, matching how `unsafe_code` is scoped.\n\nShared wording lives in one place. `mdt` providers in `api-docs.t.md` (API contracts expanded into rustdoc) and `templates/` (tables and contracts expanded into the README and the book) replace the text that was previously repeated across the pod containers, the error table, the float bit-pattern rules, and the prefix-width rules. `devenv shell docs:sync` rewrites the consumers, and `verify:docs` runs `mdt check` so a stale block fails CI. No API, wire format, or runtime behavior changes.\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #23](https://github.com/pina-rs/pinapod/pull/23) · _Related issues:_ [#23](https://github.com/pina-rs/pinapod/issues/23)"
+            ]
+          },
+          {
+            "title": "Notes",
+            "collapsed": false,
+            "entries": [
+              "#### run Kani proofs against pinned Kani and modern solvers\n\n_Packages:_ _pinapod_\n\nThe CI job installed z3 with `apt-get`, which on ubuntu-24.04 resolves to a 2021 release whose wide bitvector reasoning is far too slow. The `kani (u128)` and `kani (i128)` shards took 31.7 and 50.7 minutes and had begun timing out. Two changes fix that.\n\nEach arithmetic harness is split so every expensive operation gets its own verification condition instead of accumulating one large formula, and the resulting harnesses request `cvc5` rather than `z3`. On the same formulas `z3` could not finish the signed 128-bit division proof within 25 minutes, while `cvc5` verifies it in 14 seconds; `z3` 5.1.0 did not help, so this is not a solver-version problem. The u128 shard now verifies 10 harnesses in about 30 seconds and the i128 shard 11 harnesses in about 22 seconds.\n\nCI installs both solvers from their GitHub releases through a new `kani-solvers` action, pinned by SHA-256 per platform so a moved or compromised release asset cannot silently change what the proofs ran against. The Kani version is pinned alongside them. Proofs no longer run through the `devenv` environment, which saves roughly ten minutes per shard and keeps the devenv setup for local runs, where the same profile pins `cvc5` and `z3` for investigation.\n\nEvery assertion is preserved: each operation is still proven equal to its native counterpart, including signed overflow and division-by-zero cases. Nothing was weakened, bounded, or removed to make the proofs fit. No public API changes — the split harnesses live behind `#[cfg(kani)]` and the shard scripts make proofs runnable locally for the first time.\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #26](https://github.com/pina-rs/pinapod/pull/26) · _Related issues:_ [#22](https://github.com/pina-rs/pinapod/issues/22), [#8083](https://github.com/pina-rs/pinapod/issues/8083)",
+              "#### finish the tabs-to-spaces switch and fix style fallout\n\n_Packages:_ _pinapod_, _pinapod-derive_\n\nThe `hard_tabs = false` switch left most of the workspace formatted under the previous tab style, so `lint:format` (`dprint check`) failed across benches, tests, and both crates. `dprint fmt` completes the conversion, including the `tests/ui` fixtures, and `mdt check` stays green because the mdt `indent:\"    \"` directives now match the enforced style.\n\nThe compile-fail snapshots are re-blessed for the resulting span shifts and for the richer const-eval diagnostics of the pinned nightly, which also renders the containers' forced capacity assertions differently.\n\nTwo new tool lints needed reasoned workspace-policy entries. `rustdoc::invalid_markdown_table` rejects mdt's block close markers when they sit inline after the final row of a generated table, but the marker is an invisible synchronization delimiter, so the lint is always a false positive here. `clippy::used_underscore_items` misreads the containers' `let _ = Self::_CAP_CHECK` idiom, which references an underscore-prefixed const on purpose to force its compile-time assertion. No public API, wire format, or runtime behavior changes.\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #28](https://github.com/pina-rs/pinapod/pull/28)"
+            ]
+          }
+        ]
+      },
+      "rendered": "## [0.4.0](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.0) (2026-09-16)\n\nGrouped release for `pinapod-workspace`.\n\n### Breaking Changes\n\n#### support typed fixed arrays `[T; N]` in every schema position\n\n_Packages:_ _pinapod_, _pinapod-derive_\n\n`ZcElem`, `ZcValidate`, and `ZcField` are now implemented for arrays of any pod element, not only `[u8; N]`. A field declared `[u64; 4]` stores `[PodU64; 4]` little-endian with no length prefix, validation recurses per element, and the identity mapping for `[u8; N]` is preserved exactly. Nested arrays such as `[[u8; 4]; 2]`, pod-spelled arrays such as `[PodU64; 4]`, arrays of `PodBool`, and `Option<[u64; N]>` all resolve through the same composition rules.\n\nThe derive now maps array fields element-wise (`[u64; 4]` emits `[PodU64; 4]` storage), recurses capacity checks into array elements, and compact patch builders accept both native and pod spellings through a new hidden `IntoPodArray` conversion trait — `.weights([5, 6])` and `.weights([PodU64::from(5), PodU64::from(6)])` both compile. Fixed-schema accessors return the pod array by reference, matching the existing `Vec<T, N>` accessor shape.\n\nFor example, the field type now carries the element type instead of forcing raw bytes, with no change to the wire size:\n\n```rust\n// Before: only `[u8; N]` was supported, so a fixed u64 array was raw bytes.\n#[derive(PinaPod)]\n#[pinapod(compact)]\nstruct Table {\n    weights: [u8; 16],\n}\n```\n\n```rust\n// After: the native element type is accepted throughout, storing `[PodU64; 2]`.\n#[derive(PinaPod)]\n#[pinapod(compact)]\nstruct Table {\n    weights: [u64; 2],\n}\n\nfn round_trip() {\n    let mut buffer = [0u8; Table::MAX_SIZE];\n    let patch = TablePatch::new().weights([5_u64, 6]);\n    let encoded_len = Table::initialize(&mut buffer, &patch).unwrap();\n    let table = Table::read_prefix(&buffer[..encoded_len]).unwrap();\n    assert_eq!(table.weights[0].get(), 5);\n}\n```\n\nSoundness of the generalized `ZcElem` rests on the documented array layout rules: `[T; N]` inherits alignment 1 from `T`, its size is exactly `N * size_of::<T>()` so no padding can exist between elements, and per-element bit validity composes. The `[u8; N]`-specific impls were replaced by the generic ones, so downstream crates that hand-wrote `ZcField`/`ZcValidate` impls for their own array types will now conflict with the blanket impls — the closed-world safety guidance already rules that pattern out, but it is the one theoretically breaking edge and the reason both crates bump together.\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #22](https://github.com/pina-rs/pinapod/pull/22)\n\n### Documentation\n\n#### document the public API and enforce `missing_docs`\n\n_Packages:_ _pinapod_, _pinapod-derive_\n\nEvery publicly reachable item in `pinapod` now carries documentation: the crate root, both public modules, each pod type and container method, the error variants, and every trait, associated type, constant, and method in `traits.rs`. The derive crate documents its crate root, the `PinaPod` macro, and every struct and field option it accepts.\n\nThe workspace lint policy denies `missing_docs` alongside `unsafe_code`, so an undocumented public item in either library fails the build instead of shipping an undocumented entry in the wire-format contract. Test, benchmark, and fixture targets opt out with a reasoned `#[allow(missing_docs, reason = \"...\")]`, matching how `unsafe_code` is scoped.\n\nShared wording lives in one place. `mdt` providers in `api-docs.t.md` (API contracts expanded into rustdoc) and `templates/` (tables and contracts expanded into the README and the book) replace the text that was previously repeated across the pod containers, the error table, the float bit-pattern rules, and the prefix-width rules. `devenv shell docs:sync` rewrites the consumers, and `verify:docs` runs `mdt check` so a stale block fails CI. No API, wire format, or runtime behavior changes.\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #23](https://github.com/pina-rs/pinapod/pull/23) · _Related issues:_ [#23](https://github.com/pina-rs/pinapod/issues/23)\n\n### Notes\n\n#### run Kani proofs against pinned Kani and modern solvers\n\n_Packages:_ _pinapod_\n\nThe CI job installed z3 with `apt-get`, which on ubuntu-24.04 resolves to a 2021 release whose wide bitvector reasoning is far too slow. The `kani (u128)` and `kani (i128)` shards took 31.7 and 50.7 minutes and had begun timing out. Two changes fix that.\n\nEach arithmetic harness is split so every expensive operation gets its own verification condition instead of accumulating one large formula, and the resulting harnesses request `cvc5` rather than `z3`. On the same formulas `z3` could not finish the signed 128-bit division proof within 25 minutes, while `cvc5` verifies it in 14 seconds; `z3` 5.1.0 did not help, so this is not a solver-version problem. The u128 shard now verifies 10 harnesses in about 30 seconds and the i128 shard 11 harnesses in about 22 seconds.\n\nCI installs both solvers from their GitHub releases through a new `kani-solvers` action, pinned by SHA-256 per platform so a moved or compromised release asset cannot silently change what the proofs ran against. The Kani version is pinned alongside them. Proofs no longer run through the `devenv` environment, which saves roughly ten minutes per shard and keeps the devenv setup for local runs, where the same profile pins `cvc5` and `z3` for investigation.\n\nEvery assertion is preserved: each operation is still proven equal to its native counterpart, including signed overflow and division-by-zero cases. Nothing was weakened, bounded, or removed to make the proofs fit. No public API changes — the split harnesses live behind `#[cfg(kani)]` and the shard scripts make proofs runnable locally for the first time.\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #26](https://github.com/pina-rs/pinapod/pull/26) · _Related issues:_ [#22](https://github.com/pina-rs/pinapod/issues/22), [#8083](https://github.com/pina-rs/pinapod/issues/8083)\n\n#### finish the tabs-to-spaces switch and fix style fallout\n\n_Packages:_ _pinapod_, _pinapod-derive_\n\nThe `hard_tabs = false` switch left most of the workspace formatted under the previous tab style, so `lint:format` (`dprint check`) failed across benches, tests, and both crates. `dprint fmt` completes the conversion, including the `tests/ui` fixtures, and `mdt check` stays green because the mdt `indent:\"    \"` directives now match the enforced style.\n\nThe compile-fail snapshots are re-blessed for the resulting span shifts and for the richer const-eval diagnostics of the pinned nightly, which also renders the containers' forced capacity assertions differently.\n\nTwo new tool lints needed reasoned workspace-policy entries. `rustdoc::invalid_markdown_table` rejects mdt's block close markers when they sit inline after the final row of a generated table, but the marker is an invisible synchronization delimiter, so the lint is always a false positive here. `clippy::used_underscore_items` misreads the containers' `let _ = Self::_CAP_CHECK` idiom, which references an underscore-prefixed const on purpose to force its compile-time assertion. No public API, wire format, or runtime behavior changes.\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #28](https://github.com/pina-rs/pinapod/pull/28)"
+    }
+  ],
+  "provider": {
+    "kind": "github",
+    "owner": "pina-rs",
+    "repo": "pinapod",
+    "host": null
+  }
+}
