@@ -230,3 +230,36 @@ fn array_validation_walks_restricted_elements_inside_schemas() {
 
 	assert!(Weights::read_exact(&buf).is_err());
 }
+
+#[test]
+fn every_trivially_valid_element_type_accepts_its_whole_domain() {
+	// Each of these element types overrides the per-element walk with a no-op,
+	// so an array of them is valid for every bit pattern. Exercising each one
+	// keeps that override honest and covered.
+	let signed = [i8::MIN, -1, 0, i8::MAX];
+	pinapod::ZcValidate::validate_ref(&signed).unwrap();
+
+	let pods = [PodU16::from(u16::MAX), PodU16::from(0)];
+	pinapod::ZcValidate::validate_ref(&pods).unwrap();
+
+	let signed_pods = [PodI64::from(i64::MIN), PodI64::from(i64::MAX)];
+	pinapod::ZcValidate::validate_ref(&signed_pods).unwrap();
+
+	let wide = [PodU128::from(u128::MAX)];
+	pinapod::ZcValidate::validate_ref(&wide).unwrap();
+
+	let nested_bytes = [[[0xFF_u8; 2]; 2]; 2];
+	pinapod::ZcValidate::validate_ref(&nested_bytes).unwrap();
+}
+
+#[cfg(feature = "solana-address")]
+#[test]
+fn address_arrays_accept_every_bit_pattern() {
+	// `Address` is a 32-byte value with no restricted domain, so it takes the
+	// no-op override and any byte pattern is a valid array element.
+	let bytes = [0xFF_u8; 32];
+	let address = solana_address::Address::new_from_array(bytes);
+	let addresses = [address, address];
+
+	pinapod::ZcValidate::validate_ref(&addresses).unwrap();
+}
