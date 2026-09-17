@@ -1,5 +1,5 @@
 error[E0603]: struct `JournalMut` is private
-  --> tests/ui/fail/compact_mut_not_exported.rs:11:40
+  --> tests/ui/fail/compact_mut_not_exported.rs:11:37
    |
 11 |     let _ = __pinapod_compact_Journal::JournalMut::new(&mut bytes);
    |                                        ^^^^^^^^^^ private struct

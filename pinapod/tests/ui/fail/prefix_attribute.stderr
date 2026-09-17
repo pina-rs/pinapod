@@ -1,5 +1,5 @@
 error: prefix width belongs in the field type; use `PodString<N, PFX>` or `PodVec<T, N, PFX>`
- --> tests/ui/fail/prefix_attribute.rs:6:15
+ --> tests/ui/fail/prefix_attribute.rs:6:12
   |
 6 |     #[pinapod(prefix = u16)]
   |               ^^^^^^

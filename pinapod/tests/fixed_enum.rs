@@ -77,7 +77,7 @@ fn enum_zc_is() {
 fn enum_zc_display() {
 	let buf = [0u8]; // Active
 	let zc = Status::read_exact(&buf).unwrap();
-	let s = format!("{}", zc);
+	let s = format!("{zc}");
 	assert_eq!(s, "Active");
 }
 
@@ -85,7 +85,7 @@ fn enum_zc_display() {
 fn enum_zc_debug() {
 	let buf = [2u8]; // Closed
 	let zc = Status::read_exact(&buf).unwrap();
-	let s = format!("{:?}", zc);
+	let s = format!("{zc:?}");
 	assert!(s.contains("Closed"));
 }
 
@@ -93,7 +93,7 @@ fn enum_zc_debug() {
 fn enum_zc_eq_repr() {
 	let buf = [1u8];
 	let zc = Status::read_exact(&buf).unwrap();
-	assert!(*zc == 1u8); // PartialEq with repr type
+	assert_eq!(zc.get(), 1u8); // PartialEq with repr type
 }
 
 #[test]

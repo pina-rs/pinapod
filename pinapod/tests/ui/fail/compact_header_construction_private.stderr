@@ -1,5 +1,5 @@
 error[E0451]: field `__entries_len` of struct `JournalHeader` is private
-  --> tests/ui/fail/compact_header_construction_private.rs:13:9
+  --> tests/ui/fail/compact_header_construction_private.rs:13:3
    |
 11 |     let _ = JournalHeader {
    |             ------------- in this type

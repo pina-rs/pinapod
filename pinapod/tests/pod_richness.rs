@@ -109,10 +109,10 @@ fn vec_feels_ergonomic() {
 #[test]
 fn option_feels_native() {
 	let mut maybe = PodOption::<PodU64>::none();
-	assert!(maybe == None);
+	assert_eq!(maybe, None);
 
 	maybe.set(Some(PodU64::from(42u64)));
-	assert!(maybe == Some(PodU64::from(42u64)));
+	assert_eq!(maybe, Some(PodU64::from(42u64)));
 
 	// Unwrap with default
 	let val = maybe.unwrap_or(PodU64::from(0u64));
@@ -156,7 +156,7 @@ fn enum_feels_natural() {
 	zc.heading = Direction::East.into();
 
 	// Compare directly
-	assert!(zc.heading == Direction::East);
+	assert_eq!(zc.heading, Direction::East);
 	assert!(zc.heading.is(Direction::East));
 	assert!(!zc.heading.is(Direction::North));
 

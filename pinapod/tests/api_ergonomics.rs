@@ -148,10 +148,10 @@ fn compact_profile_ergonomics() {
 
 	let mut buf = vec![0u8; UserProfile::MAX_SIZE];
 	let auth = [0xBB; 32];
-	let tag1 = [1u8; 8];
-	let tag2 = [2u8; 8];
+	let tag_one = [1u8; 8];
+	let tag_two = [2u8; 8];
 
-	let tags = [tag1, tag2];
+	let tags = [tag_one, tag_two];
 	let patch = UserProfilePatch::new()
 		.authority(auth)
 		.level(42u64)
@@ -203,7 +203,7 @@ fn enum_in_struct() {
 
 	let game = Game::read_exact(&buf).unwrap();
 	assert_eq!(game.authority, [0xCC; 32]);
-	assert!(game.status == GameStatus::Active);
+	assert_eq!(game.status, GameStatus::Active);
 	assert_eq!(game.status.try_to_enum().unwrap(), GameStatus::Active);
 	assert_eq!(game.round.get(), 3);
 

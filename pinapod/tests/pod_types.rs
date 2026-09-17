@@ -66,7 +66,7 @@ fn pod_option_eight_byte_prefix_roundtrip_and_rejection() {
 	);
 
 	let built = PodOption::<u8, 8>::some(7);
-	let built_bytes = unsafe { core::slice::from_raw_parts((&built as *const _) as *const u8, 9) };
+	let built_bytes = unsafe { core::slice::from_raw_parts((&raw const built).cast::<u8>(), 9) };
 	assert_eq!(&built_bytes[..8], &1u64.to_le_bytes());
 	assert_eq!(built_bytes[8], 7);
 }
@@ -500,7 +500,7 @@ fn pod_string_hash() {
 fn pod_string_eq_str() {
 	let mut s = PodString::<32>::default();
 	s.try_set("hello").unwrap();
-	assert!(s == *"hello"); // PartialEq<str>
+	assert_eq!(s, *"hello"); // PartialEq<str>
 }
 
 #[test]
@@ -606,10 +606,10 @@ fn pod_option_map_or() {
 #[test]
 fn pod_option_partial_eq_option() {
 	let a = PodOption::<PodU64>::some(PodU64::from(42u64));
-	assert!(a == Some(PodU64::from(42u64)));
-	assert!(a != None);
+	assert_eq!(a, Some(PodU64::from(42u64)));
+	assert_ne!(a, None);
 	let b = PodOption::<PodU64>::none();
-	assert!(b == None);
+	assert_eq!(b, None);
 }
 
 #[test]

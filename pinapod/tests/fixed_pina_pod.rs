@@ -89,7 +89,7 @@ fn fixed_layout_supports_recursively_bounded_containers() {
 		value
 			.samples()
 			.iter()
-			.map(|sample| sample.get())
+			.map(pinapod::pod::PodU16::get)
 			.collect::<Vec<_>>(),
 		[3, 5, 8]
 	);

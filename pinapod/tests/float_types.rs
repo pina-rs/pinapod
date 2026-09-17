@@ -43,7 +43,7 @@ fn float_pods_roundtrip_bit_patterns_exactly() {
 		0.0_f32,
 		-0.0,
 		-1.5,
-		3.141_592_7,
+		core::f32::consts::PI,
 		f32::MIN_POSITIVE,
 		f32::MAX,
 		f32::INFINITY,
@@ -188,10 +188,7 @@ fn compact_schema_roundtrips_float_header_and_tail() {
 	let book = FloatBook::read_prefix(&bytes[..encoded_size]).unwrap();
 	assert_eq!(book.mark_price.get(), 1.75);
 	assert_eq!(
-		book.venues()
-			.iter()
-			.map(|value| value.get())
-			.collect::<StdVec<_>>(),
+		book.venues().iter().map(PodF32::get).collect::<StdVec<_>>(),
 		prices,
 	);
 	assert_eq!(book.name(), "float");
@@ -227,17 +224,13 @@ fn floats_compose_with_bounded_collections() {
 	{
 		let value = FloatCollections::read_exact_mut(&mut bytes).unwrap();
 		value.samples.set(Some(PodF32::from(0.5)));
-		value.history.try_set(&mapped).unwrap();
+		value.history.try_set(mapped).unwrap();
 	}
 
 	let value = FloatCollections::read_exact(&bytes).unwrap();
 	assert_eq!(value.samples.get().map(|sample| sample.get()), Some(0.5));
 	assert_eq!(
-		value
-			.history
-			.iter()
-			.map(|item| item.get())
-			.collect::<StdVec<_>>(),
+		value.history.iter().map(PodF64::get).collect::<StdVec<_>>(),
 		history,
 	);
 }
@@ -273,6 +266,7 @@ fn float_pods_expose_formatting_hashing_and_constants() {
 fn float_pods_copy_and_convert_like_byte_containers() {
 	let pod = PodF32::from(-0.75);
 	let copied = pod; // Copy
+	#[allow(clippy::clone_on_copy)]
 	let cloned = pod.clone();
 	assert_eq!(copied, cloned);
 	assert_eq!(f32::from(copied), -0.75);

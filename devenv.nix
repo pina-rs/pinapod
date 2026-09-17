@@ -9,8 +9,14 @@ let
   currentDir = builtins.dirOf __curPos.file;
   custom = inputs.ifiokjr-nixpkgs.packages.${pkgs.stdenv.hostPlatform.system};
   # Kani's prebuilt driver links the compiler libraries of one exact nightly
-  # release, so the proof environment ships that toolchain alongside it.
-  kaniToolchain = pkgs.rust-bin.nightly."2025-11-21".minimal;
+  # release, so the proof environment ships that toolchain alongside it. The
+  # date is not free: it must be the nightly named by the packaged Kani's own
+  # `rust-toolchain-version` file, or `kani-compiler` aborts on start with a
+  # dyld "Library not loaded: @rpath/librustc_driver-<hash>.dylib" error.
+  # Read it when bumping Kani's nixpkgs pin with:
+  #   cat "$(nix build --no-link --print-out-paths \
+  #     --impure --expr 'inputs.ifiokjr-nixpkgs.packages.<system>.kani')/rust-toolchain-version"
+  kaniToolchain = pkgs.rust-bin.nightly."2026-08-21".minimal;
   kani = custom.kani.overrideAttrs (old: {
     buildInputs = (old.buildInputs or [ ]) ++ lib.optionals pkgs.stdenv.isLinux [ kaniToolchain ];
     postInstall = (old.postInstall or "") + ''
@@ -19,6 +25,20 @@ let
       fi
     '';
   });
+  # Kani preprocesses every harness by shelling out to a native C compiler, and
+  # CBMC's `goto-cc` looks for the literal name `gcc`. A Darwin machine has no
+  # `gcc` binary at all (Apple's is a clang stub, and clang is what the profile
+  # ships), so goto-cc dies with "execvp gcc failed: No such file or directory"
+  # before any proof runs. `--native-compiler clang` cannot be passed through
+  # cargo-kani, so the shim supplies the name goto-cc insists on. It only has
+  # to preprocess; goto-cc parses the C and never links the result.
+  #
+  # Darwin-only: Linux ships a real gcc, and shadowing it would be a surprise.
+  kaniGccShim = lib.optionals pkgs.stdenv.isDarwin [
+    (pkgs.writeShellScriptBin "gcc" ''
+      exec ${pkgs.clang}/bin/clang "$@"
+    '')
+  ];
 in
 {
   packages = with pkgs; [
@@ -40,6 +60,17 @@ in
 
   env.CARGO_TERM_COLOR = "always";
 
+  # Cargo otherwise sizes its job pool to the whole machine, and several
+  # scripts here fan out (clippy --fix re-runs the compiler to a fixpoint, and
+  # the docs and test scripts each rebuild the workspace). Letting every cargo
+  # invocation claim all cores at once is what makes a local `fix:all` or a
+  # parallel Kani shard pin the CPU and start thrashing. Cap the pool instead;
+  # override with CARGO_BUILD_JOBS=<n> for a one-off full-speed build.
+  #
+  # Deliberately not done via RUSTFLAGS: changing that invalidates the whole
+  # build cache and forces a full workspace rebuild on the next command.
+  env.CARGO_BUILD_JOBS = "4";
+
   apple.sdk = null;
   dotenv.disableHint = true;
 
@@ -53,7 +84,8 @@ in
     kani
     pkgs.cvc5
     pkgs.z3
-  ];
+  ]
+  ++ kaniGccShim;
 
   scripts = {
     "build:all" = {
@@ -90,9 +122,16 @@ in
       binary = "bash";
     };
     # Proof shards mirror the CI matrix so a local run reproduces a red job.
+    # The harness argument is required: a missing one would otherwise run the
+    # entire proof suite under a single name.
     "test:kani" = {
       exec = ''
         set -euo pipefail
+        if [[ -z "''${1:-}" ]]; then
+          echo "usage: test:kani <harness>" >&2
+          echo "       run test:kani:all to verify every proof" >&2
+          exit 2
+        fi
         cargo-kani \
           --manifest-path pinapod/Cargo.toml \
           --features kani,floats \
@@ -107,7 +146,11 @@ in
     "test:kani:time" = {
       exec = ''
         set -euo pipefail
-        for harness in $(cargo +stable metadata --manifest-path pinapod/Cargo.toml --format-version 1 >/dev/null 2>&1; grep -rhoE 'fn [a-z0-9_]+\(' pinapod/src/pod/numeric.rs | sed -E 's/fn ([a-z0-9_]+)\(/\1/' | sort -u); do
+        if [[ -z "''${1:-}" ]]; then
+          echo "usage: test:kani:time <shard>  (shard is the harness module, e.g. u128_proofs)" >&2
+          exit 2
+        fi
+        for harness in $(grep -rhoE 'fn [a-z0-9_]+\(' pinapod/src/pod/numeric.rs | sed -E 's/fn ([a-z0-9_]+)\(/\1/' | sort -u); do
           start=$(date +%s)
           cargo-kani \
             --manifest-path pinapod/Cargo.toml \
@@ -196,17 +239,31 @@ in
     "fix:clippy" = {
       exec = ''
         set -euo pipefail
-        cargo clippy --fix --allow-dirty --allow-staged --workspace --all-features --locked
+        cargo clippy --fix --allow-dirty --allow-staged --workspace --all-targets --all-features --locked
       '';
-      description = "Apply safe Clippy fixes across the workspace.";
+      description = "Apply safe Clippy fixes across every workspace target.";
+      binary = "bash";
+    };
+    "fix:all" = {
+      exec = ''
+        set -euo pipefail
+        fix:clippy
+        # `fix:format` runs dprint *before* its own docs:sync, so a block mdt
+        # rewrites there would land after formatting and never be formatted
+        # itself. Syncing here puts the mdt update ahead of the formatting pass,
+        # so the final `fix:format` formats the synchronized blocks it produces.
+        docs:sync
+        fix:format
+      '';
+      description = "Fix everything: apply Clippy fixes on every target, sync mdt docs, then format.";
       binary = "bash";
     };
     "lint:clippy" = {
       exec = ''
         set -euo pipefail
-        cargo clippy --workspace --all-features --locked -- -D warnings
+        cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       '';
-      description = "Run the shared Pina Rust and Clippy lint policy.";
+      description = "Run the shared Pina Rust and Clippy lint policy on every target, failing on any warning.";
       binary = "bash";
     };
     "lint:format" = {
