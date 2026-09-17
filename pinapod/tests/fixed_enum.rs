@@ -93,7 +93,7 @@ fn enum_zc_debug() {
 fn enum_zc_eq_repr() {
 	let buf = [1u8];
 	let zc = Status::read_exact(&buf).unwrap();
-	assert_eq!(zc.get(), 1u8); // PartialEq with repr type
+	assert_eq!(*zc, 1u8); // PartialEq with repr type
 }
 
 #[test]
