@@ -276,3 +276,26 @@ fn float_pods_copy_and_convert_like_byte_containers() {
 	);
 	assert_eq!(<StdVec<_>>::from([pod]).len(), 1);
 }
+
+#[test]
+fn float_arrays_accept_every_bit_pattern() {
+	// Float pods override the per-element array walk with a no-op because NaN,
+	// infinities, and both zero signs are all valid stored values.
+	let f32s = [
+		PodF32::from(f32::NAN),
+		PodF32::from(f32::INFINITY),
+		PodF32::from(-0.0),
+		PodF32::ZERO,
+	];
+	ZcValidate::validate_ref(&f32s).unwrap();
+
+	let f64s = [PodF64::from(f64::NEG_INFINITY), PodF64::from(f64::MAX)];
+	ZcValidate::validate_ref(&f64s).unwrap();
+
+	// Every raw bit pattern is valid too, including signaling NaN payloads,
+	// which a native `f32` field could never hold.
+	let signaling_nan = PodF32::new_from_array(0x7F80_0001_u32.to_le_bytes());
+	let all_ones = PodF32::new_from_array(0xFFFF_FFFF_u32.to_le_bytes());
+	let raw = [signaling_nan, all_ones];
+	ZcValidate::validate_ref(&raw).unwrap();
+}
