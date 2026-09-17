@@ -1,5 +1,5 @@
 error[E0599]: no method named `discriminator` found for struct `ProtectedAccountPatch<'__pinapod_patch>` in the current scope
-  --> tests/ui/fail/compact_skip_patch_builder.rs:13:42
+  --> tests/ui/fail/compact_skip_patch_builder.rs:13:39
    |
  3 | #[derive(PinaPod)]
    |          ------- method `discriminator` not found for this struct

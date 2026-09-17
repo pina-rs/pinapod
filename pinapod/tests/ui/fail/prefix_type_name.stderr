@@ -1,11 +1,11 @@
 error: PodVec length prefix must be the byte width 1, 2, 4, or 8
- --> tests/ui/fail/prefix_type_name.rs:6:36
+ --> tests/ui/fail/prefix_type_name.rs:6:33
   |
 6 |     values: pinapod::PodVec<u8, 8, u16>,
   |                                    ^^^
 
 error[E0747]: type provided when a constant was expected
- --> tests/ui/fail/prefix_type_name.rs:6:36
+ --> tests/ui/fail/prefix_type_name.rs:6:33
   |
 6 |     values: pinapod::PodVec<u8, 8, u16>,
   |                                    ^^^
