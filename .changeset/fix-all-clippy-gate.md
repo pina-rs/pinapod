@@ -1,10 +1,13 @@
 ---
 pinapod: none
+pinapod-derive: none
 ---
 
 # fail on every Clippy warning and add `fix:all`
 
 Clippy was run without `--all-targets`, so lint findings in tests, benchmarks, and compile fixtures never reached either `lint:clippy` or CI's `lint` job; only the library and binary targets were covered. `lint:clippy` now lints every target with `-D warnings`, so the local gate and CI agree and neither can hide a warning in a test file. Every finding the wider sweep surfaced is fixed rather than suppressed — one targeted `#[allow(clippy::clone_on_copy)]` is the only new suppression, on a test whose purpose is to exercise `clone` on a `Copy` type. The fixes are mechanical: deprecated `criterion::black_box` imports become `std::hint::black_box`, boolean `assert!` comparisons become `assert_eq!` / `assert_ne!`, and raw-pointer `as` casts become `.cast()` or `ptr::from_ref`. The manifest lints are resolved by inheriting `keywords` and dropping the `homepage` key that Cargo reports as redundant with `repository`, rather than deleting the metadata.
+
+One of those findings sits in the derive: an `impl Schema` block had been left after the `#[cfg(test)] mod tests` block, which trips `clippy::items_after_test_module` now that the lint reaches lib targets. The impl moved above the tests; it is a pure reordering with no behavior change.
 
 A new `fix:all` devenv task applies the whole fix suite in one command: `fix:clippy` across every target, then `docs:sync`, then `fix:format`. The explicit `docs:sync` is what makes the ordering correct rather than incidental — `fix:format` runs dprint before its own `docs:sync`, so an mdt rewrite performed inside it would land after formatting and never be formatted itself. Syncing ahead of the formatting pass means the final `fix:format` formats the blocks mdt produces, and the tree is left clean for `lint:*`. Running it twice produces no further changes.
 
