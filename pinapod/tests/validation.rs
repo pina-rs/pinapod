@@ -227,7 +227,7 @@ fn validate_vec_bool_all_valid() {
 	buf[2] = 0;
 	buf[3] = 1;
 	buf[4] = 0;
-	let v = unsafe { &*(buf.as_ptr() as *const pinapod::pod::PodVec<PodBool, 5>) };
+	let v = unsafe { &*(buf.as_ptr().cast::<pinapod::pod::PodVec<PodBool, 5>>()) };
 	assert!(pinapod::ZcValidate::validate_ref(v).is_ok());
 }
 
@@ -241,7 +241,7 @@ fn validate_vec_bool_rejects_invalid_element() {
 	buf[2] = 0;
 	buf[3] = 1;
 	buf[4] = 5;
-	let v = unsafe { &*(buf.as_ptr() as *const pinapod::pod::PodVec<PodBool, 5>) };
+	let v = unsafe { &*(buf.as_ptr().cast::<pinapod::pod::PodVec<PodBool, 5>>()) };
 	assert!(pinapod::ZcValidate::validate_ref(v).is_err());
 }
 
@@ -303,7 +303,7 @@ fn podstring_truncate_at_boundary_is_exact() {
 #[test]
 fn error_invalid_bool_variant() {
 	let buf = [2u8]; // bad bool byte
-	let val = unsafe { &*(buf.as_ptr() as *const pinapod::pod::PodBool) };
+	let val = unsafe { &*(buf.as_ptr().cast::<pinapod::pod::PodBool>()) };
 	let err = <pinapod::pod::PodBool as pinapod::ZcValidate>::validate_ref(val);
 	assert_eq!(err, Err(pinapod::PinaPodError::InvalidBool));
 }
@@ -311,7 +311,7 @@ fn error_invalid_bool_variant() {
 #[test]
 fn error_invalid_tag_variant() {
 	let buf = [5u8, 0u8]; // bad option tag
-	let val = unsafe { &*(buf.as_ptr() as *const pinapod::pod::PodOption<u8>) };
+	let val = unsafe { &*(buf.as_ptr().cast::<pinapod::pod::PodOption<u8>>()) };
 	let err = <pinapod::pod::PodOption<u8> as pinapod::ZcValidate>::validate_ref(val);
 	assert_eq!(err, Err(pinapod::PinaPodError::InvalidTag));
 }
@@ -322,7 +322,7 @@ fn error_invalid_tag_variant() {
 fn pod_option_invalid_tag_is_not_some() {
 	// Construct a PodOption with raw tag = 0xFF (invalid).
 	let buf = [0xFFu8, 42u8]; // PodOption<u8>: tag(1) + value(1)
-	let opt = unsafe { &*(buf.as_ptr() as *const pinapod::pod::PodOption<u8>) };
+	let opt = unsafe { &*(buf.as_ptr().cast::<pinapod::pod::PodOption<u8>>()) };
 
 	// is_some() must NOT return true for invalid tags.
 	assert!(

@@ -11,8 +11,12 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 pinapod = { path = "../pinapod", features = ["wincode"] }
 # Direct dependency so wincode targets use the same crate instance that
-# pinapod's feature graph selects.
-wincode = { version = "0.5.5", default-features = false }
+# pinapod's feature graph selects. That means this version has to move in
+# lockstep with the workspace's wincode pin: a mismatch resolves two copies of
+# the crate, and the fuzz targets then fail to compile with
+# `the trait bound PodBool: SchemaRead<'_, ...> is not satisfied` because
+# pinapod's impls belong to the other copy.
+wincode = { version = "0.6.1", default-features = false }
 
 # The fuzz suite is its own workspace so the release workspace never builds
 # fuzzing dependencies.

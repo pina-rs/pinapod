@@ -253,6 +253,20 @@ pub(crate) fn parse_layout(attrs: &[syn::Attribute]) -> syn::Result<LayoutOption
 	Ok(options)
 }
 
+impl Schema {
+	pub fn inline_fields(&self) -> impl Iterator<Item = &SchemaField> {
+		self.fields
+			.iter()
+			.filter(|f| matches!(f.kind, FieldKind::Inline))
+	}
+
+	pub fn tail_fields(&self) -> impl Iterator<Item = &SchemaField> {
+		self.fields
+			.iter()
+			.filter(|f| matches!(f.kind, FieldKind::Tail(_)))
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -353,19 +367,5 @@ mod tests {
 			.to_string();
 
 		assert!(error.contains("PodVec length prefix must be"));
-	}
-}
-
-impl Schema {
-	pub fn inline_fields(&self) -> impl Iterator<Item = &SchemaField> {
-		self.fields
-			.iter()
-			.filter(|f| matches!(f.kind, FieldKind::Inline))
-	}
-
-	pub fn tail_fields(&self) -> impl Iterator<Item = &SchemaField> {
-		self.fields
-			.iter()
-			.filter(|f| matches!(f.kind, FieldKind::Tail(_)))
 	}
 }

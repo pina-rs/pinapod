@@ -108,7 +108,7 @@ fn fixed_pfx4_pod_option_accessors_borrow() {
 
 	let zc = WideOptions::read_exact(&buf).unwrap();
 	assert_eq!(zc.authority(), Some(&authority));
-	assert_eq!(zc.amount().map(|value| value.get()), Some(123));
+	assert_eq!(zc.amount().map(pinapod::pod::PodU64::get), Some(123));
 }
 
 #[test]

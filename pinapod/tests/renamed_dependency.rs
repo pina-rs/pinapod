@@ -1,4 +1,4 @@
-//! Verifies derive expansion when Cargo exposes PinaPod under another name.
+//! Verifies derive expansion when Cargo exposes `PinaPod` under another name.
 
 #![cfg(not(miri))]
 

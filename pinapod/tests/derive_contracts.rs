@@ -44,7 +44,7 @@ fn generic_compact_views_preserve_type_parameters_without_changing_layout() {
 	assert_eq!(GenericTail::<u16, 4>::update(&mut data, &patch).unwrap(), 2);
 
 	let reader = GenericTail::<u16, 4>::read_prefix(&data).unwrap();
-	assert!(reader.values().is_empty());
+	assert_eq!(reader.values(), [] as [u16; 0]);
 }
 
 #[test]

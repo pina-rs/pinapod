@@ -34,11 +34,11 @@ fn golden_fixed_alignment() {
 fn golden_fixed_field_offsets() {
 	let buf = [0u8; 14];
 	let zc = GoldenFixed::read_exact(&buf).unwrap();
-	let base = zc as *const _ as usize;
-	assert_eq!(&zc.a as *const _ as usize - base, 0);
-	assert_eq!(&zc.b as *const _ as usize - base, 1);
-	assert_eq!(&zc.c as *const _ as usize - base, 9);
-	assert_eq!(&zc.d as *const _ as usize - base, 10);
+	let base = core::ptr::from_ref(zc) as usize;
+	assert_eq!((&raw const zc.a).cast::<u8>() as usize - base, 0);
+	assert_eq!((&raw const zc.b).cast::<u8>() as usize - base, 1);
+	assert_eq!((&raw const zc.c).cast::<u8>() as usize - base, 9);
+	assert_eq!((&raw const zc.d).cast::<u8>() as usize - base, 10);
 }
 
 #[test]

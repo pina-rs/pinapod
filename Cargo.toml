@@ -7,14 +7,30 @@ resolver = "2"
 [workspace.package]
 version = "0.4.0"
 edition = "2021"
-homepage = "https://github.com/pina-rs/pinapod"
 keywords = ["no-std", "pod", "serialization", "zero-copy"]
 license = "Apache-2.0"
 repository = "https://github.com/pina-rs/pinapod"
 rust-version = "1.89.0"
 
 [workspace.dependencies]
+criterion = { default-features = false, version = "^0.8.2" }
 fixed = { version = "=1.30.0", default-features = false }
+proc-macro-crate = { default-features = false, version = "^3" }
+proc-macro2 = { default-features = false, version = "^1" }
+quote = { default-features = false, version = "^1" }
+solana-address = { default-features = false, version = ">=2.2, <2.7" }
+solana-program-error = { default-features = false, version = ">=3.0, <4.0" }
+stats_alloc = { default-features = false, version = "^0.1.10" }
+syn = { default-features = false, version = "3" }
+trybuild = { default-features = false, version = "^1" }
+wincode = { default-features = false, version = "^0.6.1" }
+# Compared against upstream ZeroPod, so the comparison revision is pinned to
+# the exact commit the README's benchmark numbers were taken from. The git
+# source has to live here: a member that sets `workspace = true` cannot also
+# name a git source, and Cargo ignores (with a warning) any `git`/`rev` keys
+# that try.
+zeropod = { default-features = false, version = "0.3.5", git = "https://github.com/blueshift-gg/zeropod.git", rev = "78e6e5f4b515e85999bcc719eb8db59d3ca11b13" }
+
 # Exact pin: generated code expands against the runtime crate's private
 # contracts, so mixed versions are never compatible. Updated only by the
 # MonoChange release flow.
@@ -82,7 +98,7 @@ missing_panics_doc = "allow"
 module_name_repetitions = "allow"
 must_use_candidate = "allow"
 no_effect_underscore_binding = "allow"
-tabs-in-doc-comments = "allow"
+tabs_in_doc_comments = "allow"
 too_many_lines = "allow"
 # The pod containers force compile-time capacity and prefix assertions by
 # referencing deliberately underscore-prefixed consts (`let _ =

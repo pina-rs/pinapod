@@ -66,8 +66,8 @@ fn pod_vec_of_enum_zc() {
 	v.try_push(Color::Red).unwrap();
 	v.try_push(Color::Blue).unwrap();
 	assert_eq!(v.len(), 2);
-	assert!(v.as_slice()[0] == Color::Red);
-	assert!(v.as_slice()[1] == Color::Blue);
+	assert_eq!(v.as_slice()[0], Color::Red);
+	assert_eq!(v.as_slice()[1], Color::Blue);
 }
 
 #[test]

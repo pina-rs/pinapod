@@ -10,11 +10,11 @@
 )]
 
 use std::alloc::System;
+use std::hint::black_box;
 
 use criterion::BatchSize;
 use criterion::Criterion;
 use criterion::Throughput;
-use criterion::black_box;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use stats_alloc::INSTRUMENTED_SYSTEM;
@@ -802,10 +802,10 @@ fn bench_compact_tail_scaling(c: &mut Criterion) {
 ///
 /// This schema carries six tails so the gap between re-decoding every prefix
 /// per accessor and reading one cached offset per accessor is visible. The
-/// comparison is current-only: it guards PinaPod's own scaling, not upstream
+/// comparison is current-only: it guards `PinaPod`'s own scaling, not upstream
 /// parity.
 mod many_tail {
-	use criterion::black_box;
+	use std::hint::black_box;
 
 	#[allow(dead_code)]
 	#[derive(pinapod::PinaPod)]
@@ -850,18 +850,19 @@ mod many_tail {
 			.replace_values_b(&values)
 			.label_c(LABEL)
 			.note(Some(NOTE));
-		Wide::initialize(data, &patch).expect("wide fixture must initialize")
+		Wide::initialize(data, &patch)
+			.unwrap_or_else(|error| panic!("wide fixture must initialize: {error}"))
 	}
 
 	/// Parses the fixture once. Benchmarks receive the prebuilt view so they
 	/// measure accessor cost without validation or offset-walk work.
 	pub fn view(data: &[u8]) -> WideRef<'_> {
-		Wide::read_prefix(data).expect("wide fixture must parse")
+		Wide::read_prefix(data).unwrap_or_else(|error| panic!("wide fixture must parse: {error}"))
 	}
 
 	pub fn parse(data: &[u8]) -> usize {
 		Wide::read_prefix(data)
-			.expect("wide fixture must parse")
+			.unwrap_or_else(|error| panic!("wide fixture must parse: {error}"))
 			.encoded_len()
 	}
 

@@ -87,10 +87,10 @@ fn compact_roundtrip_write_then_read() {
 	let mut buf = vec![0u8; RoundtripCompact::MAX_SIZE];
 
 	let auth = [0xAA; 32];
-	let tag1 = [1u8, 2, 3, 4];
-	let tag2 = [5u8, 6, 7, 8];
+	let tag_one = [1u8, 2, 3, 4];
+	let tag_two = [5u8, 6, 7, 8];
 
-	let tags = [tag1, tag2];
+	let tags = [tag_one, tag_two];
 	let patch = RoundtripCompactPatch::new()
 		.authority(auth)
 		.level(50u64)
