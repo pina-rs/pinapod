@@ -1,6 +1,6 @@
 [package]
 name = "pinapod-derive"
-version.workspace = true
+version = "0.4.1"
 edition.workspace = true
 keywords.workspace = true
 license.workspace = true

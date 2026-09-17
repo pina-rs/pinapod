@@ -2,6 +2,58 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.1) (2026-09-17)
+
+Grouped release for `pinapod-workspace`.
+
+### Fixes
+
+#### restore the byte-array fast path for `[u8; N]` validation
+
+_Packages:_ _pinapod_, _pinapod-derive_
+
+0.4.0 generalized the `[u8; N]`-specific `ZcValidate` impl into a `[T; N]` impl whose body walks every element. That walk is correct but its per-element work no longer disappears for byte arrays: at `-C opt-level=3` on SBF the optimizer inlines a neighboring restricted-domain check and duplicates a byte load instead of folding the loop away. A program whose only arrays are byte arrays therefore spends compute units it does not need to. Measured against a downstream `pina` checkout, `migrations_program/update` moved 533 to 537 CU in the original report; reproduced in-repo against `pina` at `430a2e95`, the same instruction moved 758 to 761 CU, and 0.3.3 measures 758 with every other input held constant.
+
+Validation now dispatches through a new provided method, `ZcValidate::validate_array`, whose default implementation is the per-element walk. Element types whose every initialized bit pattern is valid override it with a no-op, and `[T; N]` forwards to it. A trivially valid element therefore has no loop in its instantiation at all, while `PodBool`, length-prefix-bearing containers, and every other restricted-domain element keep the walk unchanged — that walk remains the only gate rejecting a non-canonical bool byte, an out-of-range prefix, or non-UTF-8 string bytes. `u8`, `i8`, the integer pods, the float pods, and `solana_address::Address` take the no-op override.
+
+The `ZcElem` safety contract now states the matching obligation: overriding `validate_array` with a no-op asserts that the element's whole domain is valid, exactly as a trivial `validate_ref` does, so an array of a restricted-domain type must keep the default walk. Wire format, sizes, and every rejected-input behavior are unchanged; only the per-element cost of a trivially valid array moves.
+
+`ZcValidate` gains a method with a default body, so downstream implementors keep compiling without changes. Both crates bump together because the runtime crate's exact `=x.y.z` derive pin is what keeps generated code matched to the private contracts it expands against.
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #32](https://github.com/pina-rs/pinapod/pull/32) · _Closed issues:_ [#29](https://github.com/pina-rs/pinapod/issues/29)
+
+### Notes
+
+#### fail on every Clippy warning and add `fix:all`
+
+_Packages:_ _pinapod_, _pinapod-derive_
+
+Clippy was run without `--all-targets`, so lint findings in tests, benchmarks, and compile fixtures never reached either `lint:clippy` or CI's `lint` job; only the library and binary targets were covered. `lint:clippy` now lints every target with `-D warnings`, so the local gate and CI agree and neither can hide a warning in a test file. Every finding the wider sweep surfaced is fixed rather than suppressed — one targeted `#[allow(clippy::clone_on_copy)]` is the only new suppression, on a test whose purpose is to exercise `clone` on a `Copy` type. The fixes are mechanical: deprecated `criterion::black_box` imports become `std::hint::black_box`, boolean `assert!` comparisons become `assert_eq!` / `assert_ne!`, and raw-pointer `as` casts become `.cast()` or `ptr::from_ref`. The manifest lints are resolved by inheriting `keywords` and dropping the `homepage` key that Cargo reports as redundant with `repository`, rather than deleting the metadata.
+
+One of those findings sits in the derive: an `impl Schema` block had been left after the `#[cfg(test)] mod tests` block, which trips `clippy::items_after_test_module` now that the lint reaches lib targets. The impl moved above the tests; it is a pure reordering with no behavior change.
+
+A new `fix:all` devenv task applies the whole fix suite in one command: `fix:clippy` across every target, then `docs:sync`, then `fix:format`. The explicit `docs:sync` is what makes the ordering correct rather than incidental — `fix:format` runs dprint before its own `docs:sync`, so an mdt rewrite performed inside it would land after formatting and never be formatted itself. Syncing ahead of the formatting pass means the final `fix:format` formats the blocks mdt produces, and the tree is left clean for `lint:*`. Running it twice produces no further changes.
+
+`CARGO_BUILD_JOBS` is capped at 4 in the shell environment. `clippy --fix` re-runs the compiler to a fixpoint and the docs and test tasks each rebuild the workspace, so letting every invocation size its job pool to all 12 cores made a local `fix:all` saturate the machine. The cap is deliberately not expressed through `RUSTFLAGS`, which would invalidate the whole build cache and force a full rebuild.
+
+The version bumps that introduced this work had also silently dropped the `zeropod` git pin: the workspace table declared a crates.io version with no `git`/`rev`, so Cargo ignored the member's pin (with an "unused manifest key" warning) and the benchmark comparison baseline had drifted from the pinned revision to crates.io 0.3.6. The git source now lives in the workspace table, which is the only place it can live for a member that consumes it via `workspace = true`. The 14 trybuild UI snapshots are re-blessed for column-number shifts caused by the `syn` 2 to 3 bump; the diffs are location lines only, with no change to any diagnostic message.
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #30](https://github.com/pina-rs/pinapod/pull/30)
+
+#### make the local Kani profile actually run proofs
+
+_Packages:_ _pinapod_
+
+`devenv --profile kani shell` could not run a single harness on macOS. Two separate faults were stacked behind each other.
+
+The profile linked Kani against `nightly-2025-11-21`, but the packaged Kani 0.68.0 is built against `nightly-2026-08-21`. `kani-compiler` aborted on startup with `dyld: Library not loaded: @rpath/librustc_driver-83914c2c3aa68f2a.dylib`, so no harness ever reached verification. The toolchain pin now matches the nightly named by Kani's own `rust-toolchain-version`, and a comment records how to read that value when the nixpkgs pin is next bumped.
+
+With the toolchain corrected, CBMC's `goto-cc` failed next with `execvp gcc failed: No such file or directory`. It preprocesses each harness by invoking a native C compiler under the literal name `gcc`, which a Darwin machine does not have. The profile now ships a `gcc` shim that execs clang; `goto-cc` parses the preprocessed C itself and never links the result, so the substitution is safe. `--native-compiler clang` cannot be threaded through `cargo-kani`, which is why the shim supplies the name instead.
+
+`cargo-kani` now verifies `bool::kani_proofs` (3 harnesses) and `u32_proofs` (10 harnesses) locally, so a red CI shard can be reproduced on a laptop. The shard scripts also reject a missing harness argument rather than silently running the whole proof suite, and the timing script no longer runs a stray `cargo metadata` whose output it discarded.
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #30](https://github.com/pina-rs/pinapod/pull/30)
+
 ## [0.4.0](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.0) (2026-09-16)
 
 Grouped release for `pinapod-workspace`.
