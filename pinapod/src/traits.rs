@@ -23,6 +23,31 @@ use crate::pod::*;
 pub trait ZcValidate: Copy {
 	/// Validate that this value's bytes represent a valid state.
 	fn validate_ref(value: &Self) -> Result<(), PinaPodError>;
+
+	/// Validate every element of a stored array of this type.
+	///
+	/// An array's stored validity is exactly its elements' validity, so this
+	/// defaults to walking the array and calling
+	/// [`validate_ref`](Self::validate_ref) on each item. That walk is
+	/// load-bearing for any element with a restricted domain: it is what
+	/// rejects a non-canonical `PodBool` byte, an out-of-range container prefix,
+	/// or non-UTF-8 string bytes. An element type whose every initialized bit
+	/// pattern is valid overrides this with a no-op and loses no coverage.
+	///
+	/// The override exists because a `[T; N]` validation loop that merely
+	/// happens to be dead after inlining is not reliably removed at `-C
+	/// opt-level=3` on SBF. Stating the trivial case as a separate
+	/// implementation removes the loop from that instantiation outright, which
+	/// keeps byte arrays on the same per-element cost as a hand-written
+	/// `Ok(())`.
+	#[inline(always)]
+	fn validate_array<const N: usize>(value: &[Self; N]) -> Result<(), PinaPodError> {
+		for item in value {
+			Self::validate_ref(item)?;
+		}
+
+		Ok(())
+	}
 }
 
 // --- ZcValidate: trivially valid types (all bit patterns valid) ---
@@ -32,11 +57,21 @@ impl ZcValidate for u8 {
 	fn validate_ref(_: &Self) -> Result<(), PinaPodError> {
 		Ok(())
 	}
+
+	#[inline(always)]
+	fn validate_array<const N: usize>(_: &[Self; N]) -> Result<(), PinaPodError> {
+		Ok(())
+	}
 }
 
 impl ZcValidate for i8 {
 	#[inline(always)]
 	fn validate_ref(_: &Self) -> Result<(), PinaPodError> {
+		Ok(())
+	}
+
+	#[inline(always)]
+	fn validate_array<const N: usize>(_: &[Self; N]) -> Result<(), PinaPodError> {
 		Ok(())
 	}
 }
@@ -47,6 +82,11 @@ macro_rules! impl_zc_validate_trivial {
             impl ZcValidate for $ty {
                 #[inline(always)]
                 fn validate_ref(_: &Self) -> Result<(), PinaPodError> { Ok(()) }
+
+                #[inline(always)]
+                fn validate_array<const N: usize>(_: &[Self; N]) -> Result<(), PinaPodError> {
+                    Ok(())
+                }
             }
         )*
     };
@@ -56,15 +96,13 @@ impl_zc_validate_trivial!(
 	PodU16, PodU32, PodU64, PodU128, PodI16, PodI32, PodI64, PodI128
 );
 
-// Arrays validate per element; for pods whose every bit pattern is valid the
-// loop optimizes away entirely after monomorphization.
+// Arrays validate per element. The element type decides how: a trivially valid
+// element answers with a no-op that contains no loop, while a restricted-domain
+// element walks every item. See `ZcValidate::validate_array`.
 impl<T: ZcValidate, const N: usize> ZcValidate for [T; N] {
 	#[inline(always)]
 	fn validate_ref(value: &Self) -> Result<(), PinaPodError> {
-		for item in value {
-			T::validate_ref(item)?;
-		}
-		Ok(())
+		<T as ZcValidate>::validate_array(value)
 	}
 }
 
@@ -170,6 +208,12 @@ impl<T: ZcElem, const PFX: usize> ZcValidate for PodOption<T, PFX> {
 ///    discriminants, length-prefix-bearing containers), `validate_ref` is
 ///    the sole gate and MUST NOT short-circuit.
 ///
+///    A type that overrides [`ZcValidate::validate_array`] takes on the same
+///    obligation for its array form. Overriding it with a no-op asserts that
+///    the element's whole domain is valid, exactly as a trivial
+///    `validate_ref` does, and an array of a restricted-domain type MUST
+///    keep the default per-element walk.
+///
 /// 5. **The all-zero representation is safe to inspect while initializing.**
 ///    It does not need to be semantically valid, but safe accessors called on
 ///    it must not cause undefined behavior. [`PinaPodFixed::initialize`] uses
@@ -233,6 +277,11 @@ mod solana_address_impls {
 	impl ZcValidate for solana_address::Address {
 		#[inline(always)]
 		fn validate_ref(_: &Self) -> Result<(), PinaPodError> {
+			Ok(())
+		}
+
+		#[inline(always)]
+		fn validate_array<const N: usize>(_: &[Self; N]) -> Result<(), PinaPodError> {
 			Ok(())
 		}
 	}

@@ -178,3 +178,55 @@ fn compact_patch_validates_array_elements() {
 	let oversized = TablePatch::new().weights([u64::MAX, 1]).label("123456789");
 	assert!(Table::initialize(buf, &oversized).is_err());
 }
+
+/// A restricted-domain element: only `0` and `1` are valid.
+///
+/// This stands in for `PodBool`, whose array walk must never be skipped.
+#[derive(Copy, Clone)]
+struct RestrictedByte(u8);
+
+impl pinapod::ZcValidate for RestrictedByte {
+	fn validate_ref(value: &Self) -> Result<(), pinapod::PinaPodError> {
+		if value.0 > 1 {
+			return Err(pinapod::PinaPodError::InvalidBool);
+		}
+
+		Ok(())
+	}
+}
+
+#[test]
+fn byte_arrays_accept_every_bit_pattern() {
+	// The whole point of the `[u8; N]` fast path: byte arrays carry no
+	// restricted domain, so no byte value can make them invalid.
+	let bytes = [0xFF_u8; 4];
+	pinapod::ZcValidate::validate_ref(&bytes).unwrap();
+
+	let nested = [[0xFF_u8; 4]; 2];
+	pinapod::ZcValidate::validate_ref(&nested).unwrap();
+}
+
+#[test]
+fn array_validation_still_walks_restricted_elements() {
+	// A trivially valid element must not make a restricted element's array
+	// skip its per-element gate.
+	let valid = [RestrictedByte(0), RestrictedByte(1)];
+	pinapod::ZcValidate::validate_ref(&valid).unwrap();
+
+	let invalid = [RestrictedByte(0), RestrictedByte(2)];
+	assert!(
+		pinapod::ZcValidate::validate_ref(&invalid).is_err(),
+		"a non-canonical element must still be rejected"
+	);
+}
+
+#[test]
+fn array_validation_walks_restricted_elements_inside_schemas() {
+	// `Weights::flags` is `[bool; 2]`, stored as `[PodBool; 2]`. The invalid
+	// byte sits in the second element, so only a real per-element walk finds it.
+	let mut buf = [0u8; Weights::SIZE];
+	buf[24] = 1;
+	buf[25] = 2;
+
+	assert!(Weights::read_exact(&buf).is_err());
+}

@@ -154,6 +154,11 @@ macro_rules! define_pod_float {
             fn validate_ref(_: &Self) -> Result<(), PinaPodError> {
                 Ok(())
             }
+
+            #[inline(always)]
+            fn validate_array<const N: usize>(_: &[Self; N]) -> Result<(), PinaPodError> {
+                Ok(())
+            }
         }
 
         // SAFETY: `$name` is `#[repr(transparent)]` over `[u8; $size]`, so it
