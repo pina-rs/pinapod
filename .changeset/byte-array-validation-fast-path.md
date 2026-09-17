@@ -1,6 +1,6 @@
 ---
-pinapod: patch
-pinapod-derive: patch
+pinapod: fix
+pinapod-derive: fix
 ---
 
 # restore the byte-array fast path for `[u8; N]` validation
