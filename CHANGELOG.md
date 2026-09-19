@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.2](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.2) (2026-09-19)
+
+Grouped release for `pinapod-workspace`.
+
+### Features
+
+#### validate the buffer inside every generated compact commit
+
+_Packages:_ _pinapod_, _pinapod-derive_
+
+A generated compact writer held a construction-time proof that its buffer was a valid representation, but the proof was call-site discipline rather than something the commit itself re-established: `new_unchecked` exists for the patch paths, and a future construction site could have skipped validation and committed over stale or tampered bytes. Upstream ZeroPod's 0.3.6 safety release (PR #34) fixed the same class by revalidating in `commit`, and this ports that hardening.
+
+Every generated `commit`, tail-bearing or tail-free, now runs the schema's `PinaPodCompact::validate` over the buffer as its first statement, before any offset arithmetic or pointer work, so a stale or tampered writer fails closed instead of relocating tails over bytes that were never validated. The cost is one additional validation walk per commit.
+
+The preflight-consistency `debug_assert_eq!` in `Patch::update` and `Patch::try_initialize` is now a release-mode check as well: if the preflighted length and the committed length ever disagree — which can only indicate a defect in the generated code — the patch returns `InvalidLength` instead of trusting and persisting a length the bytes do not support. The `PinaPodPatch::update` documentation names that error path. The full upstream review, including every already-covered item, is recorded in the book's new upstream review log.
+
+One ordering consequence surfaced in review and is covered by a regression: `try_initialize` now writes the patch's inline values before calling `commit`, because the destination starts zeroed and an inline field such as a one-based enum can have an invalid all-zero representation — validating before those writes would reject a legitimate initialize. `update` keeps the opposite order (commit, then inline writes) so a rejected update still leaves the account byte-identical.
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #34](https://github.com/pina-rs/pinapod/pull/34) · _Related issues:_ [#34](https://github.com/pina-rs/pinapod/issues/34)
+
+#### keep optional features no_std and prove it in CI
+
+_Packages:_ _pinapod_, _pinapod-derive_
+
+The runtime crate is documented as `no_std`, but the `fixed` and `solana-address` optional dependencies re-enabled their crates' default features, and `fixed`'s defaults pull in `std`. A dependent enabling either feature therefore silently left the no_std guarantee. Both member dependencies now keep `default-features = false`, matching the workspace posture already used for `wincode` and `solana-program-error`.
+
+The `build:no-default` job now also checks every optional feature combination (`fixed`, `floats`, `solana-address`, `solana-program-error`, `wincode`) against the bare-metal `thumbv7em-none-eabihf` target, where `std` does not exist. A host-side check could never prove the promise, and a future dependency bump cannot quietly break it again. Alongside this, the fuzz suite grew failure-path coverage (rejected-commit atomicity, retry after rejection, updates over corrupted bytes, compact enum patches, four- and eight-byte length prefixes), CI-local coverage artifacts are untracked, `libfuzzer-sys` is pinned, and the devenv flake input that supplies CI tooling is pinned by branch with its trust story documented in SECURITY.md.
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #34](https://github.com/pina-rs/pinapod/pull/34) · _Related issues:_ [#34](https://github.com/pina-rs/pinapod/issues/34)
+
+### Fixes
+
+- _Packages:_ _pinapod_, _pinapod-derive_ **reject corrupt length prefixes at the Wincode write boundary.** The Wincode `SchemaWrite` implementations for `PodString` and `PodVec` emitted the stored length prefix verbatim. A container holding a corrupt prefix — one that decodes above its capacity, or wider than `usize` on a 32-bit target — therefore serialized into a wire value that fails on re-read: silent corruption at a format boundary rather than an error at write time. The option writer already rejected invalid tags; the string and vector writers now apply the matching check and fail with a `WriteError` naming the container, so a value that cannot round-trip is rejected where it is written instead of where it is read back. _Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #34](https://github.com/pina-rs/pinapod/pull/34) · _Related issues:_ [#34](https://github.com/pina-rs/pinapod/issues/34)
+
 ## [0.4.1](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.1) (2026-09-17)
 
 Grouped release for `pinapod-workspace`.

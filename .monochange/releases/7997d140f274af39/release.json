@@ -1,0 +1,483 @@
+{
+  "schema_version": "0.6",
+  "kind": "monochange.releaseRecord",
+  "created_at": "2026-09-19T03:08:27Z",
+  "command": "release",
+  "version": "0.4.2",
+  "versions": {
+    "pinapod-workspace": "0.4.2"
+  },
+  "release_targets": [
+    {
+      "id": "pinapod-workspace",
+      "kind": "group",
+      "version": "0.4.2",
+      "version_format": "pinapod/v{{ version }}",
+      "tag": true,
+      "release": true,
+      "tag_name": "pinapod/v0.4.2",
+      "members": [
+        "pinapod",
+        "pinapod-derive"
+      ]
+    }
+  ],
+  "released_packages": [
+    "pinapod",
+    "pinapod-derive"
+  ],
+  "changed_files": [
+    "CHANGELOG.md",
+    "Cargo.lock",
+    "Cargo.toml",
+    "pinapod/Cargo.toml",
+    "pinapod/tests/renamed_dependency/Cargo.lock",
+    "pinapod-derive/Cargo.toml"
+  ],
+  "package_publications": [
+    {
+      "package": "pinapod",
+      "ecosystem": "cargo",
+      "registry": "crates_io",
+      "version": "0.4.2",
+      "mode": "builtin",
+      "trusted_publishing": {
+        "enabled": true,
+        "mode": "required",
+        "repository": "pina-rs/pinapod",
+        "workflow": "publish.yml",
+        "environment": "publisher"
+      }
+    },
+    {
+      "package": "pinapod-derive",
+      "ecosystem": "cargo",
+      "registry": "crates_io",
+      "version": "0.4.2",
+      "mode": "builtin",
+      "trusted_publishing": {
+        "enabled": true,
+        "mode": "required",
+        "repository": "pina-rs/pinapod",
+        "workflow": "publish.yml",
+        "environment": "publisher"
+      }
+    }
+  ],
+  "updated_changelogs": [
+    "CHANGELOG.md"
+  ],
+  "deleted_changesets": [
+    ".changeset/compact-commit-revalidation.md",
+    ".changeset/no-std-optional-feature-hygiene.md",
+    ".changeset/wincode-writer-prefix-validation.md"
+  ],
+  "changesets": [
+    {
+      "path": ".changeset/compact-commit-revalidation.md",
+      "summary": "validate the buffer inside every generated compact commit",
+      "details": "A generated compact writer held a construction-time proof that its buffer was a valid representation, but the proof was call-site discipline rather than something the commit itself re-established: `new_unchecked` exists for the patch paths, and a future construction site could have skipped validation and committed over stale or tampered bytes. Upstream ZeroPod's 0.3.6 safety release (PR #34) fixed the same class by revalidating in `commit`, and this ports that hardening.\n\nEvery generated `commit`, tail-bearing or tail-free, now runs the schema's `PinaPodCompact::validate` over the buffer as its first statement, before any offset arithmetic or pointer work, so a stale or tampered writer fails closed instead of relocating tails over bytes that were never validated. The cost is one additional validation walk per commit.\n\nThe preflight-consistency `debug_assert_eq!` in `Patch::update` and `Patch::try_initialize` is now a release-mode check as well: if the preflighted length and the committed length ever disagree — which can only indicate a defect in the generated code — the patch returns `InvalidLength` instead of trusting and persisting a length the bytes do not support. The `PinaPodPatch::update` documentation names that error path. The full upstream review, including every already-covered item, is recorded in the book's new upstream review log.\n\nOne ordering consequence surfaced in review and is covered by a regression: `try_initialize` now writes the patch's inline values before calling `commit`, because the destination starts zeroed and an inline field such as a one-based enum can have an invalid all-zero representation — validating before those writes would reject a legitimate initialize. `update` keeps the opposite order (commit, then inline writes) so a rejected update still leaves the account byte-identical.",
+      "targets": [
+        {
+          "id": "pinapod",
+          "kind": "package",
+          "bump": "minor",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "feat"
+        },
+        {
+          "id": "pinapod-derive",
+          "kind": "package",
+          "bump": "minor",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "feat"
+        }
+      ],
+      "context": {
+        "provider": "github",
+        "host": "github.com",
+        "capabilities": {
+          "commit_web_urls": true,
+          "actor_profiles": true,
+          "review_request_lookup": true,
+          "related_issues": true,
+          "issue_comments": true
+        },
+        "introduced": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "de8b450cfd5c31194011510daa0736eb53c4df13",
+            "short_sha": "de8b450",
+            "url": "https://github.com/pina-rs/pinapod/commit/de8b450cfd5c31194011510daa0736eb53c4df13",
+            "authored_at": "2026-09-19T04:03:59+01:00",
+            "committed_at": "2026-09-19T04:03:59+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#34",
+            "title": "fix(pod): harden commits, writers, and no_std guarantees after the ZeroPod 0.3.6 review",
+            "url": "https://github.com/pina-rs/pinapod/pull/34",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "last_updated": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "de8b450cfd5c31194011510daa0736eb53c4df13",
+            "short_sha": "de8b450",
+            "url": "https://github.com/pina-rs/pinapod/commit/de8b450cfd5c31194011510daa0736eb53c4df13",
+            "authored_at": "2026-09-19T04:03:59+01:00",
+            "committed_at": "2026-09-19T04:03:59+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#34",
+            "title": "fix(pod): harden commits, writers, and no_std guarantees after the ZeroPod 0.3.6 review",
+            "url": "https://github.com/pina-rs/pinapod/pull/34",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "related_issues": [
+          {
+            "provider": "github",
+            "host": "github.com",
+            "id": "#34",
+            "title": null,
+            "url": "https://github.com/pina-rs/pinapod/issues/34",
+            "relationship": "referenced_by_review_request"
+          }
+        ]
+      }
+    },
+    {
+      "path": ".changeset/no-std-optional-feature-hygiene.md",
+      "summary": "keep optional features no_std and prove it in CI",
+      "details": "The runtime crate is documented as `no_std`, but the `fixed` and `solana-address` optional dependencies re-enabled their crates' default features, and `fixed`'s defaults pull in `std`. A dependent enabling either feature therefore silently left the no_std guarantee. Both member dependencies now keep `default-features = false`, matching the workspace posture already used for `wincode` and `solana-program-error`.\n\nThe `build:no-default` job now also checks every optional feature combination (`fixed`, `floats`, `solana-address`, `solana-program-error`, `wincode`) against the bare-metal `thumbv7em-none-eabihf` target, where `std` does not exist. A host-side check could never prove the promise, and a future dependency bump cannot quietly break it again. Alongside this, the fuzz suite grew failure-path coverage (rejected-commit atomicity, retry after rejection, updates over corrupted bytes, compact enum patches, four- and eight-byte length prefixes), CI-local coverage artifacts are untracked, `libfuzzer-sys` is pinned, and the devenv flake input that supplies CI tooling is pinned by branch with its trust story documented in SECURITY.md.",
+      "targets": [
+        {
+          "id": "pinapod",
+          "kind": "package",
+          "bump": "minor",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "feat"
+        },
+        {
+          "id": "pinapod-derive",
+          "kind": "package",
+          "bump": "minor",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "feat"
+        }
+      ],
+      "context": {
+        "provider": "github",
+        "host": "github.com",
+        "capabilities": {
+          "commit_web_urls": true,
+          "actor_profiles": true,
+          "review_request_lookup": true,
+          "related_issues": true,
+          "issue_comments": true
+        },
+        "introduced": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "de8b450cfd5c31194011510daa0736eb53c4df13",
+            "short_sha": "de8b450",
+            "url": "https://github.com/pina-rs/pinapod/commit/de8b450cfd5c31194011510daa0736eb53c4df13",
+            "authored_at": "2026-09-19T04:03:59+01:00",
+            "committed_at": "2026-09-19T04:03:59+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#34",
+            "title": "fix(pod): harden commits, writers, and no_std guarantees after the ZeroPod 0.3.6 review",
+            "url": "https://github.com/pina-rs/pinapod/pull/34",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "last_updated": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "de8b450cfd5c31194011510daa0736eb53c4df13",
+            "short_sha": "de8b450",
+            "url": "https://github.com/pina-rs/pinapod/commit/de8b450cfd5c31194011510daa0736eb53c4df13",
+            "authored_at": "2026-09-19T04:03:59+01:00",
+            "committed_at": "2026-09-19T04:03:59+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#34",
+            "title": "fix(pod): harden commits, writers, and no_std guarantees after the ZeroPod 0.3.6 review",
+            "url": "https://github.com/pina-rs/pinapod/pull/34",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "related_issues": [
+          {
+            "provider": "github",
+            "host": "github.com",
+            "id": "#34",
+            "title": null,
+            "url": "https://github.com/pina-rs/pinapod/issues/34",
+            "relationship": "referenced_by_review_request"
+          }
+        ]
+      }
+    },
+    {
+      "path": ".changeset/wincode-writer-prefix-validation.md",
+      "summary": "reject corrupt length prefixes at the Wincode write boundary",
+      "details": "The Wincode `SchemaWrite` implementations for `PodString` and `PodVec` emitted the stored length prefix verbatim. A container holding a corrupt prefix — one that decodes above its capacity, or wider than `usize` on a 32-bit target — therefore serialized into a wire value that fails on re-read: silent corruption at a format boundary rather than an error at write time. The option writer already rejected invalid tags; the string and vector writers now apply the matching check and fail with a `WriteError` naming the container, so a value that cannot round-trip is rejected where it is written instead of where it is read back.",
+      "targets": [
+        {
+          "id": "pinapod",
+          "kind": "package",
+          "bump": "patch",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "fix"
+        },
+        {
+          "id": "pinapod-derive",
+          "kind": "package",
+          "bump": "patch",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "fix"
+        }
+      ],
+      "context": {
+        "provider": "github",
+        "host": "github.com",
+        "capabilities": {
+          "commit_web_urls": true,
+          "actor_profiles": true,
+          "review_request_lookup": true,
+          "related_issues": true,
+          "issue_comments": true
+        },
+        "introduced": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "de8b450cfd5c31194011510daa0736eb53c4df13",
+            "short_sha": "de8b450",
+            "url": "https://github.com/pina-rs/pinapod/commit/de8b450cfd5c31194011510daa0736eb53c4df13",
+            "authored_at": "2026-09-19T04:03:59+01:00",
+            "committed_at": "2026-09-19T04:03:59+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#34",
+            "title": "fix(pod): harden commits, writers, and no_std guarantees after the ZeroPod 0.3.6 review",
+            "url": "https://github.com/pina-rs/pinapod/pull/34",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "last_updated": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "de8b450cfd5c31194011510daa0736eb53c4df13",
+            "short_sha": "de8b450",
+            "url": "https://github.com/pina-rs/pinapod/commit/de8b450cfd5c31194011510daa0736eb53c4df13",
+            "authored_at": "2026-09-19T04:03:59+01:00",
+            "committed_at": "2026-09-19T04:03:59+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#34",
+            "title": "fix(pod): harden commits, writers, and no_std guarantees after the ZeroPod 0.3.6 review",
+            "url": "https://github.com/pina-rs/pinapod/pull/34",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "related_issues": [
+          {
+            "provider": "github",
+            "host": "github.com",
+            "id": "#34",
+            "title": null,
+            "url": "https://github.com/pina-rs/pinapod/issues/34",
+            "relationship": "referenced_by_review_request"
+          }
+        ]
+      }
+    }
+  ],
+  "changelogs": [
+    {
+      "owner_id": "pinapod-workspace",
+      "owner_kind": "group",
+      "output": "default",
+      "stream": "default",
+      "path": "CHANGELOG.md",
+      "format": "keep_a_changelog",
+      "notes": {
+        "title": "[0.4.2](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.2) (2026-09-19)",
+        "summary": [
+          "Grouped release for `pinapod-workspace`."
+        ],
+        "sections": [
+          {
+            "title": "Features",
+            "collapsed": false,
+            "entries": [
+              "#### validate the buffer inside every generated compact commit\n\n_Packages:_ _pinapod_, _pinapod-derive_\n\nA generated compact writer held a construction-time proof that its buffer was a valid representation, but the proof was call-site discipline rather than something the commit itself re-established: `new_unchecked` exists for the patch paths, and a future construction site could have skipped validation and committed over stale or tampered bytes. Upstream ZeroPod's 0.3.6 safety release (PR #34) fixed the same class by revalidating in `commit`, and this ports that hardening.\n\nEvery generated `commit`, tail-bearing or tail-free, now runs the schema's `PinaPodCompact::validate` over the buffer as its first statement, before any offset arithmetic or pointer work, so a stale or tampered writer fails closed instead of relocating tails over bytes that were never validated. The cost is one additional validation walk per commit.\n\nThe preflight-consistency `debug_assert_eq!` in `Patch::update` and `Patch::try_initialize` is now a release-mode check as well: if the preflighted length and the committed length ever disagree — which can only indicate a defect in the generated code — the patch returns `InvalidLength` instead of trusting and persisting a length the bytes do not support. The `PinaPodPatch::update` documentation names that error path. The full upstream review, including every already-covered item, is recorded in the book's new upstream review log.\n\nOne ordering consequence surfaced in review and is covered by a regression: `try_initialize` now writes the patch's inline values before calling `commit`, because the destination starts zeroed and an inline field such as a one-based enum can have an invalid all-zero representation — validating before those writes would reject a legitimate initialize. `update` keeps the opposite order (commit, then inline writes) so a rejected update still leaves the account byte-identical.\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #34](https://github.com/pina-rs/pinapod/pull/34) · _Related issues:_ [#34](https://github.com/pina-rs/pinapod/issues/34)",
+              "#### keep optional features no_std and prove it in CI\n\n_Packages:_ _pinapod_, _pinapod-derive_\n\nThe runtime crate is documented as `no_std`, but the `fixed` and `solana-address` optional dependencies re-enabled their crates' default features, and `fixed`'s defaults pull in `std`. A dependent enabling either feature therefore silently left the no_std guarantee. Both member dependencies now keep `default-features = false`, matching the workspace posture already used for `wincode` and `solana-program-error`.\n\nThe `build:no-default` job now also checks every optional feature combination (`fixed`, `floats`, `solana-address`, `solana-program-error`, `wincode`) against the bare-metal `thumbv7em-none-eabihf` target, where `std` does not exist. A host-side check could never prove the promise, and a future dependency bump cannot quietly break it again. Alongside this, the fuzz suite grew failure-path coverage (rejected-commit atomicity, retry after rejection, updates over corrupted bytes, compact enum patches, four- and eight-byte length prefixes), CI-local coverage artifacts are untracked, `libfuzzer-sys` is pinned, and the devenv flake input that supplies CI tooling is pinned by branch with its trust story documented in SECURITY.md.\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #34](https://github.com/pina-rs/pinapod/pull/34) · _Related issues:_ [#34](https://github.com/pina-rs/pinapod/issues/34)"
+            ]
+          },
+          {
+            "title": "Fixes",
+            "collapsed": false,
+            "entries": [
+              "- _Packages:_ _pinapod_, _pinapod-derive_ **reject corrupt length prefixes at the Wincode write boundary.** The Wincode `SchemaWrite` implementations for `PodString` and `PodVec` emitted the stored length prefix verbatim. A container holding a corrupt prefix — one that decodes above its capacity, or wider than `usize` on a 32-bit target — therefore serialized into a wire value that fails on re-read: silent corruption at a format boundary rather than an error at write time. The option writer already rejected invalid tags; the string and vector writers now apply the matching check and fail with a `WriteError` naming the container, so a value that cannot round-trip is rejected where it is written instead of where it is read back.\n  _Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #34](https://github.com/pina-rs/pinapod/pull/34) · _Related issues:_ [#34](https://github.com/pina-rs/pinapod/issues/34)"
+            ]
+          }
+        ]
+      },
+      "rendered": "## [0.4.2](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.2) (2026-09-19)\n\nGrouped release for `pinapod-workspace`.\n\n### Features\n\n#### validate the buffer inside every generated compact commit\n\n_Packages:_ _pinapod_, _pinapod-derive_\n\nA generated compact writer held a construction-time proof that its buffer was a valid representation, but the proof was call-site discipline rather than something the commit itself re-established: `new_unchecked` exists for the patch paths, and a future construction site could have skipped validation and committed over stale or tampered bytes. Upstream ZeroPod's 0.3.6 safety release (PR #34) fixed the same class by revalidating in `commit`, and this ports that hardening.\n\nEvery generated `commit`, tail-bearing or tail-free, now runs the schema's `PinaPodCompact::validate` over the buffer as its first statement, before any offset arithmetic or pointer work, so a stale or tampered writer fails closed instead of relocating tails over bytes that were never validated. The cost is one additional validation walk per commit.\n\nThe preflight-consistency `debug_assert_eq!` in `Patch::update` and `Patch::try_initialize` is now a release-mode check as well: if the preflighted length and the committed length ever disagree — which can only indicate a defect in the generated code — the patch returns `InvalidLength` instead of trusting and persisting a length the bytes do not support. The `PinaPodPatch::update` documentation names that error path. The full upstream review, including every already-covered item, is recorded in the book's new upstream review log.\n\nOne ordering consequence surfaced in review and is covered by a regression: `try_initialize` now writes the patch's inline values before calling `commit`, because the destination starts zeroed and an inline field such as a one-based enum can have an invalid all-zero representation — validating before those writes would reject a legitimate initialize. `update` keeps the opposite order (commit, then inline writes) so a rejected update still leaves the account byte-identical.\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #34](https://github.com/pina-rs/pinapod/pull/34) · _Related issues:_ [#34](https://github.com/pina-rs/pinapod/issues/34)\n\n#### keep optional features no_std and prove it in CI\n\n_Packages:_ _pinapod_, _pinapod-derive_\n\nThe runtime crate is documented as `no_std`, but the `fixed` and `solana-address` optional dependencies re-enabled their crates' default features, and `fixed`'s defaults pull in `std`. A dependent enabling either feature therefore silently left the no_std guarantee. Both member dependencies now keep `default-features = false`, matching the workspace posture already used for `wincode` and `solana-program-error`.\n\nThe `build:no-default` job now also checks every optional feature combination (`fixed`, `floats`, `solana-address`, `solana-program-error`, `wincode`) against the bare-metal `thumbv7em-none-eabihf` target, where `std` does not exist. A host-side check could never prove the promise, and a future dependency bump cannot quietly break it again. Alongside this, the fuzz suite grew failure-path coverage (rejected-commit atomicity, retry after rejection, updates over corrupted bytes, compact enum patches, four- and eight-byte length prefixes), CI-local coverage artifacts are untracked, `libfuzzer-sys` is pinned, and the devenv flake input that supplies CI tooling is pinned by branch with its trust story documented in SECURITY.md.\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #34](https://github.com/pina-rs/pinapod/pull/34) · _Related issues:_ [#34](https://github.com/pina-rs/pinapod/issues/34)\n\n### Fixes\n\n- _Packages:_ _pinapod_, _pinapod-derive_ **reject corrupt length prefixes at the Wincode write boundary.** The Wincode `SchemaWrite` implementations for `PodString` and `PodVec` emitted the stored length prefix verbatim. A container holding a corrupt prefix — one that decodes above its capacity, or wider than `usize` on a 32-bit target — therefore serialized into a wire value that fails on re-read: silent corruption at a format boundary rather than an error at write time. The option writer already rejected invalid tags; the string and vector writers now apply the matching check and fail with a `WriteError` naming the container, so a value that cannot round-trip is rejected where it is written instead of where it is read back.\n  _Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #34](https://github.com/pina-rs/pinapod/pull/34) · _Related issues:_ [#34](https://github.com/pina-rs/pinapod/issues/34)"
+    }
+  ],
+  "provider": {
+    "kind": "github",
+    "owner": "pina-rs",
+    "repo": "pinapod",
+    "host": null
+  }
+}
