@@ -120,6 +120,15 @@ unsafe impl<const N: usize, const PFX: usize, C: ConfigCore> wincode::SchemaWrit
 		mut __writer: impl wincode::io::Writer,
 		src: &Self,
 	) -> wincode::error::WriteResult<()> {
+		// The prefix is emitted verbatim, so a corrupt stored prefix (one that
+		// decodes above the capacity, or wider than `usize`) would serialize
+		// into a wire value that fails on re-read. Reject it at the boundary,
+		// the same way the option writer rejects an invalid tag.
+		if src.decode_len() > src.capacity() {
+			return Err(wincode::error::WriteError::Custom(
+				"PinaPod string length prefix exceeds its capacity",
+			));
+		}
 		write_initialized_prefix(__writer.by_ref(), src, PFX)?;
 		__writer.write(src.as_bytes())?;
 		write_zeroed_padding(__writer, N - src.len())
@@ -175,6 +184,14 @@ where
 		src: &Self,
 	) -> wincode::error::WriteResult<()> {
 		let element_size = require_fixed_wire_size::<T, C>()?;
+		// Same boundary check as the string writer: the prefix is emitted
+		// verbatim, so a stored count above the capacity must fail here rather
+		// than round-trip into bytes the reader rejects.
+		if src.decode_len() > src.capacity() {
+			return Err(wincode::error::WriteError::Custom(
+				"PinaPod vector length prefix exceeds its capacity",
+			));
+		}
 		write_initialized_prefix(__writer.by_ref(), src, PFX)?;
 		for value in src.as_slice() {
 			<T as wincode::SchemaWrite<C>>::write(__writer.by_ref(), value)?;

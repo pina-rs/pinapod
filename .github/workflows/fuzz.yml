@@ -42,6 +42,7 @@ jobs:
           - compact_validate
           - compact_patch
           - compact_enum_validate
+          - compact_enum_patch
           - wincode_read
           - pod_containers
     env:

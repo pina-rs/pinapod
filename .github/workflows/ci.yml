@@ -128,6 +128,8 @@ jobs:
         uses: $/.github/actions/devenv
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: install bare-metal Rust target
+        run: rustup target add thumbv7em-none-eabihf
       - name: check without default features
         run: build:no-default
         shell: devenv shell -c -- bash -e {0}

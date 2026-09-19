@@ -6,3 +6,7 @@
 /.devenv
 /.video_agent
 /.mdt
+
+# llvm-cov writes profraw artifacts next to the binaries it runs; they are
+# build output, never sources, and have been committed by accident before.
+*.profraw

@@ -529,7 +529,10 @@ pub trait PinaPodPatch<T: PinaPodCompact> {
 	///
 	/// Returns [`PinaPodError::BufferTooSmall`] when the resized value does not fit
 	/// `data`, and another [`PinaPodError`] variant when `data` is not a valid existing
-	/// representation or a supplied value cannot be encoded.
+	/// representation or a supplied value cannot be encoded. A derived patch also
+	/// returns [`PinaPodError::InvalidLength`] if its preflighted length and its
+	/// committed length ever disagree, which can only indicate a defect in the
+	/// generated code rather than an input condition.
 	fn update(&self, data: &mut [u8]) -> Result<usize, PinaPodError>;
 	/// Writes the patch into a destination without reading a previous representation.
 	///

@@ -4,14 +4,15 @@ Coverage-guided fuzz targets for every path that accepts untrusted account bytes
 
 ## Targets
 
-| Target                  | What it covers                                                                    |
-| ----------------------- | --------------------------------------------------------------------------------- |
-| `fixed_validate`        | Fixed reads, every fixed field kind, and the initialize-then-validate invariant   |
-| `compact_validate`      | Compact storage, header, and tail validation plus the cached-offset accessors     |
-| `compact_patch`         | Compact `initialize`/`update` commits, `updated_len` preflight, and round-trips   |
-| `compact_enum_validate` | Compact enums across repr widths and payload kinds                                |
-| `wincode_read`          | Wincode deserialization of pod storage types and canonical serialization          |
-| `pod_containers`        | `PodString`, `PodVec`, and `PodOption` mutator sequences with capacity invariants |
+| Target                  | What it covers                                                                                                                                                  |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fixed_validate`        | Fixed reads, every fixed field kind, and the initialize-then-validate invariant                                                                                 |
+| `compact_validate`      | Compact storage, header, and tail validation plus the tail accessors (including four- and eight-byte prefixes)                                                  |
+| `compact_patch`         | Compact `initialize`/`update` commits, `updated_len` preflight, round-trips, rejected-commit atomicity, retry after rejection, and updates over corrupted bytes |
+| `compact_enum_validate` | Compact enums across repr widths and payload kinds                                                                                                              |
+| `compact_enum_patch`    | Compact enum `initialize`/`update` commits, over-capacity rejection, and failure atomicity                                                                      |
+| `wincode_read`          | Wincode deserialization of pod storage types and canonical serialization                                                                                        |
+| `pod_containers`        | `PodString`, `PodVec`, and `PodOption` mutator sequences with capacity invariants                                                                               |
 
 ## Running locally
 

@@ -287,6 +287,38 @@ fn option_writer_rejects_an_invalid_tag() {
 	));
 }
 
+#[test]
+fn string_writer_rejects_a_length_prefix_above_its_capacity() {
+	// A nine-byte length prefix on a capacity-eight string: the writer emits
+	// the stored prefix verbatim, so it must reject the value rather than
+	// produce bytes that fail on re-read.
+	let bytes = [9u8, b'a', b'b', b'c', b'd', b'e', b'f', b'g', b'h'];
+	// SAFETY: PodString permits every initialized byte pattern; the length
+	// prefix is validated by readers, and now by the writer boundary too.
+	let value = unsafe { core::ptr::read_unaligned(bytes.as_ptr().cast::<PodString<8>>()) };
+	let mut output = [0u8; 9];
+	let error = wincode::serialize_into(output.as_mut_slice(), &value).unwrap_err();
+	assert!(matches!(
+		error,
+		wincode::WriteError::Custom("PinaPod string length prefix exceeds its capacity")
+	));
+}
+
+#[test]
+fn vec_writer_rejects_a_length_prefix_above_its_capacity() {
+	// Three stored elements on a capacity-two vector.
+	let bytes = [3u8, 0, 1, 0, 2, 0];
+	// SAFETY: PodVec permits every initialized byte pattern; the count prefix
+	// is validated by readers, and now by the writer boundary too.
+	let value = unsafe { core::ptr::read_unaligned(bytes.as_ptr().cast::<PodVec<PodU16, 2>>()) };
+	let mut output = [0u8; 6];
+	let error = wincode::serialize_into(output.as_mut_slice(), &value).unwrap_err();
+	assert!(matches!(
+		error,
+		wincode::WriteError::Custom("PinaPod vector length prefix exceeds its capacity")
+	));
+}
+
 #[cfg(feature = "floats")]
 #[test]
 fn float_pods_serialize_their_little_endian_bits() {

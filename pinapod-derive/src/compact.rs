@@ -852,7 +852,7 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
 	}
 
 	// commit()
-	let commit_body = generate_commit_body(header_ty, &tail_fields);
+	let commit_body = generate_commit_body(schema, header_ty, &tail_fields);
 	let current_encoded_len = compute_offset_tokens(header_ty, &tail_fields, tail_fields.len());
 
 	quote! {
@@ -1326,8 +1326,9 @@ fn generate_patch(
 				<#struct_name #ty_generics as pinapod::PinaPodCompact>::validate(data)?;
 				// One uncached walk in field order. Each tail's old encoded
 				// size is a local, so this preflight performs no offset
-				// stores and builds no view; the cached-offset reader stays
-				// on the read paths where it pays for itself.
+				// stores and builds no view; the read accessors likewise
+				// recompute their offsets from the validated header on every
+				// call, so there is no cached offset state to invalidate.
 				//
 				// SAFETY: `validate` proved this slice holds a readable
 				// header and consistent tails, and the header type is an
@@ -1360,7 +1361,15 @@ fn generate_patch(
 				#( #stage_steps )*
 				let encoded_len = writer.commit()?;
 				#( #inline_writes )*
-				debug_assert_eq!(encoded_len, expected_len);
+				// The preflight and the commit compute the new length from the
+				// same edits over the same checked arithmetic, so a mismatch is
+				// an internal generator defect, not an input condition. Failing
+				// loudly is still the right release-mode answer: the caller
+				// would otherwise trust and persist a length the bytes do not
+				// support, and the next validated read would reject the account.
+				if encoded_len != expected_len {
+					return Err(pinapod::PinaPodError::InvalidLength);
+				}
 				Ok(encoded_len)
 			}
 
@@ -1375,14 +1384,28 @@ fn generate_patch(
 				let encoded_len = {
 					let mut writer = unsafe { <#mut_elided_ty>::new_unchecked(data) };
 					#( #stage_steps )*
-					let encoded_len = writer.commit()?;
+					// Inline values are written before the commit so the
+					// commit-time revalidation inspects the final header. The
+					// destination starts zeroed, and an inline field such as a
+					// one-based enum can have an invalid all-zero
+					// representation, so validating before these writes would
+					// reject a legitimate initialize. Every supplied value was
+					// already checked in `validate_inputs`, and a failed
+					// initialize zeroes the whole destination, so this order
+					// keeps both the safety and failure contracts.
 					#( #inline_writes )*
+					let encoded_len = writer.commit()?;
 					encoded_len
 				};
 				<#struct_name #ty_generics as pinapod::PinaPodCompact>::validate(
 					&data[..encoded_len],
 				)?;
-				debug_assert_eq!(encoded_len, expected_len);
+				// Same preflight-versus-commit consistency guard as `update`; a
+				// mismatch here also means the destination no longer holds what
+				// `initialize` promised, and the caller's failure path zeroes it.
+				if encoded_len != expected_len {
+					return Err(pinapod::PinaPodError::InvalidLength);
+				}
 				Ok(encoded_len)
 			}
 
@@ -1447,12 +1470,16 @@ fn type_with_leading_lifetime(
 }
 
 fn generate_commit_body(
+	schema: &Schema,
 	header_ty: &TokenStream,
 	tail_fields: &[&crate::schema::SchemaField],
 ) -> TokenStream {
+	let struct_name = &schema.name;
+	let (_, ty_generics, _) = schema.generics.split_for_impl();
 	if tail_fields.is_empty() {
 		return quote! {
 			pub fn commit(&mut self) -> Result<usize, pinapod::PinaPodError> {
+				<#struct_name #ty_generics as pinapod::PinaPodCompact>::validate(self.data)?;
 				Ok(core::mem::size_of::<#header_ty>())
 			}
 		};
@@ -1845,6 +1872,14 @@ fn generate_commit_body(
 
 	quote! {
 		pub fn commit(&mut self) -> Result<usize, pinapod::PinaPodError> {
+			// Construction proves the buffer held a valid representation, but
+			// that proof is call-site discipline rather than a type invariant:
+			// `new_unchecked` exists for the patch paths, and a future
+			// construction site could skip validation. Revalidating here makes
+			// a stale or tampered writer fail closed before any pointer
+			// arithmetic runs, matching the compact contract's "callers may
+			// form references only after validate returns Ok" rule.
+			<#struct_name #ty_generics as pinapod::PinaPodCompact>::validate(self.data)?;
 			#( #setup_positions )*
 			#( #range_checks )*
 
@@ -2491,5 +2526,65 @@ mod tests {
 
 		assert!(field.is_empty());
 		assert!(init.is_empty());
+	}
+
+	#[test]
+	fn generated_commits_revalidate_the_buffer_before_relocating_tails() {
+		let with_tails: syn::DeriveInput = syn::parse_quote! {
+			#[pinapod(compact)]
+			struct Journal {
+				revision: u64,
+				entries: pinapod::Vec<u64, 4>,
+			}
+		};
+		let without_tails: syn::DeriveInput = syn::parse_quote! {
+			#[pinapod(compact)]
+			struct HeaderOnly {
+				revision: u64,
+			}
+		};
+
+		let schema = Schema::parse(&with_tails).unwrap();
+		let tail_fields: Vec<&crate::schema::SchemaField> = schema.tail_fields().collect();
+		let commit =
+			generate_commit_body(&schema, &quote! { JournalHeader }, &tail_fields).to_string();
+		assert!(
+			commit.contains("pinapod :: PinaPodCompact > :: validate (self . data)"),
+			"a tail-bearing commit must revalidate before its offset walk"
+		);
+
+		let schema = Schema::parse(&without_tails).unwrap();
+		let tail_fields: Vec<&crate::schema::SchemaField> = schema.tail_fields().collect();
+		let commit =
+			generate_commit_body(&schema, &quote! { HeaderOnlyHeader }, &tail_fields).to_string();
+		assert!(
+			commit.contains("pinapod :: PinaPodCompact > :: validate (self . data)"),
+			"a tail-free commit must revalidate too"
+		);
+	}
+
+	#[test]
+	fn generated_updates_fail_closed_when_preflight_and_commit_lengths_diverge() {
+		let input: syn::DeriveInput = syn::parse_quote! {
+			#[pinapod(compact)]
+			struct Ledger {
+				revision: u64,
+				label: pinapod::String<4>,
+			}
+		};
+		let schema = Schema::parse(&input).unwrap();
+
+		let generated = generate(&schema).to_string();
+
+		assert!(
+			!generated.contains("debug_assert_eq ! (encoded_len , expected_len)"),
+			"the preflight consistency guard must hold in release builds, not only under debug \
+			 assertions"
+		);
+		assert_eq!(
+			generated.matches("if encoded_len != expected_len").count(),
+			2,
+			"both update and try_initialize must reject a diverging commit length"
+		);
 	}
 }
