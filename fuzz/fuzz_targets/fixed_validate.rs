@@ -37,6 +37,17 @@ struct Kitchen {
 	flags: Option<Vec<PodBool, 3>>,
 }
 
+// A second schema whose containers use four- and eight-byte length prefixes,
+// so the wide fixed-layout decode and validation paths see attacker-chosen
+// prefixes rather than only the unit fixtures.
+#[allow(dead_code)]
+#[derive(PinaPod)]
+struct WidePrefixKitchen {
+	head: pinapod::PodString<80, 4>,
+	tail: pinapod::PodString<40, 8>,
+	values: pinapod::PodVec<u32, 64, 8>,
+}
+
 fuzz_target!(|data: &[u8]| {
 	let validation = Kitchen::validate_prefix(data);
 
@@ -64,6 +75,26 @@ fuzz_target!(|data: &[u8]| {
 	assert_eq!(
 		Kitchen::read_exact(data).is_ok(),
 		expect_exact,
+		"read_exact must require exact size and valid content"
+	);
+
+	let wide_validation = WidePrefixKitchen::validate_prefix(data);
+	if data.len() < WidePrefixKitchen::SIZE {
+		assert!(
+			wide_validation.is_err(),
+			"a short buffer must never validate"
+		);
+	}
+	if let Ok(()) = wide_validation {
+		let view =
+			WidePrefixKitchen::read_prefix(data).expect("validate_prefix agreed with read_prefix");
+		assert!(view.head().len() <= 80);
+		assert!(view.tail().len() <= 40);
+		assert!(view.values().len() <= 64);
+	}
+	assert_eq!(
+		WidePrefixKitchen::read_exact(data).is_ok(),
+		wide_validation.is_ok() && data.len() == WidePrefixKitchen::SIZE,
 		"read_exact must require exact size and valid content"
 	);
 

@@ -472,6 +472,32 @@ fn compact_tagged_union_honors_wide_tags() {
 }
 
 #[test]
+fn compact_wide_tagged_union_patch_rejects_over_capacity_atomically() {
+	let mut buf = vec![0u8; WideCompactEvent::MAX_SIZE];
+	let seed = WideCompactEventPatch::Label("seed");
+	let encoded_len = WideCompactEvent::initialize(&mut buf, &seed).unwrap();
+	buf.truncate(encoded_len);
+	let snapshot = buf.clone();
+
+	// `String<8>` caps UTF-8 length at 8; nine characters must be rejected
+	// without touching the wide-tag representation.
+	let over_capacity = "ninechars";
+	assert_eq!(over_capacity.len(), 9);
+	assert_eq!(
+		WideCompactEvent::update(&mut buf, &WideCompactEventPatch::Label(over_capacity)),
+		Err(pinapod::PinaPodError::Overflow)
+	);
+	assert_eq!(buf, snapshot, "a rejected wide-tag patch must not mutate");
+
+	// A fitting patch still commits over the same bytes.
+	let new_len = WideCompactEvent::update(&mut buf, &WideCompactEventPatch::Label("ok")).unwrap();
+	match WideCompactEvent::read_prefix(&buf[..new_len]).unwrap() {
+		WideCompactEventRef::Label(value) => assert_eq!(value, "ok"),
+		WideCompactEventRef::Empty => panic!("expected label variant"),
+	}
+}
+
+#[test]
 fn compact_tagged_union_rejects_invalid_tags_and_payloads() {
 	assert_eq!(
 		CompactEvent::validate(&[9]),
@@ -720,6 +746,33 @@ fn compact_initialize_zeroes_the_destination_after_an_error() {
 		Err(pinapod::PinaPodError::Overflow)
 	);
 	assert!(buf.iter().all(|byte| *byte == 0));
+}
+
+#[test]
+fn compact_initialize_over_an_existing_valid_account_rewrites_every_byte() {
+	let mut buf = vec![0u8; Profile::MAX_SIZE];
+	let first = ProfilePatch::new()
+		.level(7u64)
+		.bio("previous contents")
+		.replace_tags(&[[0x11u8; 32], [0x22u8; 32]]);
+	let first_len = Profile::initialize(&mut buf, &first).unwrap();
+	assert_eq!(first_len, 44 + "previous contents".len() + 64);
+
+	// Reinitializing an account that already holds a valid, longer
+	// representation must produce exactly the new value and zero the vacated
+	// suffix, so no byte of the previous value survives.
+	let second = ProfilePatch::new().level(9u64).bio("new");
+	let second_len = Profile::initialize(&mut buf, &second).unwrap();
+	assert_eq!(second_len, 44 + 3);
+
+	let view = Profile::read_prefix(&buf).unwrap();
+	assert_eq!(view.level.get(), 9);
+	assert_eq!(view.bio(), "new");
+	assert_eq!(view.tags().len(), 0);
+	assert!(
+		buf[second_len..].iter().all(|byte| *byte == 0),
+		"the vacated suffix of the previous value must be zeroed"
+	);
 }
 
 #[test]

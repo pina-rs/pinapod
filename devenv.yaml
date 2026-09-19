@@ -2,8 +2,13 @@
 inputs:
   nixpkgs:
     url: github:NixOS/nixpkgs/nixpkgs-unstable
+  # Personal fork pinned by branch, not by the repo's default ref: it supplies
+  # the kani, mdt, and monochange packages devenv.nix builds CI tooling from,
+  # so the exact branch this input follows is a supply-chain decision. The
+  # lock file still pins the resolved revision; see SECURITY.md for the trust
+  # story before updating.
   ifiokjr-nixpkgs:
-    url: github:ifiokjr/nixpkgs
+    url: github:ifiokjr/nixpkgs/main
   # Supplies the exact nightly Kani links against in the `kani` profile.
   rust-overlay:
     url: github:oxalica/rust-overlay

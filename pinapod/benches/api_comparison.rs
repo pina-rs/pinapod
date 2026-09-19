@@ -634,6 +634,12 @@ fn bench_fixed(c: &mut Criterion, fixtures: &Fixtures) {
 	});
 	write.finish();
 
+	// The current crate zeroes and validates through `initialize_fixed`; the
+	// pinned previous and upstream revisions have no initializing API, so
+	// their samples alias `write_fixed` (a plain field write over assumed
+	// bytes) and are not apples-to-apples with the current sample. They stay
+	// for continuity with the recorded baselines; read them as the cost of a
+	// plain write, not of a validated initialization.
 	let mut initialize = c.benchmark_group("fixed/initialize");
 	initialize.throughput(Throughput::Bytes(FIXED_SIZE as u64));
 	initialize.bench_function("pinapod-current", |bench| {
@@ -671,6 +677,12 @@ fn bench_fixed(c: &mut Criterion, fixtures: &Fixtures) {
 
 struct CompactCase<'data> {
 	name: &'data str,
+	/// Criterion group name for the update benchmarks. It describes what the
+	/// update does to the seed, which is not always the same scale as `name`:
+	/// the `max` case parses and validates the maximum fixture but grows a
+	/// small seed to maximum contents, so its update group is named for the
+	/// growth rather than for the fixture it reads.
+	update_name: &'data str,
 	value_count: usize,
 	next_label: &'data str,
 	current_data: &'data [u8],
@@ -726,7 +738,7 @@ fn bench_compact_case(c: &mut Criterion, case: &CompactCase<'_>) {
 	});
 	access.finish();
 
-	let mut update = c.benchmark_group(format!("compact/{}/update", case.name));
+	let mut update = c.benchmark_group(format!("compact/{}/update", case.update_name));
 	update.throughput(Throughput::Bytes(case_bytes));
 	update.bench_function("pinapod-current", |bench| {
 		bench.iter_batched_ref(
@@ -785,6 +797,7 @@ fn bench_compact_tail_scaling(c: &mut Criterion) {
 			c,
 			&CompactCase {
 				name: &name,
+				update_name: &name,
 				value_count,
 				next_label: SMALL_UPDATE_LABEL,
 				current_data: &current_data[..current_len],
@@ -919,6 +932,7 @@ fn api_comparison(c: &mut Criterion) {
 		c,
 		&CompactCase {
 			name: "small",
+			update_name: "small",
 			value_count: SMALL_VALUE_COUNT,
 			next_label: SMALL_UPDATE_LABEL,
 			current_data: &fixtures.current.small[..fixtures.current.small_len],
@@ -933,6 +947,10 @@ fn api_comparison(c: &mut Criterion) {
 		c,
 		&CompactCase {
 			name: "max",
+			// The parse, validate, and access groups read the maximum
+			// fixture above; this update group grows a small seed to maximum
+			// contents, so the relocation cost is part of the measurement.
+			update_name: "small-seed-grow-to-max",
 			value_count: MAX_VALUE_COUNT,
 			next_label: MAX_LABEL,
 			current_data: &fixtures.current.max[..fixtures.current.max_len],

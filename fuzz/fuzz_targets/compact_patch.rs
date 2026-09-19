@@ -1,8 +1,13 @@
 //! Fuzzes the compact patch commit path with structured inputs.
 //!
-//! Input bytes are decoded into two patches. Every successful `initialize`
-//! or `update` must leave bytes that validate and round-trip exactly, and
-//! `updated_len` must agree with the length returned by `update`.
+//! Input bytes are decoded into two patches whose lengths may exceed field
+//! capacity, so both commit outcomes are reachable: a successful
+//! `initialize` or `update` must leave bytes that validate and round-trip
+//! exactly, `updated_len` must agree with the length returned by `update`,
+//! and a rejected commit must leave the buffer untouched. A third phase
+//! corrupts one byte of a committed buffer and proves an `update` over the
+//! corrupted bytes either still commits a valid representation or refuses
+//! without mutating anything.
 
 #![no_main]
 
@@ -22,7 +27,8 @@ struct Ledger {
 	note: Option<pinapod::String<8>>,
 }
 
-/// A tiny cursor over the fuzz input that derives always-valid patch fields.
+/// A tiny cursor over the fuzz input that derives patch fields, including
+/// lengths beyond each field's capacity so rejected commits are reachable.
 struct Plan<'a> {
 	bytes: &'a [u8],
 }
@@ -59,11 +65,14 @@ struct Fields {
 	note: Option<String>,
 }
 
+/// Lengths decode above capacity on purpose: `label` may reach 80 over a
+/// capacity of 64, `values` may reach 20 over 16, and `note` may reach 12
+/// over 8, so `Overflow` rejections are part of the fuzzed surface.
 fn decode_fields(plan: &mut Plan<'_>) -> Fields {
-	let label_len = plan.byte() as usize % 65;
-	let values_len = plan.byte() as usize % 17;
+	let label_len = plan.byte() as usize % 80;
+	let values_len = plan.byte() as usize % 20;
 	let note_present = plan.byte() % 2 == 1;
-	let note_len = plan.byte() as usize % 9;
+	let note_len = plan.byte() as usize % 12;
 	let mut sequence = [0u8; 8];
 	let chunk = plan.take(8);
 	sequence[..chunk.len()].copy_from_slice(chunk);
@@ -118,20 +127,73 @@ fuzz_target!(|data: &[u8]| {
 	let patch = build_patch(&first);
 
 	let mut buffer = vec![0u8; <Ledger as PinaPodCompact>::MAX_SIZE];
-	let encoded_len =
-		Ledger::initialize(&mut buffer, &patch).expect("initialize with valid fields must succeed");
-	assert!(encoded_len <= buffer.len());
-	assert_roundtrip(&buffer, &first);
+	match Ledger::initialize(&mut buffer, &patch) {
+		Ok(encoded_len) => {
+			assert!(encoded_len <= buffer.len());
+			assert_roundtrip(&buffer, &first);
+		}
+		Err(_) => {
+			assert!(
+				buffer.iter().all(|byte| *byte == 0),
+				"a rejected initialize must leave the destination zeroed"
+			);
+		}
+	}
 
+	// A rejected update must leave every byte untouched, whatever the reason:
+	// an over-capacity patch value or a buffer the preflight refused.
+	let snapshot = buffer.clone();
 	let second_patch = build_patch(&second);
-	let announced = Ledger::updated_len(&buffer, &second_patch)
-		.expect("updated_len on valid bytes must succeed");
-	let committed =
-		Ledger::update(&mut buffer, &second_patch).expect("update with valid fields must succeed");
-	assert_eq!(
-		announced, committed,
-		"preflight must match the commit length"
-	);
-	assert!(committed <= buffer.len());
-	assert_roundtrip(&buffer, &second);
+	match Ledger::updated_len(&buffer, &second_patch) {
+		Ok(announced) => {
+			let committed = Ledger::update(&mut buffer, &second_patch)
+				.expect("update must succeed when the preflight announced a length");
+			assert_eq!(
+				announced, committed,
+				"preflight must match the commit length"
+			);
+			assert!(committed <= buffer.len());
+			assert_roundtrip(&buffer, &second);
+		}
+		Err(_) => {
+			assert_eq!(
+				Ledger::update(&mut buffer, &second_patch),
+				Err(pinapod::PinaPodError::Overflow),
+				"only an over-capacity patch can be rejected after a valid initialize"
+			);
+			assert_eq!(
+				buffer, snapshot,
+				"a rejected update must leave the buffer byte-identical"
+			);
+
+			// The buffer must still accept a fitting patch afterwards.
+			let retry = LedgerPatch::new().label("retry");
+			let committed = Ledger::update(&mut buffer, &retry)
+				.expect("a valid patch must still commit after a rejected one");
+			assert!(committed <= buffer.len());
+			let view = Ledger::read_prefix(&buffer).expect("retried bytes must validate");
+			assert_eq!(view.label(), "retry");
+		}
+	}
+
+	// One corrupted byte: an update either still commits over a coincidentally
+	// valid representation, or refuses without mutating anything.
+	let index = plan.byte() as usize % buffer.len();
+	let bit = 1 << (plan.byte() % 8);
+	buffer[index] ^= bit;
+	let corrupted = buffer.clone();
+	let recovery = LedgerPatch::new().label("recover");
+	match Ledger::update(&mut buffer, &recovery) {
+		Ok(committed) => {
+			assert!(committed <= buffer.len());
+			let view = Ledger::read_prefix(&buffer).expect("recovered bytes must validate");
+			assert_eq!(view.label(), "recover");
+		}
+		Err(_) => {
+			assert_eq!(
+				buffer, corrupted,
+				"an update rejected over corrupted bytes must not mutate them"
+			);
+		}
+	}
 });

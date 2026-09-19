@@ -248,6 +248,39 @@ fn pod_string_try_from() {
 	assert!(PodString::<4>::try_from(s).is_err());
 }
 
+#[test]
+fn zero_capacity_containers_accept_only_empty_values() {
+	let mut text = PodString::<0>::default();
+	assert!(text.is_empty());
+	assert_eq!(text.as_str(), "");
+	assert_eq!(text.capacity(), 0);
+	assert_eq!(text.try_set(""), Ok(()));
+	assert_eq!(text.try_set("x"), Err(PinaPodError::Overflow));
+	assert_eq!(
+		text.try_push_str("x"),
+		Err(PinaPodError::Overflow),
+		"the empty string stays the only representable value"
+	);
+
+	let mut values = PodVec::<u64, 0>::default();
+	assert!(values.is_empty());
+	assert_eq!(values.capacity(), 0);
+	assert_eq!(values.try_push(1u64), Err(PinaPodError::Overflow));
+	assert_eq!(
+		values.try_extend_from_slice(&[1u64.into()]),
+		Err(PinaPodError::Overflow)
+	);
+	let empty: &[PodU64] = &[];
+	assert_eq!(values.as_slice(), empty);
+
+	// A zero-length prefix over a zero-capacity payload is the whole
+	// representation, and it validates.
+	assert_eq!(core::mem::size_of::<PodString<0>>(), 1);
+	assert_eq!(core::mem::size_of::<PodVec<u64, 0>>(), 2);
+	assert!(pinapod::ZcValidate::validate_ref(&text).is_ok());
+	assert!(pinapod::ZcValidate::validate_ref(&values).is_ok());
+}
+
 // ---- PodVec basic operations ----
 
 #[test]

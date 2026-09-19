@@ -56,6 +56,37 @@ fn compact_patch_oversized_grow_returns_buffer_too_small_without_mutating() {
 }
 
 #[test]
+fn compact_patch_retry_after_a_rejected_update_still_commits() {
+	let mut buf = vec![0u8; 300];
+	let tag = [0xEEu8; 32];
+
+	let tags = [tag];
+	let initial = ProfilePatch::new().bio("seed").replace_tags(&tags);
+	let committed_size = Profile::initialize(&mut buf, &initial).unwrap();
+	buf.truncate(committed_size);
+	let snapshot = buf.clone();
+
+	let long_bio = "y".repeat(48);
+	assert_eq!(
+		Profile::update(&mut buf, &ProfilePatch::new().bio(&long_bio)),
+		Err(PinaPodError::BufferTooSmall)
+	);
+	assert_eq!(
+		buf, snapshot,
+		"the rejected update must not mutate anything"
+	);
+
+	// The account must remain fully usable after the rejection: a patch that
+	// fits commits cleanly and preserves every unedited tail.
+	let new_size = Profile::update(&mut buf, &ProfilePatch::new().bio("ok")).unwrap();
+	assert!(new_size <= buf.len());
+	let view = Profile::read_prefix(&buf).unwrap();
+	assert_eq!(view.bio(), "ok");
+	assert_eq!(view.tags().len(), 1);
+	assert_eq!(view.tags()[0], tag);
+}
+
+#[test]
 fn compact_patch_bio_grow_preserves_tags() {
 	let mut buf = vec![0u8; 300];
 	let tag = [0xCCu8; 32];
@@ -195,6 +226,27 @@ fn compact_patch_mixed_grow_and_shrink_preserves_unedited_last() {
 		assert_eq!(view.a(), "aa");
 		assert_eq!(view.b(), "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
 		assert_eq!(view.c(), &[9, 8, 7, 6, 5]);
+	}
+}
+
+#[test]
+fn compact_patch_last_tail_edits_preserve_large_earlier_tails() {
+	let mut buf = vec![0u8; MultiTail::MAX_SIZE];
+
+	let a = "a".repeat(30);
+	let b = "b".repeat(30);
+	let initial = MultiTailPatch::new().a(&a).b(&b).replace_c(&[7; 32]);
+	MultiTail::initialize(&mut buf, &initial).unwrap();
+
+	// Grow, shrink, and empty the last tail while both earlier tails sit at
+	// nearly full capacity: every relocation source lies behind the edit.
+	for c in [&[9u8; 32][..], &[3u8; 4][..], &[][..]] {
+		let new_size = MultiTail::update(&mut buf, &MultiTailPatch::new().replace_c(c)).unwrap();
+
+		let view = MultiTail::read_prefix(&buf[..new_size]).unwrap();
+		assert_eq!(view.a(), a);
+		assert_eq!(view.b(), b);
+		assert_eq!(view.c(), c);
 	}
 }
 

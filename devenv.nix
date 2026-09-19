@@ -101,8 +101,21 @@ in
         set -euo pipefail
         cargo check --manifest-path pinapod/Cargo.toml --no-default-features --locked
         cargo check --manifest-path pinapod/Cargo.toml --no-default-features --features fixed --locked
+        # A host check cannot prove the no_std promise: std is always available
+        # to the host target. `cargo check --target` for a bare-metal target
+        # resolves std away, so any accidental std use (including one smuggled
+        # in through an optional dependency's default features) fails here.
+        # Check every optional feature, not only `fixed`, so a new dependency
+        # cannot quietly break the promise either. `check` needs no linker for
+        # this target, so the job stays a pure metadata/borrowck compile.
+        cargo check \
+          --manifest-path pinapod/Cargo.toml \
+          --no-default-features \
+          --features fixed,floats,solana-address,solana-program-error,wincode \
+          --target thumbv7em-none-eabihf \
+          --locked
       '';
-      description = "Verify the no_std PinaPod core with no features and with fixed-point support.";
+      description = "Verify the no_std PinaPod core with no features, with fixed-point support, and every optional feature against a bare-metal target.";
       binary = "bash";
     };
     "test:all" = {

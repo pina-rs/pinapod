@@ -21,9 +21,12 @@ solana-address = ["dep:solana-address"]
 solana-program-error = ["dep:solana-program-error"]
 
 [dependencies]
-fixed = { workspace = true, optional = true, default-features = true }
+# default-features stays off for optional dependencies: the runtime crate is
+# documented as no_std, so a feature must not silently re-enable std-backed
+# defaults on behalf of the dependent.
+fixed = { workspace = true, optional = true, default-features = false }
 pinapod-derive = { workspace = true }
-solana-address = { optional = true, features = ["copy"], workspace = true, default-features = true }
+solana-address = { optional = true, features = ["copy"], workspace = true, default-features = false }
 solana-program-error = { default-features = false, optional = true, workspace = true }
 wincode = { default-features = false, features = ["derive"], optional = true, workspace = true }
 
