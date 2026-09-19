@@ -1384,8 +1384,17 @@ fn generate_patch(
 				let encoded_len = {
 					let mut writer = unsafe { <#mut_elided_ty>::new_unchecked(data) };
 					#( #stage_steps )*
-					let encoded_len = writer.commit()?;
+					// Inline values are written before the commit so the
+					// commit-time revalidation inspects the final header. The
+					// destination starts zeroed, and an inline field such as a
+					// one-based enum can have an invalid all-zero
+					// representation, so validating before these writes would
+					// reject a legitimate initialize. Every supplied value was
+					// already checked in `validate_inputs`, and a failed
+					// initialize zeroes the whole destination, so this order
+					// keeps both the safety and failure contracts.
 					#( #inline_writes )*
+					let encoded_len = writer.commit()?;
 					encoded_len
 				};
 				<#struct_name #ty_generics as pinapod::PinaPodCompact>::validate(

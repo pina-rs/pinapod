@@ -82,6 +82,24 @@ struct OptionalInlineProfile {
 	pub event: Option<FixedEventPayload>,
 }
 
+// A fixed enum whose valid discriminants start at one, so the all-zero
+// initialization state is deliberately invalid for this field.
+#[allow(dead_code)]
+#[repr(u8)]
+#[derive(PinaPod)]
+enum Tier {
+	Bronze = 1,
+	Silver = 2,
+}
+
+#[allow(dead_code)]
+#[derive(PinaPod)]
+#[pinapod(compact)]
+struct TieredProfile {
+	pub tier: Tier,
+	label: pinapod::String<4>,
+}
+
 #[allow(dead_code)]
 #[derive(PinaPod)]
 #[pinapod(compact)]
@@ -746,6 +764,28 @@ fn compact_initialize_zeroes_the_destination_after_an_error() {
 		Err(pinapod::PinaPodError::Overflow)
 	);
 	assert!(buf.iter().all(|byte| *byte == 0));
+}
+
+#[test]
+fn compact_initialize_writes_inline_enums_before_commit_validates() {
+	// `Tier` has no zero discriminant, so the zeroed destination header this
+	// initialize starts from is invalid until the patch's inline value is
+	// written. The inline writes must land before the commit-time
+	// revalidation inspects the header.
+	let mut buf = vec![0u8; TieredProfile::MAX_SIZE];
+	let patch = TieredProfilePatch::new().tier(Tier::Silver).label("ok");
+
+	let encoded_len = TieredProfile::initialize(&mut buf, &patch).unwrap_or_else(|error| {
+		panic!("initializing a one-based inline enum must not report {error:?}")
+	});
+	assert_eq!(
+		encoded_len,
+		<TieredProfile as pinapod::PinaPodCompact>::HEADER_SIZE + 2
+	);
+
+	let view = TieredProfile::read_prefix(&buf).unwrap();
+	assert!(view.tier.is(Tier::Silver));
+	assert_eq!(view.label(), "ok");
 }
 
 #[test]
