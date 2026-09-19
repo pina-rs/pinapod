@@ -1,6 +1,6 @@
 ---
-pinapod: minor
-pinapod-derive: minor
+pinapod: feat
+pinapod-derive: feat
 ---
 
 # validate the buffer inside every generated compact commit

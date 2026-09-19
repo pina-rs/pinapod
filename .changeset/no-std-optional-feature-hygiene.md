@@ -1,6 +1,6 @@
 ---
-pinapod: minor
-pinapod-derive: minor
+pinapod: feat
+pinapod-derive: feat
 ---
 
 # keep optional features no_std and prove it in CI
