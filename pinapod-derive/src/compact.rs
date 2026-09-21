@@ -264,9 +264,18 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 			}
 		})
 		.collect();
+	// The tail walks come in two depths, and the two must never drift apart.
+	// `validate` runs the full semantic walk; `validate_layout` runs only the
+	// prefix decode, the capacity check, and the chained bounds that a tail
+	// relocation consumes. Both are emitted from the same per-field fragments:
+	// `layout_stmts` is exactly the statement list `validate_layout` runs, and
+	// `full_stmts` is that same fragment followed by the checks only `validate`
+	// adds. A bounds expression therefore cannot be tightened in one walk and
+	// left stale in the other.
 	let mut tail_validations = Vec::new();
+	let mut tail_layout_validations = Vec::new();
 	for f in schema.tail_fields() {
-		match &f.kind {
+		let (layout_stmts, full_stmts) = match &f.kind {
 			FieldKind::Tail(TailField::Segment {
 				presence: TailPresence::Always,
 				payload: TailPayload::String { max, pfx },
@@ -274,7 +283,7 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 				let len_name = format_ident!("__{}_len", f.name);
 				let tail_end =
 					bounded_tail_end_expr(quote! { __tail_offset }, quote! { #len_name }, *pfx);
-				tail_validations.push(quote! {
+				let layout_stmts = quote! {
 					let #len_name = __pinapod_decode_prefix(&__hdr.#len_name)?;
 					if #len_name > #max {
 						return Err(pinapod::PinaPodError::InvalidLength);
@@ -283,11 +292,15 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 					let __tail = data
 						.get(__tail_offset..__tail_end)
 						.ok_or(pinapod::PinaPodError::BufferTooSmall)?;
+					__tail_offset = __tail_end;
+				};
+				let full_stmts = quote! {
+					#layout_stmts
 					if core::str::from_utf8(__tail).is_err() {
 						return Err(pinapod::PinaPodError::InvalidUtf8);
 					}
-					__tail_offset = __tail_end;
-				});
+				};
+				(layout_stmts, full_stmts)
 			}
 			FieldKind::Tail(TailField::Segment {
 				presence: TailPresence::Always,
@@ -298,7 +311,7 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 				let byte_len = bounded_byte_len_expr(quote! { #len_name }, &mapped_elem, *pfx);
 				let tail_end =
 					bounded_tail_end_expr(quote! { __tail_offset }, quote! { __byte_len }, *pfx);
-				tail_validations.push(quote! {
+				let layout_stmts = quote! {
 					let #len_name = __pinapod_decode_prefix(&__hdr.#len_name)?;
 					if #len_name > #max {
 						return Err(pinapod::PinaPodError::InvalidLength);
@@ -312,6 +325,10 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 					let __tail = data
 						.get(__tail_offset..__tail_end)
 						.ok_or(pinapod::PinaPodError::BufferTooSmall)?;
+					__tail_offset = __tail_end;
+				};
+				let full_stmts = quote! {
+					#layout_stmts
 					// SAFETY: `__byte_len` is `#len_name * __elem_size`, which
 					// the bounds check above proved fits `__tail`, so the first
 					// `#len_name` elements lie inside the slice, and `ZcElem`
@@ -319,11 +336,9 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 					let __elems = unsafe {
 						core::slice::from_raw_parts(__tail.as_ptr() as *const #mapped_elem, #len_name)
 					};
-					for __elem in __elems {
-						<#mapped_elem as pinapod::ZcValidate>::validate_ref(__elem)?;
-					}
-					__tail_offset = __tail_end;
-				});
+					<#mapped_elem as pinapod::ZcValidate>::validate_slice(__elems)?;
+				};
+				(layout_stmts, full_stmts)
 			}
 			FieldKind::Tail(TailField::Segment {
 				presence: TailPresence::OptionTag,
@@ -336,27 +351,44 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 					bounded_tail_end_expr(quote! { __tail_offset }, quote! { #pfx }, *pfx);
 				let payload_end =
 					bounded_tail_end_expr(quote! { __payload_offset }, quote! { __byte_len }, *pfx);
-				tail_validations.push(quote! {
-					match __hdr.#tag_name[0] {
-						0 => {}
-						1 => {
-							#read_len
-							if __byte_len > #max {
-								return Err(pinapod::PinaPodError::InvalidLength);
-							}
-							let __payload_offset = #payload_offset;
-							let __payload_end = #payload_end;
-							let __payload = data
-								.get(__payload_offset..__payload_end)
-								.ok_or(pinapod::PinaPodError::BufferTooSmall)?;
-							if core::str::from_utf8(__payload).is_err() {
-								return Err(pinapod::PinaPodError::InvalidUtf8);
-							}
-							__tail_offset = __payload_end;
-						}
-						_ => return Err(pinapod::PinaPodError::InvalidTag),
+				let bounds = quote! {
+					#read_len
+					if __byte_len > #max {
+						return Err(pinapod::PinaPodError::InvalidLength);
 					}
-				});
+					let __payload_offset = #payload_offset;
+					let __payload_end = #payload_end;
+					let __payload = data
+						.get(__payload_offset..__payload_end)
+						.ok_or(pinapod::PinaPodError::BufferTooSmall)?;
+					__tail_offset = __payload_end;
+				};
+				let semantic = quote! {
+					if core::str::from_utf8(__payload).is_err() {
+						return Err(pinapod::PinaPodError::InvalidUtf8);
+					}
+				};
+				(
+					quote! {
+						match __hdr.#tag_name[0] {
+							0 => {}
+							1 => {
+								#bounds
+							}
+							_ => return Err(pinapod::PinaPodError::InvalidTag),
+						}
+					},
+					quote! {
+						match __hdr.#tag_name[0] {
+							0 => {}
+							1 => {
+								#bounds
+								#semantic
+							}
+							_ => return Err(pinapod::PinaPodError::InvalidTag),
+						}
+					},
+				)
 			}
 			FieldKind::Tail(TailField::Segment {
 				presence: TailPresence::OptionTag,
@@ -371,46 +403,63 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 				let payload_end =
 					bounded_tail_end_expr(quote! { __payload_offset }, quote! { __byte_len }, *pfx);
 				let byte_len = bounded_byte_len_expr(quote! { __count }, &mapped_elem, *pfx);
-				tail_validations.push(quote! {
-					match __hdr.#tag_name[0] {
-						0 => {}
-						1 => {
-							#read_count
-							if __count > #max {
-								return Err(pinapod::PinaPodError::InvalidLength);
-							}
-							let __payload_offset = #payload_offset;
-							let __elem_size = core::mem::size_of::<#mapped_elem>();
-							if __elem_size == 0 {
-								return Err(pinapod::PinaPodError::InvalidLength);
-							}
-							let __byte_len = #byte_len;
-							let __payload_end = #payload_end;
-							let __payload = data
-								.get(__payload_offset..__payload_end)
-								.ok_or(pinapod::PinaPodError::BufferTooSmall)?;
-							// SAFETY: `__byte_len` is `__count * __elem_size`,
-							// which the bounds check above proved fits
-							// `__payload`, so the first `__count` elements lie
-							// inside the slice, and `ZcElem` guarantees
-							// alignment one and bit-pattern validity.
-							let __elems = unsafe {
-								core::slice::from_raw_parts(
-									__payload.as_ptr() as *const #mapped_elem,
-									__count,
-								)
-							};
-							for __elem in __elems {
-								<#mapped_elem as pinapod::ZcValidate>::validate_ref(__elem)?;
-							}
-							__tail_offset = __payload_end;
-						}
-						_ => return Err(pinapod::PinaPodError::InvalidTag),
+				let bounds = quote! {
+					#read_count
+					if __count > #max {
+						return Err(pinapod::PinaPodError::InvalidLength);
 					}
-				});
+					let __elem_size = core::mem::size_of::<#mapped_elem>();
+					if __elem_size == 0 {
+						return Err(pinapod::PinaPodError::InvalidLength);
+					}
+					let __payload_offset = #payload_offset;
+					let __byte_len = #byte_len;
+					let __payload_end = #payload_end;
+					let __payload = data
+						.get(__payload_offset..__payload_end)
+						.ok_or(pinapod::PinaPodError::BufferTooSmall)?;
+					__tail_offset = __payload_end;
+				};
+				let semantic = quote! {
+					// SAFETY: `__byte_len` is `__count * __elem_size`, which
+					// the bounds check above proved fits `__payload`, so the
+					// first `__count` elements lie inside the slice, and
+					// `ZcElem` guarantees alignment one and bit-pattern
+					// validity.
+					let __elems = unsafe {
+						core::slice::from_raw_parts(
+							__payload.as_ptr() as *const #mapped_elem,
+							__count,
+						)
+					};
+					<#mapped_elem as pinapod::ZcValidate>::validate_slice(__elems)?;
+				};
+				(
+					quote! {
+						match __hdr.#tag_name[0] {
+							0 => {}
+							1 => {
+								#bounds
+							}
+							_ => return Err(pinapod::PinaPodError::InvalidTag),
+						}
+					},
+					quote! {
+						match __hdr.#tag_name[0] {
+							0 => {}
+							1 => {
+								#bounds
+								#semantic
+							}
+							_ => return Err(pinapod::PinaPodError::InvalidTag),
+						}
+					},
+				)
 			}
 			_ => unreachable!(),
-		}
+		};
+		tail_layout_validations.push(layout_stmts);
+		tail_validations.push(full_stmts);
 	}
 
 	quote! {
@@ -432,6 +481,27 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 				<#header_ty as pinapod::ZcValidate>::validate_ref(__hdr)?;
 				let mut __tail_offset = core::mem::size_of::<#header_ty>();
 				#( #tail_validations )*
+				Ok(())
+			}
+
+			// Only the preconditions a tail relocation consumes: the
+			// allocation, the header's prefixes and tags, and the chained tail
+			// bounds. No element walk, no UTF-8, and no header field check
+			// beyond what those bounds read. Emitted from the same per-field
+			// fragments as `validate`, so the two walks cannot disagree about
+			// a bound.
+			//
+			// The `schema_proofs` are deliberately not repeated here: they are
+			// compile-time schema assertions, and the sibling `validate` in
+			// this same impl block carries them, so repeating them would only
+			// duplicate the diagnostic for a schema that cannot compile at all.
+			fn validate_layout(data: &[u8]) -> Result<(), pinapod::PinaPodError> {
+				// `MIN_SIZE` equals `HEADER_SIZE`, so this also proves the
+				// header cast below is in bounds.
+				Self::validate_storage_len(data.len())?;
+				let __hdr = unsafe { &*(data.as_ptr() as *const #header_ty) };
+				let mut __tail_offset = core::mem::size_of::<#header_ty>();
+				#( #tail_layout_validations )*
 				Ok(())
 			}
 		}
@@ -1088,9 +1158,7 @@ fn generate_patch(
 						if core::mem::size_of::<#mapped_elem>() == 0 {
 							return Err(pinapod::PinaPodError::InvalidLength);
 						}
-						for item in value {
-							<#mapped_elem as pinapod::ZcValidate>::validate_ref(item)?;
-						}
+						<#mapped_elem as pinapod::ZcValidate>::validate_slice(value)?;
 					}
 				});
 				let old_size = format_ident!("__old_encoded_{}", name);
@@ -1200,9 +1268,7 @@ fn generate_patch(
 						if core::mem::size_of::<#mapped_elem>() == 0 {
 							return Err(pinapod::PinaPodError::InvalidLength);
 						}
-						for item in value {
-							<#mapped_elem as pinapod::ZcValidate>::validate_ref(item)?;
-						}
+						<#mapped_elem as pinapod::ZcValidate>::validate_slice(value)?;
 					}
 				});
 				let old_size = format_ident!("__old_encoded_{}", name);
@@ -1479,7 +1545,11 @@ fn generate_commit_body(
 	if tail_fields.is_empty() {
 		return quote! {
 			pub fn commit(&mut self) -> Result<usize, pinapod::PinaPodError> {
-				<#struct_name #ty_generics as pinapod::PinaPodCompact>::validate(self.data)?;
+				// A tail-free commit relocates nothing, but it still runs the
+				// commit-entry check so the fail-closed contract does not
+				// depend on the schema's shape. There is no tail bounds work
+				// to skip.
+				pinapod::traits::commit_entry_validate::<#struct_name #ty_generics>(self.data)?;
 				Ok(core::mem::size_of::<#header_ty>())
 			}
 		};
@@ -1877,9 +1947,15 @@ fn generate_commit_body(
 			// `new_unchecked` exists for the patch paths, and a future
 			// construction site could skip validation. Revalidating here makes
 			// a stale or tampered writer fail closed before any pointer
-			// arithmetic runs, matching the compact contract's "callers may
-			// form references only after validate returns Ok" rule.
-			<#struct_name #ty_generics as pinapod::PinaPodCompact>::validate(self.data)?;
+			// arithmetic runs.
+			//
+			// The depth is selected by `commit_entry_validate`, not named
+			// here: it defaults to the layout walk, which is the complete
+			// precondition for relocation, and the
+			// `compact-commit-full-validation` feature widens it to the full
+			// semantic walk. A `#[cfg]` cannot be written into this expansion
+			// because it would resolve against the *consumer's* features.
+			pinapod::traits::commit_entry_validate::<#struct_name #ty_generics>(self.data)?;
 			#( #setup_positions )*
 			#( #range_checks )*
 
@@ -2544,23 +2620,48 @@ mod tests {
 			}
 		};
 
-		let schema = Schema::parse(&with_tails).unwrap();
-		let tail_fields: Vec<&crate::schema::SchemaField> = schema.tail_fields().collect();
-		let commit =
-			generate_commit_body(&schema, &quote! { JournalHeader }, &tail_fields).to_string();
-		assert!(
-			commit.contains("pinapod :: PinaPodCompact > :: validate (self . data)"),
-			"a tail-bearing commit must revalidate before its offset walk"
-		);
+		// The commit entry runs the commit-entry check, which defaults to the
+		// layout walk and is widened by the `compact-commit-full-validation`
+		// feature. It must run before any offset setup. Relocation consumes
+		// only the buffer length, the header size, and the stored prefixes, so
+		// the full semantic walk here would be element-proportional cost for a
+		// prefix-proportional hazard. Every value-exposing boundary keeps
+		// calling the full `validate`.
+		for (input, header, label) in [
+			(
+				&with_tails,
+				quote! { JournalHeader },
+				"a tail-bearing commit",
+			),
+			(
+				&without_tails,
+				quote! { HeaderOnlyHeader },
+				"a tail-free commit",
+			),
+		] {
+			let schema = Schema::parse(input).unwrap();
+			let tail_fields: Vec<&crate::schema::SchemaField> = schema.tail_fields().collect();
+			let commit = generate_commit_body(&schema, &header, &tail_fields).to_string();
 
-		let schema = Schema::parse(&without_tails).unwrap();
-		let tail_fields: Vec<&crate::schema::SchemaField> = schema.tail_fields().collect();
-		let commit =
-			generate_commit_body(&schema, &quote! { HeaderOnlyHeader }, &tail_fields).to_string();
-		assert!(
-			commit.contains("pinapod :: PinaPodCompact > :: validate (self . data)"),
-			"a tail-free commit must revalidate too"
-		);
+			assert!(
+				commit.contains("commit_entry_validate :: <"),
+				"{label} must run the commit-entry check before its offset walk"
+			);
+			assert!(
+				!commit.contains("PinaPodCompact > :: validate (self . data)"),
+				"{label} must not name a depth directly, because a `#[cfg]` here would resolve \
+				 against the consumer's features"
+			);
+			let check = commit
+				.find("commit_entry_validate")
+				.expect("the commit-entry check is emitted");
+			if let Some(offsets) = commit.find("__old_off_") {
+				assert!(
+					check < offsets,
+					"{label} must check the buffer before any offset arithmetic runs"
+				);
+			}
+		}
 	}
 
 	#[test]
@@ -2586,5 +2687,71 @@ mod tests {
 			2,
 			"both update and try_initialize must reject a diverging commit length"
 		);
+	}
+
+	#[test]
+	fn generated_layout_walk_keeps_every_bound_and_drops_every_semantic_check() {
+		// `validate_layout` is the commit-entry check, so it must keep exactly
+		// the statements a tail relocation consumes and nothing else. The risk
+		// this test exists for is drift: a bound tightened in `validate` and
+		// left stale in `validate_layout` would be a memory-safety bug, while a
+		// semantic check leaking back in would restore the element-proportional
+		// cost this split removes.
+		let input: syn::DeriveInput = syn::parse_quote! {
+			#[pinapod(compact)]
+			struct Journal {
+				revision: u64,
+				title: pinapod::String<24>,
+				entries: pinapod::Vec<u64, 8>,
+				note: Option<pinapod::String<64>>,
+			}
+		};
+		let schema = Schema::parse(&input).unwrap();
+		let generated = generate(&schema).to_string();
+
+		let layout_start = generated
+			.find("fn validate_layout")
+			.expect("the derive must emit a layout walk");
+		// `validate_layout` is the last function in the `PinaPodCompact` impl,
+		// so the next emitted item ends the region. Bounding it this way keeps
+		// later impls (`Ref`, `Mut`, `Patch`) — which legitimately contain
+		// UTF-8 checks and element walks — out of the assertions below.
+		let layout_end = generated[layout_start..]
+			.find("pub struct")
+			.map_or(generated.len(), |offset| layout_start + offset);
+		let layout = &generated[layout_start..layout_end];
+
+		for bound in [
+			// Every chained tail bound must survive, or relocation computes an
+			// offset the buffer may not support.
+			"BufferTooSmall",
+			"InvalidLength",
+			// The optional tail's tag decides which bounds apply, so the tag
+			// read and its rejection must both stay.
+			"InvalidTag",
+		] {
+			assert!(
+				layout.contains(bound),
+				"the layout walk must keep the `{bound}` bound"
+			);
+		}
+
+		for semantic in [
+			// The semantic checks belong to the value-exposing boundaries.
+			"from_utf8",
+			"validate_slice",
+			"ZcValidate > :: validate_ref",
+		] {
+			assert!(
+				!layout.contains(semantic),
+				"the layout walk must not run the semantic check `{semantic}`"
+			);
+		}
+
+		// The full walk keeps both halves, so the two depths differ by exactly
+		// the semantic work.
+		for kept in ["from_utf8", "validate_slice", "BufferTooSmall"] {
+			assert!(generated.contains(kept), "the full walk must keep `{kept}`");
+		}
 	}
 }
