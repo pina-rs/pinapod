@@ -13,6 +13,13 @@ workspace = true
 
 [features]
 default = []
+# Widens the commit-entry check from the layout walk back to the full semantic
+# one. Off by default: layout is the complete precondition for a tail
+# relocation, so the default already fails closed on a corrupt prefix or a
+# short buffer, while the full walk costs one semantic pass per commit.
+# Enabling this makes `commit` itself reject a buffer whose content is invalid
+# even where the layout is sound. Only adds coverage.
+compact-commit-full-validation = []
 fixed = ["dep:fixed"]
 floats = []
 kani = []

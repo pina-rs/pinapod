@@ -48,6 +48,28 @@ pub trait ZcValidate: Copy {
 
 		Ok(())
 	}
+
+	/// Validate every element of a slice of this type.
+	///
+	/// A slice's stored validity is exactly its elements' validity, so this
+	/// defaults to walking the slice and calling
+	/// [`validate_ref`](Self::validate_ref) on each item. The same rationale as
+	/// [`validate_array`](Self::validate_array) applies: the loop is
+	/// load-bearing for a restricted-domain element and dead for a
+	/// trivially-valid one, and SBF `-C opt-level=3` does not reliably remove
+	/// the dead case. Stating the trivial case as a separate implementation
+	/// removes the loop from that instantiation outright.
+	///
+	/// Generated code walks a stored tail through this method rather than
+	/// spelling the loop at every emission site.
+	#[inline(always)]
+	fn validate_slice(value: &[Self]) -> Result<(), PinaPodError> {
+		for item in value {
+			Self::validate_ref(item)?;
+		}
+
+		Ok(())
+	}
 }
 
 // --- ZcValidate: trivially valid types (all bit patterns valid) ---
@@ -62,6 +84,11 @@ impl ZcValidate for u8 {
 	fn validate_array<const N: usize>(_: &[Self; N]) -> Result<(), PinaPodError> {
 		Ok(())
 	}
+
+	#[inline(always)]
+	fn validate_slice(_: &[Self]) -> Result<(), PinaPodError> {
+		Ok(())
+	}
 }
 
 impl ZcValidate for i8 {
@@ -72,6 +99,11 @@ impl ZcValidate for i8 {
 
 	#[inline(always)]
 	fn validate_array<const N: usize>(_: &[Self; N]) -> Result<(), PinaPodError> {
+		Ok(())
+	}
+
+	#[inline(always)]
+	fn validate_slice(_: &[Self]) -> Result<(), PinaPodError> {
 		Ok(())
 	}
 }
@@ -87,6 +119,9 @@ macro_rules! impl_zc_validate_trivial {
                 fn validate_array<const N: usize>(_: &[Self; N]) -> Result<(), PinaPodError> {
                     Ok(())
                 }
+
+                #[inline(always)]
+                fn validate_slice(_: &[Self]) -> Result<(), PinaPodError> { Ok(()) }
             }
         )*
     };
@@ -151,10 +186,9 @@ impl<T: ZcElem, const N: usize, const PFX: usize> ZcValidate for PodVecRepr<T, N
 		if value.try_decode_len()? > N {
 			return Err(PinaPodError::InvalidLength);
 		}
-		for item in value.as_slice() {
-			T::validate_ref(item)?;
-		}
-		Ok(())
+		// Through `validate_slice` rather than a local loop, so a trivially
+		// valid element removes the loop here too.
+		T::validate_slice(value.as_slice())
 	}
 }
 
@@ -282,6 +316,11 @@ mod solana_address_impls {
 
 		#[inline(always)]
 		fn validate_array<const N: usize>(_: &[Self; N]) -> Result<(), PinaPodError> {
+			Ok(())
+		}
+
+		#[inline(always)]
+		fn validate_slice(_: &[Self]) -> Result<(), PinaPodError> {
 			Ok(())
 		}
 	}
@@ -501,6 +540,77 @@ pub unsafe trait PinaPodCompact: PinaPod {
 	/// size bounds or tail granularity, and another [`PinaPodError`] variant when a
 	/// stored value is not a valid representation.
 	fn validate(data: &[u8]) -> Result<(), PinaPodError>;
+
+	/// Validate only what a tail relocation needs: the allocation, the header's
+	/// length prefixes and tags, and the chained tail bounds.
+	///
+	/// Relocating a tail reads exactly three things from the buffer —
+	/// `data.len()`, the header size, and the stored length prefixes — then
+	/// performs checked adds and moves bytes between the offsets they imply.
+	/// Copying arbitrary bytes is safe, so the only hazard is an offset or end
+	/// computed past the buffer. This method proves that hazard absent without
+	/// the per-element semantic walk [`validate`](Self::validate) also performs:
+	/// no element iteration, no UTF-8 check, and no header field validation
+	/// beyond what the bounds require.
+	///
+	/// Use this where the bytes are about to be relocated but not interpreted.
+	/// Every boundary that exposes or persists a *value* — a reader's
+	/// constructor, an update's preflight, and initialization's post-commit
+	/// check — must keep calling [`validate`](Self::validate).
+	///
+	/// The default falls back to [`validate`](Self::validate), so a hand-written
+	/// implementation keeps the full check and cannot weaken itself by
+	/// accident. Returns the same error variants as
+	/// [`validate`](Self::validate) for the conditions it checks.
+	///
+	/// # Errors
+	///
+	/// Returns [`PinaPodError::InvalidLength`] for an allocation outside the
+	/// schema's size bounds or tail granularity, a prefix above its field
+	/// capacity, or an unreadable prefix width; [`PinaPodError::BufferTooSmall`]
+	/// when a chained tail bound leaves the buffer; and
+	/// [`PinaPodError::Overflow`] when an offset sum overflows.
+	fn validate_layout(data: &[u8]) -> Result<(), PinaPodError> {
+		Self::validate(data)
+	}
+}
+
+/// Run the commit-entry check at the depth the current build selects.
+///
+/// Generated `commit` bodies call this rather than naming a depth directly,
+/// because of how cargo features resolve. A `#[cfg(feature = "...")]` is
+/// evaluated in the crate being compiled — the *consumer* of this crate — so a
+/// cfg written into generated code would test the downstream crate's feature
+/// namespace instead of this one. Where the name is undefined, the generated
+/// code would silently take the disabled branch and the feature would mean
+/// nothing. Keeping the dispatch here makes the feature mean what it says.
+///
+/// The default is [`PinaPodCompact::validate_layout`]. Relocation consumes
+/// only the buffer length, the header size, and the stored prefixes, so layout
+/// is the complete precondition for it, and this fails closed on a corrupt
+/// prefix or a short buffer exactly as a full walk would. Enabling
+/// `compact-commit-full-validation` widens the check to
+/// [`PinaPodCompact::validate`]: one full semantic walk per commit, which is
+/// what 0.4.2 did. That is a strictly stronger commit, not a weaker one, so
+/// the feature can only add coverage.
+///
+/// # Errors
+///
+/// Returns whatever the selected depth returns; both reject a corrupt prefix,
+/// an allocation outside the schema's bounds, and a tail bound that leaves the
+/// buffer.
+#[doc(hidden)]
+#[inline(always)]
+pub fn commit_entry_validate<T: PinaPodCompact>(data: &[u8]) -> Result<(), PinaPodError> {
+	#[cfg(feature = "compact-commit-full-validation")]
+	{
+		T::validate(data)
+	}
+
+	#[cfg(not(feature = "compact-commit-full-validation"))]
+	{
+		T::validate_layout(data)
+	}
 }
 
 /// An atomic, preflighted update for one compact schema.

@@ -753,6 +753,187 @@ fn compact_patch_rejects_an_invalid_buffer_before_unchecked_writing() {
 	assert_eq!(buf, snapshot);
 }
 
+// --- Commit-entry layout validation ---
+
+#[test]
+fn validate_layout_rejects_a_prefix_above_its_capacity() {
+	// `Profile`'s header is authority(32) + level(8) + active(1) + bio_len(1) +
+	// tags_len(2), so byte 41 is `bio_len`. `String<64>` caps the prefix at 64.
+	let mut buf = vec![0u8; Profile::MAX_SIZE];
+	Profile::initialize(&mut buf, &ProfilePatch::new().bio("hi")).unwrap();
+	buf[41] = 65;
+
+	assert_eq!(
+		Profile::validate_layout(&buf),
+		Err(pinapod::PinaPodError::InvalidLength),
+		"a prefix above the field capacity is not a readable layout"
+	);
+	assert_eq!(
+		Profile::validate(&buf),
+		Err(pinapod::PinaPodError::InvalidLength),
+		"the full walk rejects it for the same reason"
+	);
+}
+
+#[test]
+fn validate_layout_rejects_a_buffer_shorter_than_the_header() {
+	// `validate_storage_len` runs first, so a short buffer is rejected before
+	// the header cast. `Profile::MIN_SIZE` is its header size.
+	let short = vec![0u8; <Profile as pinapod::PinaPodCompact>::HEADER_SIZE - 1];
+
+	assert_eq!(
+		Profile::validate_layout(&short),
+		Err(pinapod::PinaPodError::InvalidLength)
+	);
+	assert!(Profile::validate(&short).is_err());
+}
+
+#[test]
+fn validate_layout_rejects_a_tail_end_past_the_buffer() {
+	// A prefix that is within its capacity but claims more bytes than the
+	// allocation holds. This is the hazard a relocation must never trust.
+	let mut buf = vec![0u8; 50]; // header(44) + 6 bytes of tail
+	buf[41] = 10; // bio_len = 10 needs 44 + 10 = 54
+
+	assert_eq!(
+		Profile::validate_layout(&buf),
+		Err(pinapod::PinaPodError::BufferTooSmall)
+	);
+	assert!(Profile::validate(&buf).is_err());
+}
+
+#[test]
+fn validate_layout_accepts_a_semantically_invalid_but_readable_layout() {
+	// The documented refinement: a layout-valid buffer whose *content* is
+	// semantically invalid is no longer rejected at the relocation boundary,
+	// because relocation never interprets those bytes. It is still rejected at
+	// every value-exposing boundary.
+	let mut buf = vec![0u8; Profile::MAX_SIZE];
+	let encoded = Profile::initialize(&mut buf, &ProfilePatch::new().bio("hi")).unwrap();
+
+	// Overwrite the active `bio` bytes with non-UTF-8 while leaving the
+	// prefixes and the total length untouched.
+	let header = <Profile as pinapod::PinaPodCompact>::HEADER_SIZE;
+	buf[header] = 0xFF;
+	buf[header + 1] = 0xFE;
+	let corrupted = buf[..encoded].to_vec();
+
+	assert_eq!(
+		Profile::validate_layout(&corrupted),
+		Ok(()),
+		"the layout is intact: the prefix still decodes and the tail is in bounds"
+	);
+	assert_eq!(
+		Profile::validate(&corrupted),
+		Err(pinapod::PinaPodError::InvalidUtf8),
+		"the full walk rejects the same bytes for their content"
+	);
+	assert_eq!(
+		Profile::read_prefix(&corrupted).err(),
+		Some(pinapod::PinaPodError::InvalidUtf8),
+		"so a reader cannot observe the invalid value"
+	);
+
+	// The checks above are read-only, so the corrupted bytes are exactly what
+	// the caller handed in — nothing here rewrote the buffer.
+	assert_eq!(buf[..encoded], corrupted[..]);
+}
+
+#[test]
+fn validate_layout_matches_the_layout_half_of_validate_on_valid_bytes() {
+	// On a valid representation both depths agree, so callers that switch to
+	// the layout check keep the same answer for the case that matters.
+	let mut buf = vec![0u8; Profile::MAX_SIZE];
+	let encoded = Profile::initialize(
+		&mut buf,
+		&ProfilePatch::new()
+			.bio("hello")
+			.replace_tags(&[[0x11u8; 32], [0x22u8; 32]]),
+	)
+	.unwrap();
+
+	assert_eq!(Profile::validate_layout(&buf[..encoded]), Ok(()));
+	assert_eq!(Profile::validate(&buf[..encoded]), Ok(()));
+}
+
+#[test]
+fn validate_layout_rejects_a_corrupt_tag_in_an_optional_tail() {
+	// An option tag that is neither 0 nor 1 decides which bounds apply, so the
+	// layout walk must read it and reject it. `OptionalTailProfile` starts with
+	// a 1-byte tag header.
+	let mut buf = vec![0u8; OptionalTailProfile::MAX_SIZE];
+	OptionalTailProfile::initialize(&mut buf, &OptionalTailProfilePatch::new().note("hi")).unwrap();
+	buf[0] = 7;
+
+	assert_eq!(
+		OptionalTailProfile::validate_layout(&buf),
+		Err(pinapod::PinaPodError::InvalidTag)
+	);
+	assert_eq!(
+		OptionalTailProfile::validate(&buf),
+		Err(pinapod::PinaPodError::InvalidTag)
+	);
+}
+
+#[test]
+fn compact_enum_validate_layout_rejects_bounds_it_must_keep() {
+	// The compact-enum derive gets the same split. `WidePrefixCompactEvent`
+	// tags with one byte and stores `PodVec<u64, 4, 8>`, so an eight-byte
+	// count above the variant capacity is a layout failure.
+	let mut data = vec![0u8; 64];
+	data[0] = 1; // the `Values` variant tag
+	for (i, byte) in 5u64.to_le_bytes().iter().enumerate() {
+		data[1 + i] = *byte;
+	}
+
+	assert_eq!(
+		WidePrefixCompactEvent::validate_layout(&data),
+		Err(pinapod::PinaPodError::InvalidLength),
+		"a count above the variant capacity fails the layout walk"
+	);
+	assert_eq!(
+		WidePrefixCompactEvent::validate(&data),
+		Err(pinapod::PinaPodError::InvalidLength)
+	);
+}
+
+#[test]
+fn compact_enum_validate_layout_rejects_an_unknown_discriminant() {
+	// The tag selects which bounds apply, so the layout walk must read it.
+	let data = [0xFFu8; 8];
+
+	assert_eq!(
+		WidePrefixCompactEvent::validate_layout(&data),
+		Err(pinapod::PinaPodError::InvalidDiscriminant)
+	);
+}
+
+#[test]
+fn compact_enum_validate_layout_accepts_a_readable_but_invalid_payload() {
+	// A string variant with non-UTF-8 bytes: the layout is readable, the value
+	// is not. `WideCompactEvent` uses a two-byte tag because its `Label`
+	// discriminant is 300, and its allocation must stay within `MAX_SIZE`.
+	let mut data = vec![0u8; WideCompactEvent::MAX_SIZE];
+	data[0..2].copy_from_slice(&300u16.to_le_bytes()); // the `Label` tag
+	data[2] = 1; // one-byte string prefix
+	data[3] = 0xFF; // a byte that is not valid UTF-8
+
+	assert_eq!(
+		WideCompactEvent::validate_layout(&data),
+		Ok(()),
+		"the prefix decodes and the payload is in bounds, so the layout is readable"
+	);
+	assert_eq!(
+		WideCompactEvent::validate(&data),
+		Err(pinapod::PinaPodError::InvalidUtf8),
+		"the full walk rejects the same bytes for their content"
+	);
+	assert_eq!(
+		WideCompactEvent::read_prefix(&data).err(),
+		Some(pinapod::PinaPodError::InvalidUtf8)
+	);
+}
+
 #[test]
 fn compact_initialize_zeroes_the_destination_after_an_error() {
 	let mut buf = vec![0xFF; Profile::MAX_SIZE];
@@ -824,6 +1005,50 @@ fn compact_empty_patch_preserves_unedited_fields() {
 
 	let view = Profile::read_prefix(&buf[..49]).unwrap();
 	assert_eq!(view.bio(), "hello");
+}
+
+#[test]
+fn compact_commit_fails_closed_on_a_corrupt_prefix_at_entry() {
+	// The commit-entry check exists because a writer can be built over bytes
+	// nothing validated: the generated `Mut` and `Patch` paths construct their
+	// writer through `new_unchecked`, so the buffer's layout is the caller's to
+	// establish. A prefix that decodes past the buffer must therefore fail
+	// before any relocation arithmetic runs, rather than relocating tails over
+	// bytes that were never checked.
+	//
+	// `Mut` is deliberately not exported, so the reachable behavioral proxy is
+	// the layout check the commit entry calls. `validate_layout` is that exact
+	// function, and this is the buffer commit would receive.
+	let mut buf = vec![0u8; Profile::MAX_SIZE];
+	Profile::initialize(&mut buf, &ProfilePatch::new().bio("ok")).unwrap();
+	buf[41] = 0xFF; // bio_len = 255 > String<64> and past the allocation
+	let snapshot = buf.clone();
+
+	assert_eq!(
+		Profile::validate_layout(&buf),
+		Err(pinapod::PinaPodError::InvalidLength),
+		"a prefix above its capacity must fail the layout check at commit entry"
+	);
+
+	// The `update` path reaches the same buffer through its preflight walk,
+	// which is the semantic boundary and rejects it before a writer exists.
+	assert_eq!(
+		Profile::update(&mut buf, &ProfilePatch::new().bio("next")),
+		Err(pinapod::PinaPodError::InvalidLength)
+	);
+	assert_eq!(
+		buf, snapshot,
+		"a rejected update must not have relocated or rewritten anything"
+	);
+
+	// `initialize` zeroes its destination before configuring it, so a corrupt
+	// prefix cannot survive into commit entry on that path; the vacated bytes
+	// are removed rather than trusted.
+	assert_eq!(
+		Profile::initialize(&mut buf, &ProfilePatch::new().bio("next")),
+		Ok(44 + 4)
+	);
+	assert_eq!(Profile::read_prefix(&buf[..48]).unwrap().bio(), "next");
 }
 
 #[test]

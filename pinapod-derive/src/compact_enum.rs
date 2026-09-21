@@ -180,6 +180,15 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
 		})
 		.collect();
 
+	let layout_arms: Vec<_> = parsed
+		.iter()
+		.map(|variant| {
+			let name = variant.name;
+			let bounds = payload_bounds_tokens(&variant.payload, tag_size);
+			quote! { x if x == (#tag_name::#name as #native_ty) => { #bounds Ok(()) } }
+		})
+		.collect();
+
 	let ref_arms: Vec<_> = parsed
 		.iter()
 		.map(|variant| {
@@ -247,6 +256,22 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
 				let __tag: #native_ty = #read_tag;
 				match __tag {
 					#( #validate_arms, )*
+					_ => Err(pinapod::PinaPodError::InvalidDiscriminant),
+				}
+			}
+
+			// Only the preconditions a payload relocation consumes: the
+			// allocation, the tag, and the payload bounds. Emitted from the
+			// same per-variant fragment as `validate`, so the two walks cannot
+			// disagree about a bound.
+			fn validate_layout(data: &[u8]) -> Result<(), pinapod::PinaPodError> {
+				Self::validate_storage_len(data.len())?;
+				if data.len() < #tag_size {
+					return Err(pinapod::PinaPodError::BufferTooSmall);
+				}
+				let __tag: #native_ty = #read_tag;
+				match __tag {
+					#( #layout_arms, )*
 					_ => Err(pinapod::PinaPodError::InvalidDiscriminant),
 				}
 			}
@@ -518,9 +543,7 @@ fn generate_patch_impl(
 						if __elem_size == 0 {
 							return Err(pinapod::PinaPodError::InvalidLength);
 						}
-						for item in *value {
-							<#mapped_elem as pinapod::ZcValidate>::validate_ref(item)?;
-						}
+						<#mapped_elem as pinapod::ZcValidate>::validate_slice(value)?;
 						let __byte_len = __pinapod_checked_mul(value.len(), __elem_size)?;
 						__pinapod_checked_add(
 							__pinapod_checked_add(#tag_size, #pfx)?,
@@ -775,25 +798,17 @@ fn parse_payload(variant: &Variant) -> Result<VariantPayload, TokenStream> {
 	}
 }
 
-fn validate_payload_tokens(payload: &VariantPayload, tag_size: usize) -> TokenStream {
+/// Compile-time schema assertions for one variant payload.
+///
+/// These are not runtime checks: they reject a schema whose payload can never
+/// be represented, so they belong to the impl rather than to either walk.
+/// Emitting them once (from `validate`) keeps a broken schema from reporting
+/// the same assertion twice.
+fn payload_schema_proofs(payload: &VariantPayload) -> TokenStream {
 	match payload {
-		VariantPayload::Unit => quote! { Ok(()) },
 		VariantPayload::String { max, pfx } => {
 			quote! {
 				let _ = pinapod::pod::PodString::<#max, #pfx>::VALID;
-				let __byte_len = __pinapod_read_prefix(data, #tag_size, #pfx)?;
-				if __byte_len > #max {
-					return Err(pinapod::PinaPodError::InvalidLength);
-				}
-				let __payload_offset = __pinapod_checked_add(#tag_size, #pfx)?;
-				let __payload_end = __pinapod_checked_add(__payload_offset, __byte_len)?;
-				let __payload = data
-					.get(__payload_offset..__payload_end)
-					.ok_or(pinapod::PinaPodError::BufferTooSmall)?;
-				if core::str::from_utf8(__payload).is_err() {
-					return Err(pinapod::PinaPodError::InvalidUtf8);
-				}
-				Ok(())
 			}
 		}
 		VariantPayload::Vec { elem, max, pfx } => {
@@ -806,6 +821,39 @@ fn validate_payload_tokens(payload: &VariantPayload, tag_size: usize) -> TokenSt
 						"compact vector elements must not be zero-sized",
 					);
 				};
+			}
+		}
+		VariantPayload::Unit | VariantPayload::Fixed { .. } => quote! {},
+	}
+}
+
+/// The bounds half of a payload's validity: the prefix decode, the capacity
+/// check, and the payload range.
+///
+/// This is exactly the precondition a tail relocation consumes, so
+/// `validate_layout` runs it alone. `validate_payload_tokens` appends the
+/// semantic checks (UTF-8, element values) that only a value-exposing boundary
+/// needs. Both depths are built here so a bound cannot be tightened for one
+/// walk and left stale in the other.
+fn payload_bounds_tokens(payload: &VariantPayload, tag_size: usize) -> TokenStream {
+	match payload {
+		VariantPayload::Unit => quote! {},
+		VariantPayload::String { max, pfx } => {
+			quote! {
+				let __byte_len = __pinapod_read_prefix(data, #tag_size, #pfx)?;
+				if __byte_len > #max {
+					return Err(pinapod::PinaPodError::InvalidLength);
+				}
+				let __payload_offset = __pinapod_checked_add(#tag_size, #pfx)?;
+				let __payload_end = __pinapod_checked_add(__payload_offset, __byte_len)?;
+				let __payload = data
+					.get(__payload_offset..__payload_end)
+					.ok_or(pinapod::PinaPodError::BufferTooSmall)?;
+			}
+		}
+		VariantPayload::Vec { elem, max, pfx } => {
+			let mapped_elem = map_to_pod_type(elem);
+			quote! {
 				let __count = __pinapod_read_prefix(data, #tag_size, #pfx)?;
 				if __count > #max {
 					return Err(pinapod::PinaPodError::InvalidLength);
@@ -817,25 +865,57 @@ fn validate_payload_tokens(payload: &VariantPayload, tag_size: usize) -> TokenSt
 				let __payload = data
 					.get(__payload_offset..__payload_end)
 					.ok_or(pinapod::PinaPodError::BufferTooSmall)?;
-				for __i in 0..__count {
-					let __elem_offset = __pinapod_checked_mul(__i, __elem_size)?;
-					// SAFETY: `__byte_len` is bounds-proven against `__payload`
-					// above, so every indexed element lies inside the slice,
-					// and `ZcElem` guarantees alignment one.
-					let __elem = unsafe {
-						&*(__payload.as_ptr().add(__elem_offset) as *const #mapped_elem)
-					};
-					<#mapped_elem as pinapod::ZcValidate>::validate_ref(__elem)?;
-				}
-				Ok(())
 			}
 		}
+		// A fixed payload's bytes are interpreted by its own validator rather
+		// than relocated as a tail, so its bounds half is the whole check.
 		VariantPayload::Fixed { ty } => {
 			quote! {
 				let __payload = data
 					.get(#tag_size..)
 					.ok_or(pinapod::PinaPodError::BufferTooSmall)?;
 				<#ty as pinapod::PinaPodFixed>::validate_prefix(__payload)?;
+			}
+		}
+	}
+}
+
+fn validate_payload_tokens(payload: &VariantPayload, tag_size: usize) -> TokenStream {
+	let bounds = payload_bounds_tokens(payload, tag_size);
+	let proofs = payload_schema_proofs(payload);
+	match payload {
+		VariantPayload::Unit | VariantPayload::Fixed { .. } => {
+			quote! {
+				#proofs
+				#bounds
+				Ok(())
+			}
+		}
+		VariantPayload::String { .. } => {
+			quote! {
+				#proofs
+				#bounds
+				if core::str::from_utf8(__payload).is_err() {
+					return Err(pinapod::PinaPodError::InvalidUtf8);
+				}
+				Ok(())
+			}
+		}
+		VariantPayload::Vec { elem, .. } => {
+			let mapped_elem = map_to_pod_type(elem);
+			quote! {
+				#proofs
+				#bounds
+				// SAFETY: `__byte_len` is bounds-proven against `__payload`
+				// above, so all `__count` elements lie inside the slice, and
+				// `ZcElem` guarantees alignment one.
+				let __elems = unsafe {
+					core::slice::from_raw_parts(
+						__payload.as_ptr() as *const #mapped_elem,
+						__count,
+					)
+				};
+				<#mapped_elem as pinapod::ZcValidate>::validate_slice(__elems)?;
 				Ok(())
 			}
 		}

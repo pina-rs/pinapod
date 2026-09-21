@@ -33,6 +33,87 @@ fn validate_correct_size() {
 	assert_eq!(Validatable::SIZE, 33);
 }
 
+// --- `validate_layout`'s default is the full walk ---
+
+/// A hand-written compact schema, the case the additive method must not break.
+///
+/// `validate_layout` is a *provided* method on `PinaPodCompact`, so this impl
+/// compiles without it — and must then inherit the full `validate` rather than
+/// an empty or weaker check. A custom impl that silently skipped the semantic
+/// walk would be a soundness hole in every safe reader that used it.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct HandWrittenHeader {
+	value: pinapod::pod::PodU64,
+}
+
+impl pinapod::ZcValidate for HandWrittenHeader {
+	fn validate_ref(value: &Self) -> Result<(), pinapod::PinaPodError> {
+		if value.value.get() > 100 {
+			return Err(pinapod::PinaPodError::InvalidLength);
+		}
+		Ok(())
+	}
+}
+
+// SAFETY: `HandWrittenHeader` is `#[repr(C)]` over one alignment-one `PodU64`.
+unsafe impl pinapod::ZcElem for HandWrittenHeader {}
+
+struct HandWritten;
+
+impl PinaPod for HandWritten {}
+
+// SAFETY: `Header` is the complete representation, `HEADER_SIZE` is its size,
+// and `validate` checks the schema's one restricted-domain field. This impl
+// deliberately does not override `validate_layout`, so it exercises the default.
+unsafe impl PinaPodCompact for HandWritten {
+	type Header = HandWrittenHeader;
+
+	const HEADER_SIZE: usize = core::mem::size_of::<HandWrittenHeader>();
+	const MAX_SIZE: usize = core::mem::size_of::<HandWrittenHeader>();
+	const MIN_SIZE: usize = core::mem::size_of::<HandWrittenHeader>();
+	const TAIL_ALIGNMENT: usize = 1;
+
+	fn validate(data: &[u8]) -> Result<(), pinapod::PinaPodError> {
+		Self::validate_storage_len(data.len())?;
+		// SAFETY: `MIN_SIZE` equals `HEADER_SIZE`, so the length check above
+		// proves this cast is in bounds; the header is an alignment-one ZcElem.
+		let header = unsafe { &*data.as_ptr().cast::<HandWrittenHeader>() };
+		<HandWrittenHeader as pinapod::ZcValidate>::validate_ref(header)
+	}
+}
+
+#[test]
+fn validate_layout_defaults_to_the_full_walk_for_hand_written_impls() {
+	let valid = 7u64.to_le_bytes();
+	assert_eq!(HandWritten::validate(&valid), Ok(()));
+	assert_eq!(
+		HandWritten::validate_layout(&valid),
+		Ok(()),
+		"a valid representation passes both depths"
+	);
+
+	// The schema's own semantic rule. A default that skipped `validate` would
+	// accept this buffer, so this assertion is what pins the safe default.
+	let invalid = 101u64.to_le_bytes();
+	assert_eq!(
+		HandWritten::validate(&invalid),
+		Err(pinapod::PinaPodError::InvalidLength)
+	);
+	assert_eq!(
+		HandWritten::validate_layout(&invalid),
+		Err(pinapod::PinaPodError::InvalidLength),
+		"the default must not weaken a hand-written impl's semantic checks"
+	);
+
+	// And the allocation contract is still enforced through the shared prefix.
+	let short: [u8; 4] = [0; 4];
+	assert_eq!(
+		HandWritten::validate_layout(&short),
+		Err(pinapod::PinaPodError::InvalidLength)
+	);
+}
+
 #[test]
 fn validate_zeroed_buffer_ok() {
 	let buf = [0u8; 33];
