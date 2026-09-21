@@ -1,0 +1,237 @@
+{
+  "schema_version": "0.6",
+  "kind": "monochange.releaseRecord",
+  "created_at": "2026-09-21T17:45:44Z",
+  "command": "release",
+  "version": "0.4.3",
+  "versions": {
+    "pinapod-workspace": "0.4.3"
+  },
+  "release_targets": [
+    {
+      "id": "pinapod-workspace",
+      "kind": "group",
+      "version": "0.4.3",
+      "version_format": "pinapod/v{{ version }}",
+      "tag": true,
+      "release": true,
+      "tag_name": "pinapod/v0.4.3",
+      "members": [
+        "pinapod",
+        "pinapod-derive"
+      ]
+    }
+  ],
+  "released_packages": [
+    "pinapod",
+    "pinapod-derive"
+  ],
+  "changed_files": [
+    "CHANGELOG.md",
+    "Cargo.lock",
+    "Cargo.toml",
+    "pinapod/Cargo.toml",
+    "pinapod/tests/renamed_dependency/Cargo.lock",
+    "pinapod-derive/Cargo.toml"
+  ],
+  "package_publications": [
+    {
+      "package": "pinapod",
+      "ecosystem": "cargo",
+      "registry": "crates_io",
+      "version": "0.4.3",
+      "mode": "builtin",
+      "trusted_publishing": {
+        "enabled": true,
+        "mode": "required",
+        "repository": "pina-rs/pinapod",
+        "workflow": "publish.yml",
+        "environment": "publisher"
+      }
+    },
+    {
+      "package": "pinapod-derive",
+      "ecosystem": "cargo",
+      "registry": "crates_io",
+      "version": "0.4.3",
+      "mode": "builtin",
+      "trusted_publishing": {
+        "enabled": true,
+        "mode": "required",
+        "repository": "pina-rs/pinapod",
+        "workflow": "publish.yml",
+        "environment": "publisher"
+      }
+    }
+  ],
+  "updated_changelogs": [
+    "CHANGELOG.md"
+  ],
+  "deleted_changesets": [
+    ".changeset/commit-entry-layout-validation.md"
+  ],
+  "changesets": [
+    {
+      "path": ".changeset/commit-entry-layout-validation.md",
+      "summary": "keep commit-entry revalidation safe at layout cost",
+      "details": "0.4.2 added a full `PinaPodCompact::validate` walk to the top of every generated `commit()`. The hardening was right, but the walk was stronger than the pointer arithmetic it guards. Relocation reads exactly three things from the buffer — `data.len()`, the header size, and the stored length prefixes — and then moves bytes between the offsets they imply. The only hazard is an offset or end computed past the buffer, which is a layout property. The full walk additionally visited every tail element and checked UTF-8, enum ranges, and `PodBool` tags: bytes `commit` never interprets, at a cost proportional to the element count rather than the prefix count.\n\nOn Pina's `compact_accounts_program` benchmark that measured **+308 CU on `write`, +292 on `resize`, +157 on `rename`, and +46 on `initialize`** against 0.4.1, tracking how many tails each instruction walks. Two changes remove it.\n\n`ZcValidate::validate_slice` joins `validate_array` as an overridable element walk, and every trivially valid type overrides it to a no-op alongside its existing `validate_array` override. Generated tail loops call it instead of spelling the loop at each emission site, so a `Vec<u64>` or `PodVec<u8>` tail no longer burns CU proving `Ok(())` per element — a loop that is merely dead after inlining is not reliably removed at `-C opt-level=3` on SBF. The nested-container walk inside `PodVecRepr::validate_ref` routes through it as well.\n\n`PinaPodCompact::validate_layout` is the commit entry now. It is a _provided_ method defaulting to the full `validate`, so a hand-written implementation cannot weaken itself by accident and existing ones keep compiling unchanged. The derive overrides it with the prefix decode, the capacity check, and the chained bounds, and emits it from the same per-field fragments as `validate` so a bound cannot be tightened in one walk and left stale in the other. The four semantic boundaries — the `Ref` and `Mut` constructors, `updated_len`, and `try_initialize`'s post-commit check — still run the full `validate`, as do the patch-input validations.\n\nMeasured against 0.4.1 on the same benchmark, the regression is recovered and three of four instructions are faster: −39 CU on `initialize`, −110 on `resize`, −104 on `write`, and +36 on `rename` — all inside the gate's noise band, which warns only at +250 CU and +5%.\n\nOne behavior refinement is deliberate and documented. A buffer that is layout-valid but semantically invalid — invalid UTF-8 in an untouched tail, say — is no longer rejected by `commit`. It is still rejected at the next read. On the generated update path the stronger invariant still holds by construction: `updated_len` runs the full `validate` over the same bytes the commit will see, because the staged edits are `(ptr, len)` intents that have not been written yet. `try_initialize` keeps its post-commit full `validate`, so initialization cannot persist such bytes either. The new `compact-commit-full-validation` feature restores the full walk at the commit entry for consumers with different CU budgets; it dispatches from the runtime crate rather than a `#[cfg]` in the generated body, because a `cfg` in an expansion resolves against the consumer's feature namespace, where the name is usually undefined and the feature would silently mean nothing.\n\nThe measurement, the rejected proof-token alternative, and the residual behavior change are recorded in the book's performance decision log.",
+      "targets": [
+        {
+          "id": "pinapod",
+          "kind": "package",
+          "bump": "patch",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "fix"
+        },
+        {
+          "id": "pinapod-derive",
+          "kind": "package",
+          "bump": "patch",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "fix"
+        }
+      ],
+      "context": {
+        "provider": "github",
+        "host": "github.com",
+        "capabilities": {
+          "commit_web_urls": true,
+          "actor_profiles": true,
+          "review_request_lookup": true,
+          "related_issues": true,
+          "issue_comments": true
+        },
+        "introduced": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "b627a468b7dc4c142bdd8e229c626b2d0c2afa91",
+            "short_sha": "b627a46",
+            "url": "https://github.com/pina-rs/pinapod/commit/b627a468b7dc4c142bdd8e229c626b2d0c2afa91",
+            "authored_at": "2026-09-21T18:37:21+01:00",
+            "committed_at": "2026-09-21T18:37:21+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#39",
+            "title": "fix(pod): keep commit-entry revalidation safe at layout cost",
+            "url": "https://github.com/pina-rs/pinapod/pull/39",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "last_updated": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "b627a468b7dc4c142bdd8e229c626b2d0c2afa91",
+            "short_sha": "b627a46",
+            "url": "https://github.com/pina-rs/pinapod/commit/b627a468b7dc4c142bdd8e229c626b2d0c2afa91",
+            "authored_at": "2026-09-21T18:37:21+01:00",
+            "committed_at": "2026-09-21T18:37:21+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#39",
+            "title": "fix(pod): keep commit-entry revalidation safe at layout cost",
+            "url": "https://github.com/pina-rs/pinapod/pull/39",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "related_issues": [
+          {
+            "provider": "github",
+            "host": "github.com",
+            "id": "#38",
+            "title": null,
+            "url": "https://github.com/pina-rs/pinapod/issues/38",
+            "relationship": "closed_by_review_request"
+          },
+          {
+            "provider": "github",
+            "host": "github.com",
+            "id": "#485",
+            "title": null,
+            "url": "https://github.com/pina-rs/pinapod/issues/485",
+            "relationship": "referenced_by_review_request"
+          }
+        ]
+      }
+    }
+  ],
+  "changelogs": [
+    {
+      "owner_id": "pinapod-workspace",
+      "owner_kind": "group",
+      "output": "default",
+      "stream": "default",
+      "path": "CHANGELOG.md",
+      "format": "keep_a_changelog",
+      "notes": {
+        "title": "[0.4.3](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.3) (2026-09-21)",
+        "summary": [
+          "Grouped release for `pinapod-workspace`."
+        ],
+        "sections": [
+          {
+            "title": "Fixes",
+            "collapsed": false,
+            "entries": [
+              "#### keep commit-entry revalidation safe at layout cost\n\n_Packages:_ _pinapod_, _pinapod-derive_\n\n0.4.2 added a full `PinaPodCompact::validate` walk to the top of every generated `commit()`. The hardening was right, but the walk was stronger than the pointer arithmetic it guards. Relocation reads exactly three things from the buffer — `data.len()`, the header size, and the stored length prefixes — and then moves bytes between the offsets they imply. The only hazard is an offset or end computed past the buffer, which is a layout property. The full walk additionally visited every tail element and checked UTF-8, enum ranges, and `PodBool` tags: bytes `commit` never interprets, at a cost proportional to the element count rather than the prefix count.\n\nOn Pina's `compact_accounts_program` benchmark that measured **+308 CU on `write`, +292 on `resize`, +157 on `rename`, and +46 on `initialize`** against 0.4.1, tracking how many tails each instruction walks. Two changes remove it.\n\n`ZcValidate::validate_slice` joins `validate_array` as an overridable element walk, and every trivially valid type overrides it to a no-op alongside its existing `validate_array` override. Generated tail loops call it instead of spelling the loop at each emission site, so a `Vec<u64>` or `PodVec<u8>` tail no longer burns CU proving `Ok(())` per element — a loop that is merely dead after inlining is not reliably removed at `-C opt-level=3` on SBF. The nested-container walk inside `PodVecRepr::validate_ref` routes through it as well.\n\n`PinaPodCompact::validate_layout` is the commit entry now. It is a _provided_ method defaulting to the full `validate`, so a hand-written implementation cannot weaken itself by accident and existing ones keep compiling unchanged. The derive overrides it with the prefix decode, the capacity check, and the chained bounds, and emits it from the same per-field fragments as `validate` so a bound cannot be tightened in one walk and left stale in the other. The four semantic boundaries — the `Ref` and `Mut` constructors, `updated_len`, and `try_initialize`'s post-commit check — still run the full `validate`, as do the patch-input validations.\n\nMeasured against 0.4.1 on the same benchmark, the regression is recovered and three of four instructions are faster: −39 CU on `initialize`, −110 on `resize`, −104 on `write`, and +36 on `rename` — all inside the gate's noise band, which warns only at +250 CU and +5%.\n\nOne behavior refinement is deliberate and documented. A buffer that is layout-valid but semantically invalid — invalid UTF-8 in an untouched tail, say — is no longer rejected by `commit`. It is still rejected at the next read. On the generated update path the stronger invariant still holds by construction: `updated_len` runs the full `validate` over the same bytes the commit will see, because the staged edits are `(ptr, len)` intents that have not been written yet. `try_initialize` keeps its post-commit full `validate`, so initialization cannot persist such bytes either. The new `compact-commit-full-validation` feature restores the full walk at the commit entry for consumers with different CU budgets; it dispatches from the runtime crate rather than a `#[cfg]` in the generated body, because a `cfg` in an expansion resolves against the consumer's feature namespace, where the name is usually undefined and the feature would silently mean nothing.\n\nThe measurement, the rejected proof-token alternative, and the residual behavior change are recorded in the book's performance decision log.\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #39](https://github.com/pina-rs/pinapod/pull/39) · _Closed issues:_ [#38](https://github.com/pina-rs/pinapod/issues/38) · _Related issues:_ [#485](https://github.com/pina-rs/pinapod/issues/485)"
+            ]
+          }
+        ]
+      },
+      "rendered": "## [0.4.3](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.3) (2026-09-21)\n\nGrouped release for `pinapod-workspace`.\n\n### Fixes\n\n#### keep commit-entry revalidation safe at layout cost\n\n_Packages:_ _pinapod_, _pinapod-derive_\n\n0.4.2 added a full `PinaPodCompact::validate` walk to the top of every generated `commit()`. The hardening was right, but the walk was stronger than the pointer arithmetic it guards. Relocation reads exactly three things from the buffer — `data.len()`, the header size, and the stored length prefixes — and then moves bytes between the offsets they imply. The only hazard is an offset or end computed past the buffer, which is a layout property. The full walk additionally visited every tail element and checked UTF-8, enum ranges, and `PodBool` tags: bytes `commit` never interprets, at a cost proportional to the element count rather than the prefix count.\n\nOn Pina's `compact_accounts_program` benchmark that measured **+308 CU on `write`, +292 on `resize`, +157 on `rename`, and +46 on `initialize`** against 0.4.1, tracking how many tails each instruction walks. Two changes remove it.\n\n`ZcValidate::validate_slice` joins `validate_array` as an overridable element walk, and every trivially valid type overrides it to a no-op alongside its existing `validate_array` override. Generated tail loops call it instead of spelling the loop at each emission site, so a `Vec<u64>` or `PodVec<u8>` tail no longer burns CU proving `Ok(())` per element — a loop that is merely dead after inlining is not reliably removed at `-C opt-level=3` on SBF. The nested-container walk inside `PodVecRepr::validate_ref` routes through it as well.\n\n`PinaPodCompact::validate_layout` is the commit entry now. It is a _provided_ method defaulting to the full `validate`, so a hand-written implementation cannot weaken itself by accident and existing ones keep compiling unchanged. The derive overrides it with the prefix decode, the capacity check, and the chained bounds, and emits it from the same per-field fragments as `validate` so a bound cannot be tightened in one walk and left stale in the other. The four semantic boundaries — the `Ref` and `Mut` constructors, `updated_len`, and `try_initialize`'s post-commit check — still run the full `validate`, as do the patch-input validations.\n\nMeasured against 0.4.1 on the same benchmark, the regression is recovered and three of four instructions are faster: −39 CU on `initialize`, −110 on `resize`, −104 on `write`, and +36 on `rename` — all inside the gate's noise band, which warns only at +250 CU and +5%.\n\nOne behavior refinement is deliberate and documented. A buffer that is layout-valid but semantically invalid — invalid UTF-8 in an untouched tail, say — is no longer rejected by `commit`. It is still rejected at the next read. On the generated update path the stronger invariant still holds by construction: `updated_len` runs the full `validate` over the same bytes the commit will see, because the staged edits are `(ptr, len)` intents that have not been written yet. `try_initialize` keeps its post-commit full `validate`, so initialization cannot persist such bytes either. The new `compact-commit-full-validation` feature restores the full walk at the commit entry for consumers with different CU budgets; it dispatches from the runtime crate rather than a `#[cfg]` in the generated body, because a `cfg` in an expansion resolves against the consumer's feature namespace, where the name is usually undefined and the feature would silently mean nothing.\n\nThe measurement, the rejected proof-token alternative, and the residual behavior change are recorded in the book's performance decision log.\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #39](https://github.com/pina-rs/pinapod/pull/39) · _Closed issues:_ [#38](https://github.com/pina-rs/pinapod/issues/38) · _Related issues:_ [#485](https://github.com/pina-rs/pinapod/issues/485)"
+    }
+  ],
+  "provider": {
+    "kind": "github",
+    "owner": "pina-rs",
+    "repo": "pinapod",
+    "host": null
+  }
+}
