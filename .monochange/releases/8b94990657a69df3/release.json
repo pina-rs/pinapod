@@ -1,0 +1,231 @@
+{
+  "schema_version": "0.6",
+  "kind": "monochange.releaseRecord",
+  "created_at": "2026-09-24T22:55:20Z",
+  "command": "release",
+  "version": "0.4.4",
+  "versions": {
+    "pinapod-workspace": "0.4.4"
+  },
+  "release_targets": [
+    {
+      "id": "pinapod-workspace",
+      "kind": "group",
+      "version": "0.4.4",
+      "version_format": "pinapod/v{{ version }}",
+      "tag": true,
+      "release": true,
+      "tag_name": "pinapod/v0.4.4",
+      "members": [
+        "pinapod",
+        "pinapod-derive"
+      ]
+    }
+  ],
+  "released_packages": [
+    "pinapod",
+    "pinapod-derive"
+  ],
+  "changed_files": [
+    "CHANGELOG.md",
+    "Cargo.lock",
+    "Cargo.toml",
+    "pinapod/Cargo.toml",
+    "pinapod/tests/fixed_reexport/Cargo.lock",
+    "pinapod/tests/renamed_dependency/Cargo.lock",
+    "pinapod-derive/Cargo.toml"
+  ],
+  "package_publications": [
+    {
+      "package": "pinapod",
+      "ecosystem": "cargo",
+      "registry": "crates_io",
+      "version": "0.4.4",
+      "mode": "builtin",
+      "trusted_publishing": {
+        "enabled": true,
+        "mode": "required",
+        "repository": "pina-rs/pinapod",
+        "workflow": "publish.yml",
+        "environment": "publisher"
+      }
+    },
+    {
+      "package": "pinapod-derive",
+      "ecosystem": "cargo",
+      "registry": "crates_io",
+      "version": "0.4.4",
+      "mode": "builtin",
+      "trusted_publishing": {
+        "enabled": true,
+        "mode": "required",
+        "repository": "pina-rs/pinapod",
+        "workflow": "publish.yml",
+        "environment": "publisher"
+      }
+    }
+  ],
+  "updated_changelogs": [
+    "CHANGELOG.md"
+  ],
+  "deleted_changesets": [
+    ".changeset/reexport-fixed-crate.md"
+  ],
+  "changesets": [
+    {
+      "path": ".changeset/reexport-fixed-crate.md",
+      "summary": "re-export the pinned `fixed` crate from the `fixed` feature",
+      "details": "The `fixed` feature now re-exports its dependency as `pinapod::fixed`, so a consumer names the mapped fixed-point types through PinaPod instead of declaring its own `fixed` requirement. `use pinapod::fixed::types::I16F16;` now compiles with `pinapod` as the only dependency, and the book's fixed-point section documents that form.\n\nThe re-export matters because the version is an exact pin. `fixed` is held at 1.30.0 since later releases require a newer compiler than PinaPod's Rust 1.89 baseline, and a schema field's `ZcField` mapping belongs to the types of whichever `fixed` release the program resolves. A consumer that declares its own `fixed` therefore owns a requirement it cannot get wrong safely: an incompatible spelling such as `fixed = \"1.31\"` fails Cargo's resolver outright, and a compatible one such as `fixed = \"1\"` compiles but obliges the consumer to keep tracking PinaPod's pin. Routing the import through the feature removes the question — `pinapod` supplies the `fixed` it maps, and a program declares `pinapod` and nothing else.\n\nA compile fixture at `pinapod/tests/fixed_reexport` depends on `pinapod` and nothing else and exercises the re-exported path in a derived schema across the 16-, 32-, and 128-bit storage widths. It is run by a test alongside the `renamed_dependency` fixture and fails to compile if the re-export disappears, so the guarantee is checked rather than documented only. The `changeset-policy` release flow refreshes that fixture's lock file with every version bump, matching the existing renamed-dependency entry.",
+      "targets": [
+        {
+          "id": "pinapod",
+          "kind": "package",
+          "bump": "minor",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "feat"
+        },
+        {
+          "id": "pinapod-derive",
+          "kind": "package",
+          "bump": "none",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "none",
+          "caused_by": [
+            "pinapod"
+          ]
+        }
+      ],
+      "context": {
+        "provider": "github",
+        "host": "github.com",
+        "capabilities": {
+          "commit_web_urls": true,
+          "actor_profiles": true,
+          "review_request_lookup": true,
+          "related_issues": true,
+          "issue_comments": true
+        },
+        "introduced": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "64178c787f911b8343f713f71330bb27685c4ca3",
+            "short_sha": "64178c7",
+            "url": "https://github.com/pina-rs/pinapod/commit/64178c787f911b8343f713f71330bb27685c4ca3",
+            "authored_at": "2026-09-24T22:28:27+01:00",
+            "committed_at": "2026-09-24T22:28:27+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#42",
+            "title": "feat(pod): re-export the pinned `fixed` crate from the `fixed` feature",
+            "url": "https://github.com/pina-rs/pinapod/pull/42",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "last_updated": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "64178c787f911b8343f713f71330bb27685c4ca3",
+            "short_sha": "64178c7",
+            "url": "https://github.com/pina-rs/pinapod/commit/64178c787f911b8343f713f71330bb27685c4ca3",
+            "authored_at": "2026-09-24T22:28:27+01:00",
+            "committed_at": "2026-09-24T22:28:27+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#42",
+            "title": "feat(pod): re-export the pinned `fixed` crate from the `fixed` feature",
+            "url": "https://github.com/pina-rs/pinapod/pull/42",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "related_issues": []
+      }
+    }
+  ],
+  "changelogs": [
+    {
+      "owner_id": "pinapod-workspace",
+      "owner_kind": "group",
+      "output": "default",
+      "stream": "default",
+      "path": "CHANGELOG.md",
+      "format": "keep_a_changelog",
+      "notes": {
+        "title": "[0.4.4](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.4) (2026-09-24)",
+        "summary": [
+          "Grouped release for `pinapod-workspace`."
+        ],
+        "sections": [
+          {
+            "title": "Features",
+            "collapsed": false,
+            "entries": [
+              "#### re-export the pinned `fixed` crate from the `fixed` feature\n\n_Packages:_ _pinapod_\n\nThe `fixed` feature now re-exports its dependency as `pinapod::fixed`, so a consumer names the mapped fixed-point types through PinaPod instead of declaring its own `fixed` requirement. `use pinapod::fixed::types::I16F16;` now compiles with `pinapod` as the only dependency, and the book's fixed-point section documents that form.\n\nThe re-export matters because the version is an exact pin. `fixed` is held at 1.30.0 since later releases require a newer compiler than PinaPod's Rust 1.89 baseline, and a schema field's `ZcField` mapping belongs to the types of whichever `fixed` release the program resolves. A consumer that declares its own `fixed` therefore owns a requirement it cannot get wrong safely: an incompatible spelling such as `fixed = \"1.31\"` fails Cargo's resolver outright, and a compatible one such as `fixed = \"1\"` compiles but obliges the consumer to keep tracking PinaPod's pin. Routing the import through the feature removes the question — `pinapod` supplies the `fixed` it maps, and a program declares `pinapod` and nothing else.\n\nA compile fixture at `pinapod/tests/fixed_reexport` depends on `pinapod` and nothing else and exercises the re-exported path in a derived schema across the 16-, 32-, and 128-bit storage widths. It is run by a test alongside the `renamed_dependency` fixture and fails to compile if the re-export disappears, so the guarantee is checked rather than documented only. The `changeset-policy` release flow refreshes that fixture's lock file with every version bump, matching the existing renamed-dependency entry.\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #42](https://github.com/pina-rs/pinapod/pull/42)"
+            ]
+          },
+          {
+            "title": "Notes",
+            "collapsed": false,
+            "entries": [
+              "#### re-export the pinned `fixed` crate from the `fixed` feature\n\n_Packages:_ _pinapod-derive_\n\nThe `fixed` feature now re-exports its dependency as `pinapod::fixed`, so a consumer names the mapped fixed-point types through PinaPod instead of declaring its own `fixed` requirement. `use pinapod::fixed::types::I16F16;` now compiles with `pinapod` as the only dependency, and the book's fixed-point section documents that form.\n\nThe re-export matters because the version is an exact pin. `fixed` is held at 1.30.0 since later releases require a newer compiler than PinaPod's Rust 1.89 baseline, and a schema field's `ZcField` mapping belongs to the types of whichever `fixed` release the program resolves. A consumer that declares its own `fixed` therefore owns a requirement it cannot get wrong safely: an incompatible spelling such as `fixed = \"1.31\"` fails Cargo's resolver outright, and a compatible one such as `fixed = \"1\"` compiles but obliges the consumer to keep tracking PinaPod's pin. Routing the import through the feature removes the question — `pinapod` supplies the `fixed` it maps, and a program declares `pinapod` and nothing else.\n\nA compile fixture at `pinapod/tests/fixed_reexport` depends on `pinapod` and nothing else and exercises the re-exported path in a derived schema across the 16-, 32-, and 128-bit storage widths. It is run by a test alongside the `renamed_dependency` fixture and fails to compile if the re-export disappears, so the guarantee is checked rather than documented only. The `changeset-policy` release flow refreshes that fixture's lock file with every version bump, matching the existing renamed-dependency entry.\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #42](https://github.com/pina-rs/pinapod/pull/42)"
+            ]
+          }
+        ]
+      },
+      "rendered": "## [0.4.4](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.4) (2026-09-24)\n\nGrouped release for `pinapod-workspace`.\n\n### Features\n\n#### re-export the pinned `fixed` crate from the `fixed` feature\n\n_Packages:_ _pinapod_\n\nThe `fixed` feature now re-exports its dependency as `pinapod::fixed`, so a consumer names the mapped fixed-point types through PinaPod instead of declaring its own `fixed` requirement. `use pinapod::fixed::types::I16F16;` now compiles with `pinapod` as the only dependency, and the book's fixed-point section documents that form.\n\nThe re-export matters because the version is an exact pin. `fixed` is held at 1.30.0 since later releases require a newer compiler than PinaPod's Rust 1.89 baseline, and a schema field's `ZcField` mapping belongs to the types of whichever `fixed` release the program resolves. A consumer that declares its own `fixed` therefore owns a requirement it cannot get wrong safely: an incompatible spelling such as `fixed = \"1.31\"` fails Cargo's resolver outright, and a compatible one such as `fixed = \"1\"` compiles but obliges the consumer to keep tracking PinaPod's pin. Routing the import through the feature removes the question — `pinapod` supplies the `fixed` it maps, and a program declares `pinapod` and nothing else.\n\nA compile fixture at `pinapod/tests/fixed_reexport` depends on `pinapod` and nothing else and exercises the re-exported path in a derived schema across the 16-, 32-, and 128-bit storage widths. It is run by a test alongside the `renamed_dependency` fixture and fails to compile if the re-export disappears, so the guarantee is checked rather than documented only. The `changeset-policy` release flow refreshes that fixture's lock file with every version bump, matching the existing renamed-dependency entry.\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #42](https://github.com/pina-rs/pinapod/pull/42)\n\n### Notes\n\n#### re-export the pinned `fixed` crate from the `fixed` feature\n\n_Packages:_ _pinapod-derive_\n\nThe `fixed` feature now re-exports its dependency as `pinapod::fixed`, so a consumer names the mapped fixed-point types through PinaPod instead of declaring its own `fixed` requirement. `use pinapod::fixed::types::I16F16;` now compiles with `pinapod` as the only dependency, and the book's fixed-point section documents that form.\n\nThe re-export matters because the version is an exact pin. `fixed` is held at 1.30.0 since later releases require a newer compiler than PinaPod's Rust 1.89 baseline, and a schema field's `ZcField` mapping belongs to the types of whichever `fixed` release the program resolves. A consumer that declares its own `fixed` therefore owns a requirement it cannot get wrong safely: an incompatible spelling such as `fixed = \"1.31\"` fails Cargo's resolver outright, and a compatible one such as `fixed = \"1\"` compiles but obliges the consumer to keep tracking PinaPod's pin. Routing the import through the feature removes the question — `pinapod` supplies the `fixed` it maps, and a program declares `pinapod` and nothing else.\n\nA compile fixture at `pinapod/tests/fixed_reexport` depends on `pinapod` and nothing else and exercises the re-exported path in a derived schema across the 16-, 32-, and 128-bit storage widths. It is run by a test alongside the `renamed_dependency` fixture and fails to compile if the re-export disappears, so the guarantee is checked rather than documented only. The `changeset-policy` release flow refreshes that fixture's lock file with every version bump, matching the existing renamed-dependency entry.\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #42](https://github.com/pina-rs/pinapod/pull/42)"
+    }
+  ],
+  "provider": {
+    "kind": "github",
+    "owner": "pina-rs",
+    "repo": "pinapod",
+    "host": null
+  }
+}
