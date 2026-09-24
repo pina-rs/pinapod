@@ -32,14 +32,14 @@ help: the trait `ZcField` is not implemented for `u16`
 4 | struct u16(bool);
   | ^^^^^^^^^^
   = help: the following other types implement trait `ZcField`:
-            Option<T>
-            PodBool
-            PodF32
-            PodF64
-            PodI128
-            PodI16
-            PodI32
-            PodI64
+            FixedI128<Frac>
+            FixedI16<Frac>
+            FixedI32<Frac>
+            FixedI64<Frac>
+            FixedI8<Frac>
+            FixedU128<Frac>
+            FixedU16<Frac>
+            FixedU32<Frac>
           and $N others
   = note: this error originates in the derive macro `PinaPod` (in Nightly builds, run with -Z macro-backtrace for more info)
 help: add `#![feature(trivial_bounds)]` to the crate attributes to enable
@@ -99,13 +99,13 @@ help: the trait `ZcField` is not implemented for `u16`
 4 | struct u16(bool);
   | ^^^^^^^^^^
   = help: the following other types implement trait `ZcField`:
-            Option<T>
-            PodBool
-            PodF32
-            PodF64
-            PodI128
-            PodI16
-            PodI32
-            PodI64
+            FixedI128<Frac>
+            FixedI16<Frac>
+            FixedI32<Frac>
+            FixedI64<Frac>
+            FixedI8<Frac>
+            FixedU128<Frac>
+            FixedU16<Frac>
+            FixedU32<Frac>
           and $N others
   = note: this error originates in the derive macro `PinaPod` (in Nightly builds, run with -Z macro-backtrace for more info)
