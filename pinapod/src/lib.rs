@@ -63,13 +63,13 @@
 //! # Features
 //!
 //! <!-- {=podFeatureTable|trim|linePrefix:"//! ":true} -->
-//! | Feature                | Adds                                                     |
-//! | ---------------------- | -------------------------------------------------------- |
-//! | `fixed`                | Mappings for signed and unsigned `fixed` 1.30.0 values   |
-//! | `floats`               | `PodF32`/`PodF64` and mappings for native `f32`/`f64`    |
-//! | `solana-address`       | A mapping for `solana_address::Address`                  |
-//! | `solana-program-error` | Conversion from `PinaPodError` to `ProgramError`         |
-//! | `wincode`              | Canonical `SchemaRead` and `SchemaWrite` implementations |<!-- {/podFeatureTable} -->
+//! | Feature                | Adds                                                                                    |
+//! | ---------------------- | --------------------------------------------------------------------------------------- |
+//! | `fixed`                | Mappings for signed and unsigned `fixed` 1.30.0 values, re-exported as `pinapod::fixed` |
+//! | `floats`               | `PodF32`/`PodF64` and mappings for native `f32`/`f64`                                   |
+//! | `solana-address`       | A mapping for `solana_address::Address`                                                 |
+//! | `solana-program-error` | Conversion from `PinaPodError` to `ProgramError`                                        |
+//! | `wincode`              | Canonical `SchemaRead` and `SchemaWrite` implementations                                |<!-- {/podFeatureTable} -->
 //!
 //! <!-- {=podFeatureDefaultsContract|trim|linePrefix:"//! ":true} -->
 //! No feature is enabled by default, so the core crate stays `no_std` and dependency-free.
@@ -143,6 +143,13 @@ pub mod pod;
 pub mod traits;
 
 pub use error::PinaPodError;
+// The workspace pins `fixed` to one exact version, and a schema field's
+// `ZcField` mapping belongs to whichever release the program resolves.
+// Re-exporting the dependency lets a consumer name the mapped types through
+// this path instead of restating a version requirement it would then have to
+// keep in step with the pin.
+#[cfg(feature = "fixed")]
+pub use fixed;
 pub use pinapod_derive::PinaPod;
 pub use pod::PodString;
 pub use pod::PodVec;
