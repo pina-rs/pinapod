@@ -1,0 +1,12 @@
+[package]
+name = "pinapod-fixed-reexport-test"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Standalone so the fixture resolves its own dependency graph: this crate must
+# depend on `pinapod` alone, with no `fixed` requirement of its own.
+[workspace]
+
+[dependencies]
+pinapod = { path = "../..", features = ["fixed"] }

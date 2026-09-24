@@ -6,13 +6,13 @@ Most schema code imports only `PinaPod`. The lower-level traits exist for generi
 
 <!-- {=podFeatureTable} -->
 
-| Feature                | Adds                                                     |
-| ---------------------- | -------------------------------------------------------- |
-| `fixed`                | Mappings for signed and unsigned `fixed` 1.30.0 values   |
-| `floats`               | `PodF32`/`PodF64` and mappings for native `f32`/`f64`    |
-| `solana-address`       | A mapping for `solana_address::Address`                  |
-| `solana-program-error` | Conversion from `PinaPodError` to `ProgramError`         |
-| `wincode`              | Canonical `SchemaRead` and `SchemaWrite` implementations |
+| Feature                | Adds                                                                                    |
+| ---------------------- | --------------------------------------------------------------------------------------- |
+| `fixed`                | Mappings for signed and unsigned `fixed` 1.30.0 values, re-exported as `pinapod::fixed` |
+| `floats`               | `PodF32`/`PodF64` and mappings for native `f32`/`f64`                                   |
+| `solana-address`       | A mapping for `solana_address::Address`                                                 |
+| `solana-program-error` | Conversion from `PinaPodError` to `ProgramError`                                        |
+| `wincode`              | Canonical `SchemaRead` and `SchemaWrite` implementations                                |
 
 <!-- {/podFeatureTable} -->
 
@@ -122,15 +122,16 @@ A direct compact derive exposes the same values as inherent `Type::MIN_SIZE`, `T
 
 Enable `fixed` to map every signed and unsigned `fixed` width to its integer pod. PinaPod pins `fixed` 1.30.0 because later versions require a newer compiler than PinaPod's Rust 1.89 baseline.
 
+The feature also re-exports that pinned crate as `pinapod::fixed`, so a program declares `pinapod` and nothing else. Two reasons to prefer the re-export: the version is an exact pin, so declaring the requirement yourself means keeping it in step with PinaPod's, and `pinapod::fixed` always names the release PinaPod's mappings were written against.
+
 ```toml
 [dependencies]
-fixed = { version = "=1.30.0", default-features = false }
 pinapod = { version = "0.2", features = ["fixed"] }
 ```
 
 ```rust
-use fixed::types::I16F16;
 use pinapod::PinaPod;
+use pinapod::fixed::types::I16F16;
 
 #[derive(PinaPod)]
 struct Price {
