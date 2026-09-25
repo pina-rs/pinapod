@@ -47,6 +47,7 @@ fuzz_target!(|data: &[u8]| {
 			Some(note) => assert!(note.len() <= 8),
 			None => {}
 		}
+
 		assert!(view.encoded_len() <= view.storage_len());
 		assert!(view.spare_capacity() == view.storage_len() - view.encoded_len());
 	}

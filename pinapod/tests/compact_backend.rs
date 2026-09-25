@@ -139,7 +139,6 @@ enum WidePrefixCompactEvent {
 }
 
 // --- Header tests ---
-
 #[test]
 fn compact_header_size() {
 	// authority(32) + PodU64(8) + PodBool(1) + bio_len(1, PFX=1) + tags_len(2,
@@ -288,6 +287,7 @@ fn compact_optional_dynamic_tails_validate_tags_and_payloads() {
 fn compact_string_vectors_are_fixed_stride_and_validate_each_string() {
 	let mut ada = pinapod::String::<8>::default();
 	ada.try_set("Ada").unwrap();
+
 	let mut grace = pinapod::String::<8>::default();
 	grace.try_set("Grace").unwrap();
 	let names = [ada, grace];
@@ -345,12 +345,14 @@ fn compact_tagged_union_stores_only_active_variant_payload() {
 	assert_eq!(<CompactEvent as pinapod::PinaPodCompact>::HEADER_SIZE, 1);
 
 	let label = [1u8, 2, b'o', b'k'];
+
 	match CompactEvent::read_prefix(&label).unwrap() {
 		CompactEventRef::Label(value) => assert_eq!(value, "ok"),
 		_ => panic!("expected label variant"),
 	}
 
 	let points = [2u8, 2, 0, 5, 0, 7, 0];
+
 	match CompactEvent::read_prefix(&points).unwrap() {
 		CompactEventRef::Points(values) => {
 			assert_eq!(values.len(), 2);
@@ -363,6 +365,7 @@ fn compact_tagged_union_stores_only_active_variant_payload() {
 	let mut fixed = vec![3u8; 1 + FixedEventPayload::SIZE];
 	fixed[1..9].copy_from_slice(&9u64.to_le_bytes());
 	fixed[9] = 1;
+
 	match CompactEvent::read_prefix(&fixed).unwrap() {
 		CompactEventRef::Fixed(value) => {
 			assert_eq!(value.amount.get(), 9);
@@ -478,6 +481,7 @@ fn compact_tagged_union_honors_wide_tags() {
 	);
 
 	assert_eq!(&buf[..5], &[44, 1, 2, b'h', b'i']);
+
 	match WideCompactEvent::read_prefix(&buf[..5]).unwrap() {
 		WideCompactEventRef::Label(value) => assert_eq!(value, "hi"),
 		WideCompactEventRef::Empty => panic!("expected label variant"),
@@ -509,6 +513,7 @@ fn compact_wide_tagged_union_patch_rejects_over_capacity_atomically() {
 
 	// A fitting patch still commits over the same bytes.
 	let new_len = WideCompactEvent::update(&mut buf, &WideCompactEventPatch::Label("ok")).unwrap();
+
 	match WideCompactEvent::read_prefix(&buf[..new_len]).unwrap() {
 		WideCompactEventRef::Label(value) => assert_eq!(value, "ok"),
 		WideCompactEventRef::Empty => panic!("expected label variant"),
@@ -536,7 +541,6 @@ fn compact_tagged_union_rejects_invalid_tags_and_payloads() {
 }
 
 // --- Ref tests ---
-
 #[test]
 fn compact_ref_inline_via_deref() {
 	let buf = vec![0u8; 100];
@@ -579,7 +583,6 @@ fn compact_ref_tags_with_data() {
 }
 
 // --- Validation tests ---
-
 #[test]
 fn compact_validate_overlength_bio() {
 	let mut buf = vec![0u8; 200];
@@ -643,7 +646,6 @@ fn compact_optional_tail_with_eight_byte_prefix_roundtrips() {
 }
 
 // --- Patch tests ---
-
 #[test]
 fn borrowed_compact_patch_uses_the_patch_trait() {
 	fn initialize_with_patch<P>(data: &mut [u8], patch: P) -> Result<usize, pinapod::PinaPodError>
@@ -754,7 +756,6 @@ fn compact_patch_rejects_an_invalid_buffer_before_unchecked_writing() {
 }
 
 // --- Commit-entry layout validation ---
-
 #[test]
 fn validate_layout_rejects_a_prefix_above_its_capacity() {
 	// `Profile`'s header is authority(32) + level(8) + active(1) + bio_len(1) +
@@ -882,6 +883,7 @@ fn compact_enum_validate_layout_rejects_bounds_it_must_keep() {
 	// count above the variant capacity is a layout failure.
 	let mut data = vec![0u8; 64];
 	data[0] = 1; // the `Values` variant tag
+
 	for (i, byte) in 5u64.to_le_bytes().iter().enumerate() {
 		data[1 + i] = *byte;
 	}

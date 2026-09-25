@@ -65,6 +65,7 @@ impl PartialEq for PodBool {
 		self.get() == other.get()
 	}
 }
+
 impl Eq for PodBool {}
 
 impl PartialEq<bool> for PodBool {
@@ -136,7 +137,6 @@ const _: () = assert!(core::mem::size_of::<PodBool>() == 1);
 // ---------------------------------------------------------------------------
 // Kani model-checking proof harnesses
 // ---------------------------------------------------------------------------
-
 #[cfg(all(kani, feature = "kani"))]
 mod kani_proofs {
 	use super::*;

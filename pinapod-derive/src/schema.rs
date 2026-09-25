@@ -87,6 +87,7 @@ impl Schema {
 				} else {
 					classify_field(&ty)
 				};
+
 				let (skip_accessor, skip_patch, pinapod_attrs) =
 					parse_pinapod_field_attrs(&f.attrs)?;
 				Ok(SchemaField {
@@ -106,6 +107,7 @@ impl Schema {
 		if is_compact {
 			let mut seen_tail = false;
 			let mut first_tail_name: Option<&syn::Ident> = None;
+
 			for f in &fields {
 				match &f.kind {
 					FieldKind::Tail(_) => {
@@ -220,6 +222,7 @@ pub(crate) fn parse_layout(attrs: &[syn::Attribute]) -> syn::Result<LayoutOption
 				}
 
 				options.is_compact = true;
+
 				return Ok(());
 			}
 
@@ -232,6 +235,7 @@ pub(crate) fn parse_layout(attrs: &[syn::Attribute]) -> syn::Result<LayoutOption
 				}
 
 				options.no_inherent = true;
+
 				return Ok(());
 			}
 
@@ -241,6 +245,7 @@ pub(crate) fn parse_layout(attrs: &[syn::Attribute]) -> syn::Result<LayoutOption
 				}
 
 				options.crate_path = Some(meta.value()?.parse()?);
+
 				return Ok(());
 			}
 

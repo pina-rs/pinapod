@@ -9,7 +9,6 @@ use pinapod::PinaPodCompact;
 // ============================================================
 // 1. Fixed mode token account
 // ============================================================
-
 #[allow(dead_code)]
 #[derive(PinaPod)]
 struct TokenAccount {
@@ -50,7 +49,6 @@ fn token_account_fixed() {
 // ============================================================
 // 2. Fixed mode with collections
 // ============================================================
-
 #[allow(dead_code)]
 #[derive(PinaPod)]
 struct PlayerState {
@@ -85,7 +83,6 @@ fn player_state_with_collections() {
 // ============================================================
 // 3. Nested composites
 // ============================================================
-
 #[allow(dead_code)]
 #[derive(PinaPod)]
 struct Settings {
@@ -129,7 +126,6 @@ fn nested_composites() {
 // ============================================================
 // 4. Compact mode profile
 // ============================================================
-
 #[allow(dead_code)]
 #[derive(PinaPod)]
 #[pinapod(compact)]
@@ -172,7 +168,6 @@ fn compact_profile_ergonomics() {
 // ============================================================
 // 5. Enum in struct
 // ============================================================
-
 #[derive(PinaPod, Debug, PartialEq)]
 #[repr(u8)]
 enum GameStatus {

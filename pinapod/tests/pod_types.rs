@@ -10,7 +10,6 @@ use pinapod::PinaPodError;
 use pinapod::pod::*;
 
 // ---- PodOption tests ----
-
 #[test]
 fn pod_option_none() {
 	let opt = PodOption::<u8>::none();
@@ -121,7 +120,6 @@ fn pod_option_debug() {
 }
 
 // ---- Numeric pod type smoke tests ----
-
 #[test]
 fn numeric_alignment() {
 	assert_eq!(core::mem::align_of::<PodU16>(), 1);
@@ -149,7 +147,6 @@ fn numeric_size() {
 }
 
 // ---- PodU64 roundtrip, explicit arithmetic, comparison ----
-
 #[test]
 fn pod_u64_roundtrip() {
 	let val = 123_456_789_u64;
@@ -197,7 +194,6 @@ fn pod_u64_is_zero() {
 }
 
 // ---- PodBool tests ----
-
 #[test]
 fn pod_bool_roundtrip() {
 	assert!(PodBool::from(true).get());
@@ -207,7 +203,6 @@ fn pod_bool_roundtrip() {
 }
 
 // ---- PodString basic operations ----
-
 #[test]
 fn pod_string_basic() {
 	let mut s = PodString::<32>::default();
@@ -282,7 +277,6 @@ fn zero_capacity_containers_accept_only_empty_values() {
 }
 
 // ---- PodVec basic operations ----
-
 #[test]
 fn pod_vec_basic() {
 	let mut v = PodVec::<u8, 10>::default();
@@ -300,9 +294,11 @@ fn pod_vec_iterates_by_shared_and_mutable_reference() {
 	values.try_set_from_slice(&[1, 2, 3]).unwrap();
 
 	assert_eq!((&values).into_iter().copied().sum::<u8>(), 6);
+
 	for value in &mut values {
 		*value += 1;
 	}
+
 	assert_eq!(values.as_slice(), &[2, 3, 4]);
 }
 
@@ -349,6 +345,7 @@ use core::hash::Hasher;
 
 // A minimal hasher for testing
 struct TestHasher(u64);
+
 impl Hasher for TestHasher {
 	fn finish(&self) -> u64 {
 		self.0

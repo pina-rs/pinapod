@@ -52,6 +52,7 @@ fn assigning_default_containers_keeps_every_account_byte_initialized() {
 
 	{
 		let view = FixedContainers::read_exact_mut(&mut bytes).unwrap();
+
 		view.text = PodString::default();
 		view.values = PodVec::<u16, 3>::default();
 		view.optional_text = PodOption::some(PodString::default());
@@ -67,6 +68,7 @@ fn assigning_default_containers_keeps_every_account_byte_initialized() {
 #[test]
 fn compact_copy_initializes_inactive_capacity_in_nested_containers() {
 	let mut bytes = [0; 7];
+
 	let mut text = PodString::<4>::default();
 	text.try_set("hi").unwrap();
 	let values = [text];
@@ -95,6 +97,7 @@ fn absent_options_do_not_expose_or_validate_inactive_payloads() {
 #[test]
 fn replacing_an_absent_payload_restores_a_valid_active_value() {
 	let mut bytes = [0, 255, 255, 255, 255, 255];
+
 	let mut text = PodString::<4>::default();
 	text.try_set("ok").unwrap();
 

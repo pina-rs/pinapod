@@ -8,7 +8,6 @@ use pinapod::PinaPod;
 use pinapod::pod::*;
 
 // --- Fixed roundtrip ---
-
 #[allow(dead_code)]
 #[derive(PinaPod)]
 struct RoundtripFixed {
@@ -22,7 +21,6 @@ struct RoundtripFixed {
 
 // Layout: PodU64(8) + PodBool(1) + u8(1) + PodString<16,1>(17) +
 // PodVec<u8,8,2>(10) + PodOption<PodU64>(9) = 46
-
 #[test]
 fn fixed_roundtrip_write_then_read() {
 	let mut buf = [0u8; 46];
@@ -69,7 +67,6 @@ fn fixed_byte_stability() {
 }
 
 // --- Compact roundtrip ---
-
 #[allow(dead_code)]
 #[derive(PinaPod)]
 #[pinapod(compact)]
@@ -81,7 +78,6 @@ struct RoundtripCompact {
 }
 
 // Header: authority(32) + PodU64(8) + bio_len(1) + tags_len(2) = 43
-
 #[test]
 fn compact_roundtrip_write_then_read() {
 	let mut buf = vec![0u8; RoundtripCompact::MAX_SIZE];

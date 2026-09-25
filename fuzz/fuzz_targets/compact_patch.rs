@@ -113,6 +113,7 @@ fn assert_roundtrip(data: &[u8], fields: &Fields) {
 	assert_eq!(view.revision, fields.revision);
 	assert_eq!(view.label(), fields.label);
 	assert_eq!(view.values(), fields.values.as_slice());
+
 	match (&fields.note, view.note()) {
 		(Some(expected), Some(actual)) => assert_eq!(actual, expected),
 		(None, None) => {}

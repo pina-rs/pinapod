@@ -73,7 +73,6 @@ pub trait ZcValidate: Copy {
 }
 
 // --- ZcValidate: trivially valid types (all bit patterns valid) ---
-
 impl ZcValidate for u8 {
 	#[inline(always)]
 	fn validate_ref(_: &Self) -> Result<(), PinaPodError> {
@@ -142,13 +141,13 @@ impl<T: ZcValidate, const N: usize> ZcValidate for [T; N] {
 }
 
 // --- ZcValidate: PodBool (byte must be 0 or 1) ---
-
 impl ZcValidate for PodBool {
 	#[inline(always)]
 	fn validate_ref(value: &Self) -> Result<(), PinaPodError> {
 		// SAFETY: PodBool is #[repr(transparent)] over [u8; 1], alignment 1.
 		// Dereferencing as *const u8 reads the single stored byte.
 		let byte = unsafe { *(value as *const PodBool as *const u8) };
+
 		if byte > 1 {
 			Err(PinaPodError::InvalidBool)
 		} else {
@@ -158,34 +157,37 @@ impl ZcValidate for PodBool {
 }
 
 // --- ZcValidate: PodString (len <= N, active bytes valid UTF-8) ---
-
 impl<const N: usize, const PFX: usize> ZcValidate for PodString<N, PFX> {
 	#[inline(always)]
 	fn validate_ref(value: &Self) -> Result<(), PinaPodError> {
 		let raw_len = value.try_decode_len()?;
+
 		if raw_len > N {
 			return Err(PinaPodError::InvalidLength);
 		}
+
 		// SAFETY: raw_len <= N, and data is a [MaybeUninit<u8>; N] array.
 		// The bytes come from account data (initialized memory), not
 		// MaybeUninit::uninit().
 		let bytes =
 			unsafe { core::slice::from_raw_parts(value.data.as_ptr() as *const u8, raw_len) };
+
 		if core::str::from_utf8(bytes).is_err() {
 			return Err(PinaPodError::InvalidUtf8);
 		}
+
 		Ok(())
 	}
 }
 
 // --- ZcValidate: PodVec (len <= N) ---
-
 impl<T: ZcElem, const N: usize, const PFX: usize> ZcValidate for PodVecRepr<T, N, PFX> {
 	#[inline(always)]
 	fn validate_ref(value: &Self) -> Result<(), PinaPodError> {
 		if value.try_decode_len()? > N {
 			return Err(PinaPodError::InvalidLength);
 		}
+
 		// Through `validate_slice` rather than a local loop, so a trivially
 		// valid element removes the loop here too.
 		T::validate_slice(value.as_slice())
@@ -193,7 +195,6 @@ impl<T: ZcElem, const N: usize, const PFX: usize> ZcValidate for PodVecRepr<T, N
 }
 
 // --- ZcValidate: PodOption (tag 0 or 1, inner valid if Some) ---
-
 impl<T: ZcElem, const PFX: usize> ZcValidate for PodOption<T, PFX> {
 	#[inline(always)]
 	fn validate_ref(value: &Self) -> Result<(), PinaPodError> {
@@ -299,7 +300,6 @@ unsafe impl<const N: usize, const PFX: usize> ZcElem for PodString<N, PFX> {}
 unsafe impl<T: ZcElem, const N: usize, const PFX: usize> ZcElem for PodVecRepr<T, N, PFX> {}
 
 // --- Feature-gated impls for external types ---
-
 #[cfg(feature = "solana-address")]
 mod solana_address_impls {
 	use super::*;
@@ -414,6 +414,7 @@ pub unsafe trait PinaPodFixed: PinaPod {
 			if data.len() < size {
 				return Err(PinaPodError::BufferTooSmall);
 			}
+
 			return Err(PinaPodError::InvalidLength);
 		}
 

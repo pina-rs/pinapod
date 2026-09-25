@@ -12,7 +12,6 @@ use pinapod::PinaPodError;
 use pinapod::pod::*;
 
 // --- ZcElem boundary: all pod types ---
-
 #[test]
 fn zc_elem_for_all_pod_types() {
 	fn assert_elem<T: pinapod::ZcElem>() {}
@@ -35,7 +34,6 @@ fn zc_elem_for_all_pod_types() {
 }
 
 // --- ZcElem for generated types ---
-
 #[derive(PinaPod, Debug, PartialEq)]
 #[repr(u8)]
 enum Color {
@@ -59,7 +57,6 @@ fn generated_types_are_zc_elem() {
 }
 
 // --- PodVec with ZcElem types ---
-
 #[test]
 fn pod_vec_of_enum_zc() {
 	let mut v = PodVec::<Color, 5>::default();
@@ -93,7 +90,6 @@ fn pod_vec_of_pod_option_zc_elem() {
 }
 
 // --- Error specificity ---
-
 #[test]
 fn error_invalid_bool() {
 	let buf = [2u8];
@@ -133,7 +129,6 @@ fn error_overflow_on_push() {
 }
 
 // --- Trait taxonomy: relationships hold ---
-
 #[test]
 fn zc_elem_implies_zc_validate() {
 	// ZcElem: Copy + ZcValidate, so any ZcElem can be validated

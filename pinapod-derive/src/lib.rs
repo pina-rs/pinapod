@@ -124,11 +124,14 @@ pub fn derive_pina_pod(input: TokenStream) -> TokenStream {
 
 fn derive(input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as DeriveInput);
+
 	let options = match schema::parse_layout(&input.attrs) {
 		Ok(options) => options,
 		Err(error) => return error.to_compile_error().into(),
 	};
+
 	let is_compact = options.is_compact;
+
 	let crate_path = match resolve_pinapod_path(options.crate_path.as_ref()) {
 		Ok(path) => path,
 		Err(error) => return error.to_compile_error().into(),
@@ -160,6 +163,7 @@ fn derive(input: TokenStream) -> TokenStream {
 				Ok(s) => s,
 				Err(e) => return e.into(),
 			};
+
 			if schema.is_compact {
 				compact::generate(&schema)
 			} else {
@@ -213,6 +217,7 @@ fn replace_pinapod_paths(input: TokenStream2, replacement: &TokenStream2) -> Tok
 				output.extend(replacement.clone());
 				preceding_colons = 0;
 			}
+
 			TokenTree::Group(group) => {
 				let mut replaced = Group::new(
 					group.delimiter(),
@@ -227,8 +232,10 @@ fn replace_pinapod_paths(input: TokenStream2, replacement: &TokenStream2) -> Tok
 					TokenTree::Punct(punct) if punct.as_char() == ':' => {
 						preceding_colons.saturating_add(1)
 					}
+
 					_ => 0,
 				};
+
 				output.extend([token]);
 			}
 		}

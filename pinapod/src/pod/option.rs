@@ -57,6 +57,7 @@ impl<T: ZcElem, const PFX: usize> PodOption<T, PFX> {
 	fn decode_tag(&self) -> u64 {
 		#[allow(clippy::let_unit_value)]
 		let _ = Self::_PFX_CHECK;
+
 		match PFX {
 			1 => u64::from(self.tag[0]),
 			2 => u64::from(u16::from_le_bytes([self.tag[0], self.tag[1]])),
@@ -88,6 +89,7 @@ impl<T: ZcElem, const PFX: usize> PodOption<T, PFX> {
 		#[allow(clippy::let_unit_value)]
 		let _ = Self::_PFX_CHECK;
 		let mut buf = [0u8; PFX];
+
 		match PFX {
 			1 => buf[0] = v as u8,
 			2 => {
@@ -104,6 +106,7 @@ impl<T: ZcElem, const PFX: usize> PodOption<T, PFX> {
 				buf.copy_from_slice(&bytes);
 			}
 		}
+
 		buf
 	}
 
@@ -261,6 +264,7 @@ impl<T: ZcElem, const PFX: usize> PodOption<T, PFX> {
 	pub fn unwrap_or(self, default: T) -> T {
 		match self.get() {
 			Some(v) => v,
+
 			None => default,
 		}
 	}
@@ -270,6 +274,7 @@ impl<T: ZcElem, const PFX: usize> PodOption<T, PFX> {
 	pub fn map_or<U>(&self, default: U, f: impl FnOnce(T) -> U) -> U {
 		match self.get() {
 			Some(v) => f(v),
+
 			None => default,
 		}
 	}
@@ -475,6 +480,7 @@ mod kani_proofs {
 		let bytes = unsafe {
 			core::slice::from_raw_parts(&pod as *const _ as *const u8, core::mem::size_of_val(&pod))
 		};
+
 		for &b in bytes {
 			assert!(b == 0, "none() must produce all-zero bytes");
 		}

@@ -66,6 +66,7 @@ impl core::fmt::Display for PinaPodError {
 impl core::error::Error for PinaPodError {}
 
 #[cfg(feature = "solana-program-error")]
+
 impl From<PinaPodError> for solana_program_error::ProgramError {
 	fn from(e: PinaPodError) -> Self {
 		match e {

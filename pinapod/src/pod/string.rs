@@ -85,6 +85,7 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
 	pub(crate) fn try_decode_len(&self) -> Result<usize, PinaPodError> {
 		#[allow(clippy::let_unit_value)]
 		let _ = Self::_CAP_CHECK;
+
 		match PFX {
 			1 => Ok(self.len[0] as usize),
 			2 => Ok(u16::from_le_bytes([self.len[0], self.len[1]]) as usize),
@@ -92,6 +93,7 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
 				let mut buf = [0u8; 8];
 				buf[..PFX].copy_from_slice(&self.len);
 				let raw = u64::from_le_bytes(buf);
+
 				if raw > usize::MAX as u64 {
 					Err(PinaPodError::InvalidLength)
 				} else {
@@ -114,6 +116,7 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
 	fn encode_len(&mut self, n: usize) {
 		#[allow(clippy::let_unit_value)]
 		let _ = Self::_CAP_CHECK;
+
 		match PFX {
 			1 => self.len[0] = n as u8,
 			2 => {
@@ -186,16 +189,20 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
 	/// The destination keeps its previous contents, so a rejected write is a no-op.<!-- {/podWriteCapacityContract} -->
 	pub fn try_set(&mut self, value: &str) -> Result<(), PinaPodError> {
 		let vlen = value.len();
+
 		if vlen > N {
 			return Err(PinaPodError::Overflow);
 		}
+
 		let old_len = self.len();
 		unsafe {
 			core::ptr::copy_nonoverlapping(value.as_ptr(), self.data.as_mut_ptr() as *mut u8, vlen);
 		}
+
 		if vlen < old_len {
 			self.zero_range(vlen..old_len);
 		}
+
 		self.encode_len(vlen);
 		Ok(())
 	}
@@ -212,9 +219,11 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
 		let cur = self.len();
 		let vlen = value.len();
 		let new_len = cur.checked_add(vlen).ok_or(PinaPodError::Overflow)?;
+
 		if new_len > N {
 			return Err(PinaPodError::Overflow);
 		}
+
 		unsafe {
 			core::ptr::copy_nonoverlapping(
 				value.as_ptr(),
@@ -252,11 +261,14 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
 		if new_len >= self.len() {
 			return;
 		}
+
 		let s = self.as_str();
 		let mut boundary = new_len;
+
 		while boundary > 0 && !s.is_char_boundary(boundary) {
 			boundary -= 1;
 		}
+
 		self.zero_range(boundary..self.len());
 		self.encode_len(boundary);
 	}
@@ -364,7 +376,6 @@ impl<const N: usize, const PFX: usize> TryFrom<&str> for PodString<N, PFX> {
 // ---------------------------------------------------------------------------
 // Kani model-checking proof harnesses
 // ---------------------------------------------------------------------------
-
 #[cfg(all(kani, feature = "kani"))]
 mod kani_proofs {
 	use super::*;
@@ -373,6 +384,7 @@ mod kani_proofs {
 	fn encode_decode_roundtrip_pfx1() {
 		let n: usize = kani::any();
 		kani::assume(n <= u8::MAX as usize);
+
 		let mut s = PodString::<255, 1>::default();
 		s.encode_len(n);
 		assert!(s.decode_len() == n);
@@ -382,6 +394,7 @@ mod kani_proofs {
 	fn encode_decode_roundtrip_pfx2() {
 		let n: usize = kani::any();
 		kani::assume(n <= u16::MAX as usize);
+
 		let mut s = PodString::<255, 2>::default();
 		s.encode_len(n);
 		assert!(s.decode_len() == n);
@@ -391,6 +404,7 @@ mod kani_proofs {
 	fn encode_decode_roundtrip_pfx4() {
 		let n: usize = kani::any();
 		kani::assume(n <= u32::MAX as usize);
+
 		let mut s = PodString::<255, 4>::default();
 		s.encode_len(n);
 		assert!(s.decode_len() == n);
@@ -422,6 +436,7 @@ mod kani_proofs {
 		let vlen: usize = kani::any();
 		kani::assume(vlen <= 8);
 		let content = [0x41u8; 8];
+
 		let mut s = PodString::<8>::default();
 		let result = s.try_set(unsafe { core::str::from_utf8_unchecked(&content[..vlen]) });
 		assert!(result.is_ok());
@@ -435,6 +450,7 @@ mod kani_proofs {
 		kani::assume(vlen > 4);
 		kani::assume(vlen <= 8);
 		let content = [0x41u8; 8];
+
 		let mut s = PodString::<4>::default();
 		assert!(
 			s.try_set(unsafe { core::str::from_utf8_unchecked(&content[..vlen]) })
@@ -452,6 +468,7 @@ mod kani_proofs {
 		kani::assume(a_len + b_len <= 8);
 
 		let buf = [0x41u8; 8];
+
 		let mut s = PodString::<8>::default();
 		assert!(
 			s.try_set(unsafe { core::str::from_utf8_unchecked(&buf[..a_len]) })
@@ -473,6 +490,7 @@ mod kani_proofs {
 		kani::assume(a_len + b_len > 4);
 
 		let buf = [0x41u8; 8];
+
 		let mut s = PodString::<4>::default();
 		assert!(
 			s.try_set(unsafe { core::str::from_utf8_unchecked(&buf[..a_len]) })

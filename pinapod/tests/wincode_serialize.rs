@@ -209,6 +209,7 @@ fn vec_of_vecs_zero_pads_both_capacities_and_roundtrips() {
 	inner.try_push(PodU16::from(0x1234)).unwrap();
 	inner.try_push(PodU16::from(0x5678)).unwrap();
 	inner.truncate(1);
+
 	let mut value = PodVec::<PodVec<PodU16, 2>, 2>::default();
 	value.try_push(inner).unwrap();
 	assert_eq!(wincode::serialized_size(&value).unwrap(), 14);
@@ -235,6 +236,7 @@ fn option_of_option_preserves_both_tags_and_roundtrips() {
 			Some(None) => PodOption::some(PodOption::none()),
 			None => PodOption::<PodOption<PodU16>>::none(),
 		};
+
 		assert_eq!(wincode::serialized_size(&value).unwrap(), 4);
 
 		let bytes = serialize::<4, _>(&value);
