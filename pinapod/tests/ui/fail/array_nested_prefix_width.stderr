@@ -1,0 +1,5 @@
+error: PodString length prefix must be the byte width 1, 2, 4, or 8
+ --> tests/ui/fail/array_nested_prefix_width.rs:9:33
+  |
+9 |     values: [pinapod::PodString<8, 3>; 4],
+  |                                    ^

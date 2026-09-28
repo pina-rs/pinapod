@@ -1,0 +1,5 @@
+error: PodVec length prefix must be the byte width 1, 2, 4, or 8
+ --> tests/ui/fail/option_array_nested_prefix_width.rs:6:41
+  |
+6 |     values: Option<[pinapod::PodVec<u8, 8, 0>; 2]>,
+  |                                            ^

@@ -16,39 +16,62 @@ use syn::Type;
 // Field classification
 // ---------------------------------------------------------------------------
 
+/// How one field is stored: inline in the representation, or as a compact
+/// tail after the fixed header.
 #[derive(Debug, Clone)]
 pub enum FieldKind {
+	/// Stored inside the fixed representation (or compact header) at a
+	/// compile-time offset.
 	Inline,
+	/// Stored after the fixed part with a length prefix; [`TailField`] carries
+	/// the presence and payload grammar.
 	Tail(TailField),
 }
 
+/// The storage grammar of one compact tail.
 #[derive(Debug, Clone)]
 pub enum TailField {
+	/// One prefix-plus-payload segment appended after the fixed part.
 	Segment {
+		/// Whether the segment is always present or gated by an option tag.
 		presence: TailPresence,
+		/// The segment's payload shape and its prefix width.
 		payload: TailPayload,
 	},
 }
 
+/// Whether a compact tail is always present or gated by an option tag byte.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TailPresence {
+	/// The tail always occupies its prefix and payload.
 	Always,
+	/// A one-byte tag precedes the tail; a zero tag omits it entirely.
 	OptionTag,
 }
 
+/// The payload shape of one compact tail segment.
 #[derive(Debug, Clone)]
 pub enum TailPayload {
+	/// A UTF-8 string with a capacity and prefix width.
 	String {
+		/// The capacity const expression.
 		max: Expr,
+		/// The prefix byte width, one of 1, 2, 4, or 8.
 		pfx: usize,
 	},
+	/// A fixed-stride vector with an element type, capacity, and prefix width.
 	Vec {
+		/// The element type, mapped through the same representation contract.
 		elem: Box<Type>,
+		/// The maximum element count as a const expression.
 		max: Expr,
+		/// The prefix byte width, one of 1, 2, 4, or 8.
 		pfx: usize,
 	},
 }
 
+/// Classify a fixed-layout field, recognizing dynamic containers by their
+/// declared spelling.
 pub fn classify_field(ty: &Type) -> FieldKind {
 	if let Some(tail) = classify_option_dynamic(ty) {
 		return FieldKind::Tail(tail);
@@ -115,7 +138,20 @@ fn recognized_dynamic_name(ty: &Type) -> Option<DynamicName> {
 	}
 }
 
+/// Reject a declared dynamic prefix that is not the byte width 1, 2, 4, or 8.
+///
+/// The check descends through generic arguments, arrays, and parenthesized
+/// groupings so a prefix declared anywhere in a field's type is held to the
+/// same width rule. Without the descent, the element-wise mapping would
+/// silently re-encode a nested declaration with a one-byte prefix, changing
+/// the wire layout the schema author declared.
 pub fn validate_dynamic_prefix_args(ty: &Type) -> Result<(), TokenStream> {
+	match ty {
+		Type::Array(array) => return validate_dynamic_prefix_args(&array.elem),
+		Type::Paren(paren) => return validate_dynamic_prefix_args(&paren.elem),
+		Type::Group(group) => return validate_dynamic_prefix_args(&group.elem),
+		_ => {}
+	}
 	let Some(segment) = last_path_segment(ty) else {
 		return Ok(());
 	};
@@ -387,12 +423,14 @@ fn classify_option_dynamic(ty: &Type) -> Option<TailField> {
 }
 
 impl TailField {
+	/// The tail's presence rule.
 	pub fn presence(&self) -> TailPresence {
 		match self {
 			Self::Segment { presence, .. } => *presence,
 		}
 	}
 
+	/// The tail's payload shape.
 	pub fn payload(&self) -> &TailPayload {
 		match self {
 			Self::Segment { payload, .. } => payload,
@@ -401,6 +439,7 @@ impl TailField {
 }
 
 impl TailPayload {
+	/// The tail's prefix byte width.
 	pub fn pfx(&self) -> usize {
 		match self {
 			Self::String { pfx, .. } | Self::Vec { pfx, .. } => *pfx,
@@ -412,6 +451,12 @@ impl TailPayload {
 // Type mapping: schema type → pod storage type
 // ---------------------------------------------------------------------------
 
+/// Map a declared schema type to its stored pod type.
+///
+/// The mapping is type-directed: dynamic spellings map to their pods, arrays
+/// recurse element-wise, and everything else delegates to the `ZcField`
+/// contract so an unqualified spelling can never be mistaken for the builtin
+/// primitive of the same name.
 pub fn map_to_pod_type(ty: &Type) -> TokenStream {
 	// 1. String / PodString
 	if let Some(ts) = try_map_string(ty) {
@@ -697,6 +742,35 @@ mod tests {
 	#[test]
 	fn dynamic_prefix_validation_accepts_supported_nested_widths() {
 		let ty: Type = syn::parse_quote!(Option<pinapod::PodVec<pinapod::PodString<32, 1>, 16, 8>>);
+
+		assert!(validate_dynamic_prefix_args(&ty).is_ok());
+	}
+
+	#[test]
+	fn dynamic_prefix_validation_descends_into_array_elements() {
+		// A declared prefix inside an array is rewritten by the element-wise
+		// mapping, so an unsupported width there must fail the derive rather
+		// than silently re-encode the element with a one-byte prefix.
+		let array: Type = syn::parse_quote!([pinapod::PodString<8, 3>; 4]);
+		let nested: Type = syn::parse_quote!(Option<[pinapod::PodVec<u8, 8, 0>; 2]>);
+		let parenthesized: Type = syn::parse_quote!([(pinapod::PodString<8, 3>); 4]);
+
+		for (ty, name) in [
+			(array, "PodString"),
+			(nested, "PodVec"),
+			(parenthesized, "PodString"),
+		] {
+			let error = validate_dynamic_prefix_args(&ty).unwrap_err().to_string();
+			assert!(
+				error.contains(&format!("{name} length prefix must be")),
+				"array-nested {name} prefix must be rejected: {error}"
+			);
+		}
+	}
+
+	#[test]
+	fn dynamic_prefix_validation_accepts_valid_array_element_widths() {
+		let ty: Type = syn::parse_quote!([pinapod::PodString<300, 2>; 4]);
 
 		assert!(validate_dynamic_prefix_args(&ty).is_ok());
 	}
