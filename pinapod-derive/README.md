@@ -4,7 +4,7 @@
 
 ```toml
 [dependencies]
-pinapod = "0.2"
+pinapod = "0.4"
 ```
 
 ```rust
@@ -74,12 +74,16 @@ The derive generates an alignment-one header, a validated borrowed reader, and a
 
 Compact fields support these forms:
 
+<!-- {=podCompactFieldGrammar} -->
+
 - `String<N>`
 - `Vec<T, N>` when `T` has a fixed representation
 - `Option<T>` when `T` has a fixed representation
 - `Option<String<N>>`
 - `Option<Vec<T, N>>` when `T` has a fixed representation
 - `Vec<String<M>, N>`
+
+<!-- {/podCompactFieldGrammar} -->
 
 A compact struct can contain more than one dynamic tail. Unsupported dynamic nesting produces a compile error that lists the accepted forms.
 
@@ -97,7 +101,11 @@ struct History {
 }
 ```
 
-The derive rejects `#[pinapod(prefix = u16)]`. Keeping the width in the type makes it part of the schema and preserves it through nested fields.
+<!-- {=podPrefixAttributeRejection} -->
+
+The derive rejects `#[pinapod(prefix = u16)]`. Prefix width belongs in the field type, so the declaration shows the exact wire representation and preserves the width through nested fields.
+
+<!-- {/podPrefixAttributeRejection} -->
 
 ## License
 

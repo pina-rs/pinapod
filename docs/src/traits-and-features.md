@@ -6,13 +6,15 @@ Most schema code imports only `PinaPod`. The lower-level traits exist for generi
 
 <!-- {=podFeatureTable} -->
 
-| Feature                | Adds                                                                                    |
-| ---------------------- | --------------------------------------------------------------------------------------- |
-| `fixed`                | Mappings for signed and unsigned `fixed` 1.30.0 values, re-exported as `pinapod::fixed` |
-| `floats`               | `PodF32`/`PodF64` and mappings for native `f32`/`f64`                                   |
-| `solana-address`       | A mapping for `solana_address::Address`                                                 |
-| `solana-program-error` | Conversion from `PinaPodError` to `ProgramError`                                        |
-| `wincode`              | Canonical `SchemaRead` and `SchemaWrite` implementations                                |
+| Feature                          | Adds                                                                                    |
+| -------------------------------- | --------------------------------------------------------------------------------------- |
+| `compact-commit-full-validation` | The full semantic walk at the compact commit entry, instead of the layout-only default  |
+| `fixed`                          | Mappings for signed and unsigned `fixed` 1.30.0 values, re-exported as `pinapod::fixed` |
+| `floats`                         | `PodF32`/`PodF64` and mappings for native `f32`/`f64`                                   |
+| `kani`                           | Kani proof harnesses, compiled by `cargo kani --features kani`                          |
+| `solana-address`                 | A mapping for `solana_address::Address`                                                 |
+| `solana-program-error`           | Conversion from `PinaPodError` to `ProgramError`                                        |
+| `wincode`                        | Canonical `SchemaRead` and `SchemaWrite` implementations                                |
 
 <!-- {/podFeatureTable} -->
 
@@ -126,7 +128,7 @@ The feature also re-exports that pinned crate as `pinapod::fixed`, so a program 
 
 ```toml
 [dependencies]
-pinapod = { version = "0.2", features = ["fixed"] }
+pinapod = { version = "0.4", features = ["fixed"] }
 ```
 
 ```rust
@@ -158,7 +160,7 @@ Enable `floats` to add `PodF32` and `PodF64` and map the native `f32` and `f64` 
 
 ```toml
 [dependencies]
-pinapod = { version = "0.3", features = ["floats"] }
+pinapod = { version = "0.4", features = ["floats"] }
 ```
 
 ```rust

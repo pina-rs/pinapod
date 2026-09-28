@@ -18,6 +18,8 @@ use crate::type_map::TailPresence;
 use crate::type_map::map_to_pod_type;
 use crate::type_map::option_inner_type;
 
+/// Generate the compact-layout header, tail views, patch type, and trait
+/// impls for one parsed struct schema.
 pub fn generate(schema: &Schema) -> TokenStream {
 	let struct_name = &schema.name;
 	let vis = &schema.vis;
@@ -537,6 +539,8 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
 				let len_name = format_ident!("__{}_len", fname);
 				let read_len = read_len_expr(&len_name, *pfx);
 				accessors.push(quote! {
+					/// The active string bytes of this tail field.
+					#[inline]
 					pub fn #fname(&self) -> &#data_lifetime str {
 						let __hdr = self.header();
 						let __byte_len = #read_len;
@@ -557,6 +561,8 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
 				let read_len = read_len_expr(&len_name, *pfx);
 				let mapped_elem = map_to_pod_type(elem);
 				accessors.push(quote! {
+					/// The active elements of this tail field.
+					#[inline]
 					pub fn #fname(&self) -> &#data_lifetime [#mapped_elem] {
 						let __hdr = self.header();
 						let __count = #read_len;
@@ -575,6 +581,9 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
 				let tag_name = format_ident!("__{}_tag", fname);
 				let read_len = read_self_data_len_expr(quote! { __offset }, *pfx);
 				accessors.push(quote! {
+					/// The active string bytes, or `None` when the option tag is
+					/// absent.
+					#[inline]
 					pub fn #fname(&self) -> Option<&#data_lifetime str> {
 						let __hdr = self.header();
 						if __hdr.#tag_name[0] == 0 {
@@ -599,6 +608,9 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
 				let read_len = read_self_data_len_expr(quote! { __offset }, *pfx);
 				let mapped_elem = map_to_pod_type(elem);
 				accessors.push(quote! {
+					/// The active elements, or `None` when the option tag is
+					/// absent.
+					#[inline]
 					pub fn #fname(&self) -> Option<&#data_lifetime [#mapped_elem]> {
 						let __hdr = self.header();
 						if __hdr.#tag_name[0] == 0 {
@@ -633,6 +645,7 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
 		}
 
 		impl #ref_impl_generics #ref_name #ref_ty_generics #where_clause_with_bounds {
+			/// Validate `data` and return a read-only view over it.
 			pub fn new(data: &#data_lifetime [u8]) -> Result<Self, pinapod::PinaPodError> {
 				<#struct_name #struct_ty_generics as pinapod::PinaPodCompact>::validate(data)?;
 				let mut value = Self {
@@ -644,25 +657,37 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
 				Ok(value)
 			}
 
+			#[inline(always)]
 			fn header(&self) -> &#data_lifetime #header_ty {
 				unsafe { &*(self.data.as_ptr() as *const #header_ty) }
 			}
 
+			#[inline]
 			fn current_encoded_len(&self) -> usize {
 				let __hdr = self.header();
 				#current_encoded_len
 				__offset
 			}
 
+			/// The encoded length of the active value, excluding spare capacity.
+			#[inline(always)]
 			pub fn encoded_len(&self) -> usize {
 				self.encoded_len
 			}
 
+			/// The physical allocation length the view was built from.
+			#[inline(always)]
 			pub fn storage_len(&self) -> usize {
 				self.data.len()
 			}
 
+			/// The bytes a compact update may still claim without a resize.
 			pub fn spare_capacity(&self) -> usize {
+				// Plain subtraction: `new` validated the same bytes, which
+				// proves the encoded length is at most the slice length. A
+				// constructor that skips validation would turn this into a
+				// panic, and there is none: the fields are private and `new`
+				// is the only constructor.
 				self.data.len() - self.encoded_len
 			}
 
@@ -692,6 +717,8 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
 			let method = format_ident!("{}_mut", name);
 			let pod_ty = map_to_pod_type(&field.ty);
 			quote! {
+				/// Mutably borrow this inline field's stored value.
+				#[inline]
 				pub fn #method(&mut self) -> &mut #pod_ty {
 					&mut self.header_mut().#name
 				}
@@ -735,7 +762,9 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
 				payload: TailPayload::String { max, pfx },
 			}) => {
 				setters.push(quote! {
-					pub fn #setter_name(&mut self, value: &#data_lifetime str) -> Result<(), pinapod::PinaPodError> {
+					/// Stage a replacement string for this tail field.
+					#[inline]
+                    pub fn #setter_name(&mut self, value: &#data_lifetime str) -> Result<(), pinapod::PinaPodError> {
 						if value.len() > #max || __pinapod_check_prefix(value.len(), #pfx).is_err() {
 							return Err(pinapod::PinaPodError::Overflow);
 						}
@@ -750,13 +779,15 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
 			}) => {
 				let mapped_elem = map_to_pod_type(elem);
 				setters.push(quote! {
+                    #[inline]
                     pub fn #setter_name(&mut self, value: &#data_lifetime [#mapped_elem]) -> Result<(), pinapod::PinaPodError> {
                         if value.len() > #max || __pinapod_check_prefix(value.len(), #pfx).is_err() {
                             return Err(pinapod::PinaPodError::Overflow);
                         }
-                        for __item in value {
-                            <#mapped_elem as pinapod::ZcValidate>::validate_ref(__item)?;
-                        }
+                        // Through `validate_slice` rather than a local loop, so a
+                        // trivially valid element removes the walk here exactly as
+                        // it does in the runtime's array and patch paths.
+                        <#mapped_elem as pinapod::ZcValidate>::validate_slice(value)?;
                         self.#edit_name = Some((
                             value.as_ptr() as *const u8,
                             value.len(),
@@ -770,7 +801,10 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
 				payload: TailPayload::String { max, pfx },
 			}) => {
 				setters.push(quote! {
-					pub fn #setter_name(&mut self, value: Option<&#data_lifetime str>) -> Result<(), pinapod::PinaPodError> {
+					/// Stage a present string or clear the option; `None` removes
+					/// the tail on commit.
+					#[inline]
+                    pub fn #setter_name(&mut self, value: Option<&#data_lifetime str>) -> Result<(), pinapod::PinaPodError> {
 						if let Some(value) = value {
 							if value.len() > #max || __pinapod_check_prefix(value.len(), #pfx).is_err() {
 								return Err(pinapod::PinaPodError::Overflow);
@@ -789,14 +823,16 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
 			}) => {
 				let mapped_elem = map_to_pod_type(elem);
 				setters.push(quote! {
+                    #[inline]
                     pub fn #setter_name(&mut self, value: Option<&#data_lifetime [#mapped_elem]>) -> Result<(), pinapod::PinaPodError> {
                         if let Some(value) = value {
                             if value.len() > #max || __pinapod_check_prefix(value.len(), #pfx).is_err() {
                                 return Err(pinapod::PinaPodError::Overflow);
                             }
-                            for __item in value {
-                                <#mapped_elem as pinapod::ZcValidate>::validate_ref(__item)?;
-                            }
+                            // Through `validate_slice` rather than a local loop, so a
+                            // trivially valid element removes the walk here exactly as
+                            // it does in the runtime's array and patch paths.
+                            <#mapped_elem as pinapod::ZcValidate>::validate_slice(value)?;
                             self.#edit_name = Some((
                                 value.as_ptr() as *const u8,
                                 value.len(),
@@ -941,6 +977,7 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
 		}
 
 		impl #mut_impl_generics #mut_name #mut_ty_generics #where_clause_with_bounds {
+			/// Validate `data` and return a staged writer over it.
 			pub fn new(data: &#data_lifetime mut [u8]) -> Result<Self, pinapod::PinaPodError> {
 				<#struct_name #struct_ty_generics as pinapod::PinaPodCompact>::validate(data)?;
 				let mut value = Self {
@@ -992,6 +1029,8 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
 				Ok(__total)
 			}
 
+			/// The allocation size the staged edits need, saturating instead of
+			/// reporting an error.
 			pub fn projected_size(&self) -> usize {
 				self.try_projected_size().unwrap_or(usize::MAX)
 			}
@@ -1372,6 +1411,7 @@ fn generate_patch(
 		}
 
 		impl #patch_impl_generics #patch_name #patch_ty_generics #patch_where_clause_with_bounds {
+			/// An empty patch; every field stays at its stored value.
 			pub fn new() -> Self {
 				Self {
 					#( #field_inits, )*
@@ -1387,6 +1427,8 @@ fn generate_patch(
 				Ok(())
 			}
 
+			/// The allocation size applying this patch would produce, without
+			/// changing `data`.
 			pub fn updated_len(&self, data: &[u8]) -> Result<usize, pinapod::PinaPodError> {
 				self.validate_inputs()?;
 				<#struct_name #ty_generics as pinapod::PinaPodCompact>::validate(data)?;
@@ -1413,6 +1455,7 @@ fn generate_patch(
 				Ok(initialized_len)
 			}
 
+			/// Apply the patch in place and return the new encoded length.
 			pub fn update(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
 				let expected_len = self.updated_len(data)?;
 				if expected_len > data.len() {
@@ -1475,6 +1518,9 @@ fn generate_patch(
 				Ok(encoded_len)
 			}
 
+			/// Write the patch into a fresh or zeroed allocation and return the
+			/// encoded length. A failure leaves the destination zeroed rather
+			/// than partially patched.
 			pub fn initialize(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
 				data.fill(0);
 				let result = self.try_initialize(data);
@@ -2234,6 +2280,16 @@ fn generic_marker_tokens(generics: &syn::Generics) -> (TokenStream, TokenStream)
 	)
 }
 
+/// Emits the decode of a header length prefix, widened to `usize` with `as`.
+///
+/// The `as usize` truncates on a 32-bit target for an eight-byte prefix, but
+/// every context this expression is spliced into runs only after `validate`
+/// accepted the same prefix, and `validate` decodes through
+/// `__pinapod_decode_prefix`, which rejects a stored length wider than `usize`
+/// with `usize::try_from` — matching the handwritten runtime's
+/// `try_decode_len`. A truncating replay therefore never sees an out-of-range
+/// value. Prefer keeping that coupling over adding a checked decode here: this
+/// expression also feeds non-`Result` read accessors.
 fn read_len_expr(len_name: &syn::Ident, pfx: usize) -> TokenStream {
 	match pfx {
 		1 => quote! { __hdr.#len_name[0] as usize },
@@ -2395,6 +2451,28 @@ fn tail_pfx(kind: &FieldKind) -> usize {
 	}
 }
 
+/// Emits statements that advance `__offset` from the header size to the start
+/// of tail `target_index`, reading each preceding tail's stored prefix.
+///
+/// The arithmetic is deliberately unchecked, and its license is the
+/// validate-before-use coupling stated once here: every context these
+/// statements are spliced into — read accessors, `current_encoded_len`, and
+/// the projected-size steps — only runs on bytes that a constructor
+/// (`Ref::new`, `Mut::new`, or a patch preflight) already passed through
+/// `validate`. `validate` proves, with the checked helpers and in the same
+/// field order, that every tail's end offset is at most `data.len()`, which
+/// Rust bounds by `isize::MAX`. Because every summand here is non-negative and
+/// the accessor's total equals the total `validate` proved in bounds, no
+/// intermediate sum can exceed that total, so replaying the walk on the same
+/// bytes cannot overflow — including the `pfx + payload` sums this walk
+/// associates differently from `validate`'s `offset + pfx` then `+ payload`.
+/// `Ref` and `Mut` keep their `data` and length fields private and are
+/// constructible only through those validating constructors, so no accessor
+/// can run ahead of validation.
+///
+/// Any edit that reorders validation, exposes a pre-validation constructor,
+/// or lets the two walks disagree about a tail's end must re-derive this
+/// argument; the checked forms in `validate` are the ones that prove it.
 fn compute_offset_tokens(
 	header_ty: &TokenStream,
 	tail_fields: &[&crate::schema::SchemaField],
@@ -2413,6 +2491,8 @@ fn compute_offset_tokens(
 				payload: TailPayload::String { .. },
 			}) => {
 				steps.push(quote! {
+					// Plain arithmetic: `validate` proved this length fits the
+					// slice with checked math, in the same operand order.
 					__offset += #read_len;
 				});
 			}
@@ -2424,6 +2504,9 @@ fn compute_offset_tokens(
 				let mapped_elem = map_to_pod_type(elem);
 				steps.push(quote! {
 					let #count_name = #read_len;
+					// Plain arithmetic: `validate` proved this count times the
+					// element size fits the slice with checked math, in the
+					// same operand order.
 					__offset += #count_name * core::mem::size_of::<#mapped_elem>();
 				});
 			}
@@ -2435,6 +2518,9 @@ fn compute_offset_tokens(
 				let read_len = read_self_data_len_expr(quote! { __offset }, *pfx);
 				steps.push(quote! {
 					if __hdr.#tag_name[0] != 0 {
+						// Plain arithmetic: `validate` proved this prefix and
+						// payload fit the slice with checked math, in the same
+						// operand order.
 						let __byte_len = #read_len;
 						__offset += #pfx + __byte_len;
 					}
@@ -2449,6 +2535,9 @@ fn compute_offset_tokens(
 				let read_len = read_self_data_len_expr(quote! { __offset }, *pfx);
 				steps.push(quote! {
 					if __hdr.#tag_name[0] != 0 {
+						// Plain arithmetic: `validate` proved this prefix and
+						// payload fit the slice with checked math, in the same
+						// operand order.
 						let __count = #read_len;
 						__offset += #pfx + __count * core::mem::size_of::<#mapped_elem>();
 					}

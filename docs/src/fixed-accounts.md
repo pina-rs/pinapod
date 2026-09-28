@@ -42,7 +42,13 @@ The derive creates `ProfileZc` and exposes `Profile::SIZE`. The generated size i
 
 ## Initialize once, then validate
 
-Use `initialize` for new bytes. The method zeros the complete destination before it calls your closure. It validates the finished representation once.
+Use `initialize` for new bytes.
+
+<!-- {=podInitializeZeroingContract} -->
+
+Initialization zeroes the complete destination before configuration and validates the finished representation once. If configuration or validation fails, it zeroes the destination again, so a rejected initialization leaves canonical zero bytes rather than a partial value.
+
+<!-- {/podInitializeZeroingContract} -->
 
 ```rust
 use pinapod::{PinaPodError, String};
@@ -61,7 +67,7 @@ Profile::initialize(&mut data, |profile| {
 # Ok::<(), PinaPodError>(())
 ```
 
-If the closure fails or the finished value is invalid, `initialize` zeros the destination again and returns the error. This behavior matters for enums such as `Status`, where zero is not a valid discriminant. A reader cannot configure such a field because the reader validates before returning.
+This zero-on-failure behavior matters for enums such as `Status`, where zero is not a valid discriminant. A reader cannot configure such a field because the reader validates before returning.
 
 ## Choose exact or prefix reads
 
