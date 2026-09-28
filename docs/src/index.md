@@ -2,11 +2,11 @@
 
 PinaPod maps validated Solana account and instruction bytes to alignment-one Rust representations. Fixed accounts reserve every bounded field at its maximum size. Compact accounts store only active tail data and can change allocation size.
 
-Version 0.2 is a breaking API release with a stable wire format. It renames the derive and traits to `PinaPod`, adds bounded containers to fixed accounts, and replaces direct compact-header mutation with checked updates.
+The current release line is 0.4. Version 0.2 was the breaking API release with a stable wire format: it renamed the derive and traits to `PinaPod`, added bounded containers to fixed accounts, and replaced direct compact-header mutation with checked updates.
 
-Start with [Choose an account layout](./account-layouts.md). If you already use PinaPod v0.1, follow [Migrate from v0.1 to v0.2](./migration-v0.2.md); v0.2 users follow [Migrate from v0.2 to v0.3](./migration-v0.3.md).
+Start with [Choose an account layout](./account-layouts.md). If you already use PinaPod v0.1, follow [Migrate from v0.1 to v0.2](./migration-v0.2.md); v0.2 users follow [Migrate from v0.2 to v0.3](./migration-v0.3.md); the 0.4 type tightening is covered in the release changelog.
 
-## What v0.2 guarantees
+## What PinaPod guarantees
 
 <!-- {=podAlignmentAndValidationContract} -->
 

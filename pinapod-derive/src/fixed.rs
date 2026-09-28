@@ -13,6 +13,8 @@ use syn::Type;
 
 use crate::schema::Schema;
 
+/// Generate the fixed-layout representation, accessors, and trait impls for
+/// one parsed struct schema.
 pub fn generate(schema: &Schema) -> TokenStream {
 	let struct_name = &schema.name;
 	let generics = &schema.generics;

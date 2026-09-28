@@ -51,6 +51,8 @@ Mutable account loaders must reject a non-writable account before they return a 
 
 Pina's resizable-account builder accepts the generated patch and manages the borrow and resize order:
 
+<!-- {=podPinaUpdateResizableAccount} -->
+
 ```rust
 UpdateResizableAccount {
 	account: self.journal,
@@ -64,7 +66,11 @@ UpdateResizableAccount {
 .invoke::<Journal>()?;
 ```
 
-The field is named `rent_account`, matching Pina's other reallocation builders. The builder performs these steps:
+The field is named `rent_account`, matching Pina's other reallocation builders.
+
+<!-- {/podPinaUpdateResizableAccount} -->
+
+The builder performs these steps:
 
 1. Borrow and validate the current account.
 2. Calculate the patched encoded length without changing bytes.

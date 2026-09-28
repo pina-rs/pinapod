@@ -8,7 +8,7 @@ PinaPod is the Pina-maintained fork of [ZeroPod](https://github.com/blueshift-gg
 
 ```toml
 [dependencies]
-pinapod = "0.2"
+pinapod = "0.4"
 ```
 
 PinaPod supports Rust 1.89 and newer. The MSRV follows the Rust versions supported by Solana's Agave releases; see the [supported toolchains page](https://pina-rs.github.io/pinapod/support.html) for the current alignment and policy. The runtime crate is `no_std`.
@@ -104,7 +104,11 @@ struct Archive {
 }
 ```
 
-Do not use `#[pinapod(prefix = u16)]`. Prefix width belongs in the field type, so the declaration shows the exact wire representation.
+<!-- {=podPrefixAttributeRejection} -->
+
+The derive rejects `#[pinapod(prefix = u16)]`. Prefix width belongs in the field type, so the declaration shows the exact wire representation and preserves the width through nested fields.
+
+<!-- {/podPrefixAttributeRejection} -->
 
 ## Pod types
 
@@ -135,13 +139,15 @@ Safe readers validate tags, lengths, UTF-8, enum discriminants, nested values, a
 
 <!-- {=podFeatureTable} -->
 
-| Feature                | Adds                                                                                    |
-| ---------------------- | --------------------------------------------------------------------------------------- |
-| `fixed`                | Mappings for signed and unsigned `fixed` 1.30.0 values, re-exported as `pinapod::fixed` |
-| `floats`               | `PodF32`/`PodF64` and mappings for native `f32`/`f64`                                   |
-| `solana-address`       | A mapping for `solana_address::Address`                                                 |
-| `solana-program-error` | Conversion from `PinaPodError` to `ProgramError`                                        |
-| `wincode`              | Canonical `SchemaRead` and `SchemaWrite` implementations                                |
+| Feature                          | Adds                                                                                    |
+| -------------------------------- | --------------------------------------------------------------------------------------- |
+| `compact-commit-full-validation` | The full semantic walk at the compact commit entry, instead of the layout-only default  |
+| `fixed`                          | Mappings for signed and unsigned `fixed` 1.30.0 values, re-exported as `pinapod::fixed` |
+| `floats`                         | `PodF32`/`PodF64` and mappings for native `f32`/`f64`                                   |
+| `kani`                           | Kani proof harnesses, compiled by `cargo kani --features kani`                          |
+| `solana-address`                 | A mapping for `solana_address::Address`                                                 |
+| `solana-program-error`           | Conversion from `PinaPodError` to `ProgramError`                                        |
+| `wincode`                        | Canonical `SchemaRead` and `SchemaWrite` implementations                                |
 
 <!-- {/podFeatureTable} -->
 

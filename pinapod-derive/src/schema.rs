@@ -8,27 +8,66 @@ use crate::type_map::classify_compact_field;
 use crate::type_map::classify_field;
 use crate::type_map::validate_dynamic_prefix_args;
 
+/// One `#[derive(PinaPod)]` struct input, parsed into the shape the layout
+/// generators consume.
+///
+/// Parsing is shared by the fixed and compact generators so both classify
+/// fields through one grammar; a declaration the grammar rejects fails here,
+/// before any code is emitted, which is what keeps every unsupported
+/// declaration a compile error rather than a silent fallback.
 pub struct Schema {
+	/// The derived type's identifier, reused to name the generated `Header`,
+	/// `Ref`, `Mut`, and `Patch` companions.
 	pub name: syn::Ident,
+	/// The derived type's visibility, applied to the generated re-exports so
+	/// the companions are exactly as public as the schema they belong to.
 	pub vis: syn::Visibility,
+	/// The derived type's generics, threaded through every generated impl so
+	/// generic schemas keep compiling without expansion tricks.
 	pub generics: syn::Generics,
+	/// The declared fields in declaration order; compact layout generation
+	/// depends on that order, because tails must be suffix-only.
 	pub fields: Vec<SchemaField>,
+	/// Whether `#[pinapod(compact)]` selected the compact layout.
 	pub is_compact: bool,
+	/// Whether `#[pinapod(no_inherent)]` suppressed the inherent helper
+	/// methods; frameworks re-export their own surface and use this to avoid
+	/// duplicating it.
 	pub no_inherent: bool,
 }
 
+/// The `#[pinapod(...)]` container attributes a derive or framework wrapper
+/// resolved ahead of parsing.
+///
+/// Splitting option resolution from parsing lets `pina` drive the same layout
+/// machinery for its own account types while overriding the crate path the
+/// generated code names.
 #[derive(Clone, Debug, Default)]
 pub struct LayoutOptions {
+	/// Whether the compact layout was selected.
 	pub is_compact: bool,
+	/// Whether inherent helper methods were suppressed.
 	pub no_inherent: bool,
+	/// The crate path generated code should name instead of `pinapod`, used
+	/// when a framework re-exports this crate under its own namespace.
 	pub crate_path: Option<syn::Path>,
 }
 
+/// One declared field with the classification its layout depends on.
 pub struct SchemaField {
+	/// The field's identifier; accessors, setters, and patch builders are
+	/// named after it.
 	pub name: syn::Ident,
+	/// The declared schema type, mapped to its pod through the `ZcField`
+	/// contract rather than by spelling.
 	pub ty: syn::Type,
+	/// Whether the field is stored inline in the representation or as a
+	/// compact tail; compact layout generation depends on this split.
 	pub kind: FieldKind,
+	/// The field's declared visibility, applied to its generated accessors.
 	pub vis: syn::Visibility,
+	/// Whether `#[pinapod(skip_accessor)]` suppressed this field's generated
+	/// accessors.
 	pub skip_accessor: bool,
 	/// Keep this field in storage and validation, but omit it from generated
 	/// compact patch APIs. Frameworks use this for owned metadata such as an
@@ -44,12 +83,18 @@ impl Schema {
 		dead_code,
 		reason = "unit tests exercise the convenience parser directly"
 	)]
+	/// Parse a derive input with options taken from its own attributes.
 	pub fn parse(input: &DeriveInput) -> Result<Schema, TokenStream> {
 		let options = parse_layout(&input.attrs).map_err(|error| error.to_compile_error())?;
 
 		Self::parse_with_options(input, &options)
 	}
 
+	/// Parse a derive input against externally resolved options.
+	///
+	/// Every field is prefix-validated and classified before the struct is
+	/// accepted, and compact mode enforces the suffix-only tail rule here, so
+	/// an unsupported declaration never reaches code generation.
 	pub fn parse_with_options(
 		input: &DeriveInput,
 		options: &LayoutOptions,
@@ -254,12 +299,15 @@ pub(crate) fn parse_layout(attrs: &[syn::Attribute]) -> syn::Result<LayoutOption
 }
 
 impl Schema {
+	/// The fields stored inline in the representation, in declaration order.
 	pub fn inline_fields(&self) -> impl Iterator<Item = &SchemaField> {
 		self.fields
 			.iter()
 			.filter(|f| matches!(f.kind, FieldKind::Inline))
 	}
 
+	/// The fields stored as compact tails, in declaration order; offsets are
+	/// computed in this order.
 	pub fn tail_fields(&self) -> impl Iterator<Item = &SchemaField> {
 		self.fields
 			.iter()

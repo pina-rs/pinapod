@@ -109,7 +109,13 @@ Counter::initialize(&mut data, |value| {
 # Ok::<(), pinapod::PinaPodError>(())
 ```
 
-`initialize` requires an exact-size slice. It zeros the destination, runs the closure, and validates the finished representation. If the closure or validation fails, the method zeros the destination again.
+`initialize` requires an exact-size slice.
+
+<!-- {=podInitializeZeroingContract} -->
+
+Initialization zeroes the complete destination before configuration and validates the finished representation once. If configuration or validation fails, it zeroes the destination again, so a rejected initialization leaves canonical zero bytes rather than a partial value.
+
+<!-- {/podInitializeZeroingContract} -->
 
 ## Add bounded containers to fixed accounts
 

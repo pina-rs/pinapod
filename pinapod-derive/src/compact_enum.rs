@@ -47,6 +47,8 @@ struct CompactVariant<'a> {
 	payload: VariantPayload,
 }
 
+/// Generate the compact-layout tag, payload views, patch type, and trait
+/// impls for one `#[repr(int)]` enum schema.
 pub fn generate(input: &DeriveInput) -> TokenStream {
 	let enum_name = &input.ident;
 	let vis = &input.vis;
@@ -220,6 +222,7 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
 			#( #tag_variants ),*
 		}
 
+		/// The fixed tag header every variant of this compact enum begins with.
 		#[repr(C)]
 		#[derive(Clone, Copy)]
 		pub struct #header_name {
@@ -235,6 +238,7 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
 		// SAFETY: the header is `#[repr(C)]` over one byte array.
 		unsafe impl pinapod::ZcElem for #header_name {}
 
+		/// A validated read-only view of one encoded variant and its payload.
 		pub enum #ref_name<'a> {
 			#( #ref_variants ),*
 		}
@@ -249,10 +253,10 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
 			const HEADER_SIZE: usize = #tag_size;
 
 			fn validate(data: &[u8]) -> Result<(), pinapod::PinaPodError> {
+				// `MIN_SIZE` is at least `HEADER_SIZE` (`enum_min_size` adds each
+				// variant's payload minimum to the tag size), so the storage
+				// check already rejects every buffer shorter than the tag.
 				Self::validate_storage_len(data.len())?;
-				if data.len() < #tag_size {
-					return Err(pinapod::PinaPodError::BufferTooSmall);
-				}
 				let __tag: #native_ty = #read_tag;
 				match __tag {
 					#( #validate_arms, )*
@@ -265,10 +269,9 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
 			// same per-variant fragment as `validate`, so the two walks cannot
 			// disagree about a bound.
 			fn validate_layout(data: &[u8]) -> Result<(), pinapod::PinaPodError> {
+				// Same storage check as `validate`; see the note there about
+				// why no separate tag-size guard is needed.
 				Self::validate_storage_len(data.len())?;
-				if data.len() < #tag_size {
-					return Err(pinapod::PinaPodError::BufferTooSmall);
-				}
 				let __tag: #native_ty = #read_tag;
 				match __tag {
 					#( #layout_arms, )*
@@ -278,6 +281,7 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
 		}
 
 		impl<'a> #ref_name<'a> {
+			/// Validate `data` and return the variant view it encodes.
 			pub fn new(data: &'a [u8]) -> Result<Self, pinapod::PinaPodError> {
 				<#enum_name as pinapod::PinaPodCompact>::validate(data)?;
 				let __tag: #native_ty = #read_tag;
@@ -387,7 +391,11 @@ fn enum_max_size(variants: &[CompactVariant<'_>], tag_size: usize) -> TokenStrea
 }
 
 fn enum_support() -> TokenStream {
+	// The same helper set `generate_support` emits for compact structs, inline
+	// hints included: these are one-line checked wrappers, and on SBF a
+	// not-inlined wrapper per prefix decode is measurable compute units.
 	quote! {
+		#[inline(always)]
 		fn __pinapod_checked_add(
 			left: usize,
 			right: usize,
@@ -395,6 +403,7 @@ fn enum_support() -> TokenStream {
 			left.checked_add(right).ok_or(pinapod::PinaPodError::Overflow)
 		}
 
+		#[inline(always)]
 		fn __pinapod_checked_mul(
 			left: usize,
 			right: usize,
@@ -402,6 +411,7 @@ fn enum_support() -> TokenStream {
 			left.checked_mul(right).ok_or(pinapod::PinaPodError::Overflow)
 		}
 
+		#[inline(always)]
 		fn __pinapod_prefix_max(width: usize) -> Option<usize> {
 			match width {
 				1 => Some(u8::MAX as usize),
@@ -412,6 +422,7 @@ fn enum_support() -> TokenStream {
 			}
 		}
 
+		#[inline(always)]
 		fn __pinapod_check_prefix(
 			value: usize,
 			width: usize,
@@ -422,6 +433,7 @@ fn enum_support() -> TokenStream {
 			}
 		}
 
+		#[inline(always)]
 		fn __pinapod_read_prefix(
 			data: &[u8],
 			offset: usize,
@@ -630,6 +642,11 @@ fn generate_patch_impl(
 	let read_tag = read_tag_expr(tag_size, quote! { data });
 
 	quote! {
+		/// One atomic, preflighted variant write for this compact enum.
+		///
+		/// The patch borrows the new variant's payload; applying it writes the
+		/// tag and payload wholesale, so no partially committed variant state
+		/// is ever observable.
 		pub enum #patch_name #declaration_generics {
 			#( #patch_variants ),*
 		}
@@ -655,11 +672,14 @@ fn generate_patch_impl(
 				}
 			}
 
+			/// The allocation size applying this patch would produce, without
+			/// changing `data`.
 			pub fn updated_len(&self, data: &[u8]) -> Result<usize, pinapod::PinaPodError> {
 				<#enum_name as pinapod::PinaPodCompact>::validate(data)?;
 				self.encoded_len()
 			}
 
+			/// Apply the patch in place and return the new encoded length.
 			pub fn update(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
 				<#enum_name as pinapod::PinaPodCompact>::validate(data)?;
 				let old_encoded_len = Self::current_encoded_len(data)?;
@@ -686,6 +706,9 @@ fn generate_patch_impl(
 				Ok(encoded_len)
 			}
 
+			/// Write the patch into a fresh or zeroed allocation and return the
+			/// encoded length. A failure leaves the destination zeroed rather
+			/// than partially patched.
 			pub fn initialize(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
 				data.fill(0);
 				let result = self.try_initialize(data);
@@ -713,16 +736,23 @@ fn generate_patch_impl(
 		}
 
 		impl #enum_name {
+			/// The tag header's byte size; payloads begin at this offset.
 			pub const HEADER_SIZE: usize = <Self as pinapod::PinaPodCompact>::HEADER_SIZE;
+			/// The smallest valid allocation across all variants.
 			pub const MIN_SIZE: usize = <Self as pinapod::PinaPodCompact>::MIN_SIZE;
+			/// The largest valid allocation across all variants.
 			pub const MAX_SIZE: usize = <Self as pinapod::PinaPodCompact>::MAX_SIZE;
+			/// The byte granularity allocation growth must follow.
 			pub const TAIL_ALIGNMENT: usize =
 				<Self as pinapod::PinaPodCompact>::TAIL_ALIGNMENT;
 
+			/// Validate `data` and return the variant view it encodes.
 			pub fn read_prefix(data: &[u8]) -> Result<#ref_name<'_>, pinapod::PinaPodError> {
 				#ref_name::new(data)
 			}
 
+			/// The allocation size applying `patch` would produce, without
+			/// changing `data`.
 			pub fn updated_len(
 				data: &[u8],
 				patch: &#patch_ty,
@@ -730,6 +760,7 @@ fn generate_patch_impl(
 				patch.updated_len(data)
 			}
 
+			/// Apply `patch` in place and return the new encoded length.
 			pub fn update(
 				data: &mut [u8],
 				patch: &#patch_ty,
@@ -737,6 +768,8 @@ fn generate_patch_impl(
 				patch.update(data)
 			}
 
+			/// Write `patch` into a fresh or zeroed allocation and return the
+			/// encoded length.
 			pub fn initialize(
 				data: &mut [u8],
 				patch: &#patch_ty,
@@ -867,14 +900,20 @@ fn payload_bounds_tokens(payload: &VariantPayload, tag_size: usize) -> TokenStre
 					.ok_or(pinapod::PinaPodError::BufferTooSmall)?;
 			}
 		}
-		// A fixed payload's bytes are interpreted by its own validator rather
-		// than relocated as a tail, so its bounds half is the whole check.
+		// A fixed payload occupies a compile-time-sized region after the tag,
+		// so its bounds half is a pure range check: the region must lie inside
+		// the allocation. The payload's own semantic validation is appended by
+		// `validate_payload_tokens` for the full walk only, exactly as the
+		// string and vector arms split theirs.
 		VariantPayload::Fixed { ty } => {
 			quote! {
+				let __payload_end = __pinapod_checked_add(
+					#tag_size,
+					core::mem::size_of::<<#ty as pinapod::PinaPodFixed>::Zc>(),
+				)?;
 				let __payload = data
-					.get(#tag_size..)
+					.get(#tag_size..__payload_end)
 					.ok_or(pinapod::PinaPodError::BufferTooSmall)?;
-				<#ty as pinapod::PinaPodFixed>::validate_prefix(__payload)?;
 			}
 		}
 	}
@@ -884,10 +923,22 @@ fn validate_payload_tokens(payload: &VariantPayload, tag_size: usize) -> TokenSt
 	let bounds = payload_bounds_tokens(payload, tag_size);
 	let proofs = payload_schema_proofs(payload);
 	match payload {
-		VariantPayload::Unit | VariantPayload::Fixed { .. } => {
+		VariantPayload::Unit => {
 			quote! {
 				#proofs
 				#bounds
+				Ok(())
+			}
+		}
+		// The bounds fragment proved the payload region lies inside the
+		// allocation; the full walk additionally interprets it, because every
+		// boundary that exposes or persists the value must reject a
+		// semantically invalid representation.
+		VariantPayload::Fixed { ty } => {
+			quote! {
+				#proofs
+				#bounds
+				<#ty as pinapod::PinaPodFixed>::validate_prefix(__payload)?;
 				Ok(())
 			}
 		}
@@ -1105,5 +1156,52 @@ mod tests {
 		let output = generate(&input).to_string();
 
 		assert!(output.contains("PodString length prefix must be"));
+	}
+
+	#[test]
+	fn fixed_payload_layout_walk_keeps_only_the_range_bound() {
+		// `validate_layout` is the commit-entry check, so a fixed payload's
+		// bounds half must be the pure range check: the region after the tag
+		// must lie inside the allocation, and nothing more. The payload's own
+		// semantic validation belongs to the boundaries that expose or persist
+		// the value. The risk this test exists for is drift: semantic work
+		// leaking into the layout walk restores element-proportional commit
+		// cost, while a missing range bound would let relocation compute an
+		// offset the buffer does not support.
+		let input: DeriveInput = syn::parse_quote! {
+			#[repr(u8)]
+			enum MixedEvent {
+				Empty = 0,
+				Label(pinapod::String<8>) = 1,
+				Point(FixedPayload) = 2,
+			}
+		};
+
+		let output = generate(&input).to_string();
+
+		let layout_start = output
+			.find("fn validate_layout")
+			.expect("the derive must emit a layout walk");
+		let layout_end = output[layout_start..]
+			.find("impl < 'a >")
+			.map_or(output.len(), |offset| layout_start + offset);
+		let layout = &output[layout_start..layout_end];
+
+		assert!(
+			layout.contains("BufferTooSmall"),
+			"the layout walk must keep the fixed payload's range bound"
+		);
+		assert!(
+			!layout.contains("validate_prefix"),
+			"the layout walk must not interpret a fixed payload semantically"
+		);
+		assert!(
+			!layout.contains("from_utf8"),
+			"the layout walk must not run the string payload's semantic check"
+		);
+
+		// The full walk keeps both halves for every payload kind.
+		assert!(output.contains("validate_prefix"));
+		assert!(output.contains("from_utf8"));
 	}
 }

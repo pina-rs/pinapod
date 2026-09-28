@@ -27,12 +27,16 @@ struct Journal {
 
 The derive accepts these compact field forms:
 
+<!-- {=podCompactFieldGrammar} -->
+
 - `String<N>`
 - `Vec<T, N>` when `T` has a fixed representation
 - `Option<T>` when `T` has a fixed representation
 - `Option<String<N>>`
 - `Option<Vec<T, N>>` when `T` has a fixed representation
 - `Vec<String<M>, N>`
+
+<!-- {/podCompactFieldGrammar} -->
 
 `PodString<N, PFX>` and `PodVec<T, N, PFX>` are the explicit-prefix versions of the string and vector forms. `PFX` must be the const value `1`, `2`, `4`, or `8`.
 
@@ -132,13 +136,19 @@ let patch = JournalPatch::new()
 let encoded_len = Journal::initialize(account_data, &patch)?;
 ```
 
-`initialize` zeros the supplied storage before applying the patch. It validates the final value once. If an input or final validation fails, the complete supplied slice remains zeroed.
+<!-- {=podInitializeZeroingContract} -->
+
+Initialization zeroes the complete destination before configuration and validates the finished representation once. If configuration or validation fails, it zeroes the destination again, so a rejected initialization leaves canonical zero bytes rather than a partial value.
+
+<!-- {/podInitializeZeroingContract} -->
 
 Set every field whose all-zero representation is not valid. A nonzero enum discriminant is the common example.
 
 ## Let Pina manage the resize lifecycle
 
 Pina wraps `updated_len`, reallocation, and `update` in one builder:
+
+<!-- {=podPinaUpdateResizableAccount} -->
 
 ```rust
 UpdateResizableAccount {
@@ -153,4 +163,8 @@ UpdateResizableAccount {
 .invoke::<Journal>()?;
 ```
 
-Use `rent_account`, matching Pina's other reallocation builders. The builder drops each account-data guard before it reallocates and parses the resized bytes again before applying the patch.
+The field is named `rent_account`, matching Pina's other reallocation builders.
+
+<!-- {/podPinaUpdateResizableAccount} -->
+
+The builder drops each account-data guard before it reallocates and parses the resized bytes again before applying the patch.
