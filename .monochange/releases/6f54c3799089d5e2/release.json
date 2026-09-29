@@ -1,0 +1,345 @@
+{
+  "schema_version": "0.8",
+  "kind": "monochange.releaseRecord",
+  "created_at": "2026-09-29T05:05:27Z",
+  "command": "release",
+  "version": "0.4.5",
+  "versions": {
+    "pinapod-workspace": "0.4.5"
+  },
+  "release_targets": [
+    {
+      "id": "pinapod-workspace",
+      "kind": "group",
+      "version": "0.4.5",
+      "version_format": "pinapod/v{{ version }}",
+      "tag": true,
+      "release": true,
+      "tag_name": "pinapod/v0.4.5",
+      "members": [
+        "pinapod",
+        "pinapod-derive"
+      ]
+    }
+  ],
+  "released_packages": [
+    "pinapod",
+    "pinapod-derive"
+  ],
+  "changed_files": [
+    "CHANGELOG.md",
+    "Cargo.lock",
+    "Cargo.toml",
+    "pinapod/Cargo.toml",
+    "pinapod/tests/fixed_reexport/Cargo.lock",
+    "pinapod/tests/renamed_dependency/Cargo.lock",
+    "pinapod-derive/Cargo.toml"
+  ],
+  "package_publications": [
+    {
+      "package": "pinapod",
+      "ecosystem": "cargo",
+      "registry": "crates_io",
+      "version": "0.4.5",
+      "mode": "builtin",
+      "trusted_publishing": {
+        "enabled": true,
+        "mode": "required",
+        "repository": "pina-rs/pinapod",
+        "workflow": "publish.yml",
+        "environment": "publisher"
+      }
+    },
+    {
+      "package": "pinapod-derive",
+      "ecosystem": "cargo",
+      "registry": "crates_io",
+      "version": "0.4.5",
+      "mode": "builtin",
+      "trusted_publishing": {
+        "enabled": true,
+        "mode": "required",
+        "repository": "pina-rs/pinapod",
+        "workflow": "publish.yml",
+        "environment": "publisher"
+      }
+    }
+  ],
+  "updated_changelogs": [
+    "CHANGELOG.md"
+  ],
+  "deleted_changesets": [
+    ".changeset/array-nested-prefix-fail-closed.md",
+    ".changeset/compact-codegen-trim-and-surface-docs.md"
+  ],
+  "changesets": [
+    {
+      "path": ".changeset/array-nested-prefix-fail-closed.md",
+      "summary": "reject array-nested prefixes instead of rewriting them",
+      "details": "A compact field declared as `[PodString<8, 3>; 4]` previously skipped the prefix-width check entirely: validation descended through generic arguments but never through array elements, so the element-wise mapping silently re-encoded the field as `PodString<8, 1>` and the account compiled with a different wire layout than the schema declared. The runtime still validated whatever bytes the rewritten type produced, so this was never memory-unsound, but a client generated from the declared schema would disagree with the on-chain bytes — exactly the divergence the crate's every-unsupported-declaration-is-a-compile-error contract exists to prevent.\n\nThe declaration is now a compile error with a focused diagnostic. The descent also covers `Option<[PodVec<u8, 8, 0>; 2]>` and parenthesized spellings, and a valid explicit width inside an array (such as `[PodString<300, 2>; 4]`) is still accepted. The regression is pinned from three directions: a derive unit test that fails on the pre-fix parser, two `ui/fail` fixtures with checked `.stderr` snapshots that compile successfully on the pre-fix parser, and a new adversarial suite (`tests/array_nested_prefixes.rs`) attacking the runtime side of the same surface — forged inner length prefixes, non-UTF-8 payloads, forged option tags over inactive array payloads, and short allocations, each rejected by the walk that owns it, with the layout-versus-semantics split asserted explicitly.",
+      "targets": [
+        {
+          "id": "pinapod",
+          "kind": "package",
+          "bump": "patch",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "fix"
+        },
+        {
+          "id": "pinapod-derive",
+          "kind": "package",
+          "bump": "patch",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "fix"
+        }
+      ],
+      "context": {
+        "provider": "github",
+        "host": "github.com",
+        "capabilities": {
+          "commit_web_urls": true,
+          "actor_profiles": true,
+          "review_request_lookup": true,
+          "related_issues": true,
+          "issue_comments": true
+        },
+        "introduced": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "d8ffda317229887c7dcd00df7d6bb4fb93f52887",
+            "short_sha": "d8ffda3",
+            "url": "https://github.com/pina-rs/pinapod/commit/d8ffda317229887c7dcd00df7d6bb4fb93f52887",
+            "authored_at": "2026-09-28T22:37:57+01:00",
+            "committed_at": "2026-09-28T22:37:57+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#45",
+            "title": "fix(derive): reject array-nested dynamic prefixes instead of rewriting them",
+            "url": "https://github.com/pina-rs/pinapod/pull/45",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "last_updated": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "d8ffda317229887c7dcd00df7d6bb4fb93f52887",
+            "short_sha": "d8ffda3",
+            "url": "https://github.com/pina-rs/pinapod/commit/d8ffda317229887c7dcd00df7d6bb4fb93f52887",
+            "authored_at": "2026-09-28T22:37:57+01:00",
+            "committed_at": "2026-09-28T22:37:57+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#45",
+            "title": "fix(derive): reject array-nested dynamic prefixes instead of rewriting them",
+            "url": "https://github.com/pina-rs/pinapod/pull/45",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "related_issues": []
+      }
+    },
+    {
+      "path": ".changeset/compact-codegen-trim-and-surface-docs.md",
+      "summary": "trim compact-enum checks and document the generated surface",
+      "details": "The compact-enum commit-entry check no longer interprets fixed payloads. `validate_layout` for a variant with a `Fixed` payload ran the nested `PinaPodFixed::validate_prefix` — a full semantic walk — although relocation consumes only the payload's compile-time range. The bounds half is now the pure range check, and the semantic half stays in `validate` and every value-exposing boundary, emitted from the same per-variant fragment so the two walks cannot drift. A derive contract test asserts the split, and the dead tag-size guard after `validate_storage_len` is gone with it: `MIN_SIZE` is always at least the tag size, so the storage check already rejected every short buffer and the branch was unreachable.\n\nGenerated code is cheaper and more consistent on SBF. The compact-enum support helpers carry `#[inline(always)]` like their compact-struct twins, the compact `Ref` accessors and `Mut` setters carry `#[inline]`, and staged vector setters validate through `ZcValidate::validate_slice` so a trivially valid element removes the walk exactly as it does in the runtime and patch paths. The offset walk and prefix decode are unchanged by design; their validate-before-use licenses are now stated once on `compute_offset_tokens` and `read_len_expr`, including the associativity argument and which edits would require re-deriving it.\n\nThe generated compact `Ref`, `Mut`, and `Patch` surface now emits rustdoc, matching the fixed generator's precedent, and the derive crate's internal public items explain why each exists. The mdt graph grows a `derive-contracts` template: the compact field grammar, the initialize-zeroing contract, the Pina `UpdateResizableAccount` snippet, and the prefix-attribute rejection are each defined once and consumed wherever they were previously hand-copied, including the derive README. The feature table now lists `compact-commit-full-validation` and `kani`, install snippets say `pinapod = \"0.4\"`, and the benchmark page names Criterion 0.8.2 and carries a current measured comparison, matching the lockfile.",
+      "targets": [
+        {
+          "id": "pinapod",
+          "kind": "package",
+          "bump": "patch",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "fix"
+        },
+        {
+          "id": "pinapod-derive",
+          "kind": "package",
+          "bump": "patch",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "fix"
+        }
+      ],
+      "context": {
+        "provider": "github",
+        "host": "github.com",
+        "capabilities": {
+          "commit_web_urls": true,
+          "actor_profiles": true,
+          "review_request_lookup": true,
+          "related_issues": true,
+          "issue_comments": true
+        },
+        "introduced": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "bb3550e34a8ade8883ff9497af2e3f131925be5f",
+            "short_sha": "bb3550e",
+            "url": "https://github.com/pina-rs/pinapod/commit/bb3550e34a8ade8883ff9497af2e3f131925be5f",
+            "authored_at": "2026-09-28T23:04:45+01:00",
+            "committed_at": "2026-09-28T23:04:45+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#46",
+            "title": "perf(derive): trim compact-enum validation cost and document the generated surface",
+            "url": "https://github.com/pina-rs/pinapod/pull/46",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "last_updated": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "bb3550e34a8ade8883ff9497af2e3f131925be5f",
+            "short_sha": "bb3550e",
+            "url": "https://github.com/pina-rs/pinapod/commit/bb3550e34a8ade8883ff9497af2e3f131925be5f",
+            "authored_at": "2026-09-28T23:04:45+01:00",
+            "committed_at": "2026-09-28T23:04:45+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#46",
+            "title": "perf(derive): trim compact-enum validation cost and document the generated surface",
+            "url": "https://github.com/pina-rs/pinapod/pull/46",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "related_issues": [
+          {
+            "provider": "github",
+            "host": "github.com",
+            "id": "#45",
+            "title": null,
+            "url": "https://github.com/pina-rs/pinapod/issues/45",
+            "relationship": "referenced_by_review_request"
+          }
+        ]
+      }
+    }
+  ],
+  "changelogs": [
+    {
+      "owner_id": "pinapod-workspace",
+      "owner_kind": "group",
+      "output": "default",
+      "stream": "default",
+      "path": "CHANGELOG.md",
+      "format": "keep_a_changelog",
+      "notes": {
+        "title": "[0.4.5](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.5) (2026-09-29)",
+        "summary": [
+          "Grouped release for `pinapod-workspace`."
+        ],
+        "sections": [
+          {
+            "title": "Fixes",
+            "collapsed": false,
+            "entries": [
+              "#### reject array-nested prefixes instead of rewriting them\n\n_Packages:_ 🟢 _pinapod_, 🟢 _pinapod-derive_\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #45](https://github.com/pina-rs/pinapod/pull/45)\n\nA compact field declared as `[PodString<8, 3>; 4]` previously skipped the prefix-width check entirely: validation descended through generic arguments but never through array elements, so the element-wise mapping silently re-encoded the field as `PodString<8, 1>` and the account compiled with a different wire layout than the schema declared. The runtime still validated whatever bytes the rewritten type produced, so this was never memory-unsound, but a client generated from the declared schema would disagree with the on-chain bytes — exactly the divergence the crate's every-unsupported-declaration-is-a-compile-error contract exists to prevent.\n\nThe declaration is now a compile error with a focused diagnostic. The descent also covers `Option<[PodVec<u8, 8, 0>; 2]>` and parenthesized spellings, and a valid explicit width inside an array (such as `[PodString<300, 2>; 4]`) is still accepted. The regression is pinned from three directions: a derive unit test that fails on the pre-fix parser, two `ui/fail` fixtures with checked `.stderr` snapshots that compile successfully on the pre-fix parser, and a new adversarial suite (`tests/array_nested_prefixes.rs`) attacking the runtime side of the same surface — forged inner length prefixes, non-UTF-8 payloads, forged option tags over inactive array payloads, and short allocations, each rejected by the walk that owns it, with the layout-versus-semantics split asserted explicitly.",
+              "#### trim compact-enum checks and document the generated surface\n\n_Packages:_ 🟢 _pinapod_, 🟢 _pinapod-derive_\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #46](https://github.com/pina-rs/pinapod/pull/46) · _Related issues:_ [#45](https://github.com/pina-rs/pinapod/issues/45)\n\nThe compact-enum commit-entry check no longer interprets fixed payloads. `validate_layout` for a variant with a `Fixed` payload ran the nested `PinaPodFixed::validate_prefix` — a full semantic walk — although relocation consumes only the payload's compile-time range. The bounds half is now the pure range check, and the semantic half stays in `validate` and every value-exposing boundary, emitted from the same per-variant fragment so the two walks cannot drift. A derive contract test asserts the split, and the dead tag-size guard after `validate_storage_len` is gone with it: `MIN_SIZE` is always at least the tag size, so the storage check already rejected every short buffer and the branch was unreachable.\n\nGenerated code is cheaper and more consistent on SBF. The compact-enum support helpers carry `#[inline(always)]` like their compact-struct twins, the compact `Ref` accessors and `Mut` setters carry `#[inline]`, and staged vector setters validate through `ZcValidate::validate_slice` so a trivially valid element removes the walk exactly as it does in the runtime and patch paths. The offset walk and prefix decode are unchanged by design; their validate-before-use licenses are now stated once on `compute_offset_tokens` and `read_len_expr`, including the associativity argument and which edits would require re-deriving it.\n\nThe generated compact `Ref`, `Mut`, and `Patch` surface now emits rustdoc, matching the fixed generator's precedent, and the derive crate's internal public items explain why each exists. The mdt graph grows a `derive-contracts` template: the compact field grammar, the initialize-zeroing contract, the Pina `UpdateResizableAccount` snippet, and the prefix-attribute rejection are each defined once and consumed wherever they were previously hand-copied, including the derive README. The feature table now lists `compact-commit-full-validation` and `kani`, install snippets say `pinapod = \"0.4\"`, and the benchmark page names Criterion 0.8.2 and carries a current measured comparison, matching the lockfile."
+            ]
+          }
+        ]
+      },
+      "rendered": "## [0.4.5](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.5) (2026-09-29)\n\nGrouped release for `pinapod-workspace`.\n\n### Fixes\n\n#### reject array-nested prefixes instead of rewriting them\n\n_Packages:_ 🟢 _pinapod_, 🟢 _pinapod-derive_\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #45](https://github.com/pina-rs/pinapod/pull/45)\n\nA compact field declared as `[PodString<8, 3>; 4]` previously skipped the prefix-width check entirely: validation descended through generic arguments but never through array elements, so the element-wise mapping silently re-encoded the field as `PodString<8, 1>` and the account compiled with a different wire layout than the schema declared. The runtime still validated whatever bytes the rewritten type produced, so this was never memory-unsound, but a client generated from the declared schema would disagree with the on-chain bytes — exactly the divergence the crate's every-unsupported-declaration-is-a-compile-error contract exists to prevent.\n\nThe declaration is now a compile error with a focused diagnostic. The descent also covers `Option<[PodVec<u8, 8, 0>; 2]>` and parenthesized spellings, and a valid explicit width inside an array (such as `[PodString<300, 2>; 4]`) is still accepted. The regression is pinned from three directions: a derive unit test that fails on the pre-fix parser, two `ui/fail` fixtures with checked `.stderr` snapshots that compile successfully on the pre-fix parser, and a new adversarial suite (`tests/array_nested_prefixes.rs`) attacking the runtime side of the same surface — forged inner length prefixes, non-UTF-8 payloads, forged option tags over inactive array payloads, and short allocations, each rejected by the walk that owns it, with the layout-versus-semantics split asserted explicitly.\n\n#### trim compact-enum checks and document the generated surface\n\n_Packages:_ 🟢 _pinapod_, 🟢 _pinapod-derive_\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #46](https://github.com/pina-rs/pinapod/pull/46) · _Related issues:_ [#45](https://github.com/pina-rs/pinapod/issues/45)\n\nThe compact-enum commit-entry check no longer interprets fixed payloads. `validate_layout` for a variant with a `Fixed` payload ran the nested `PinaPodFixed::validate_prefix` — a full semantic walk — although relocation consumes only the payload's compile-time range. The bounds half is now the pure range check, and the semantic half stays in `validate` and every value-exposing boundary, emitted from the same per-variant fragment so the two walks cannot drift. A derive contract test asserts the split, and the dead tag-size guard after `validate_storage_len` is gone with it: `MIN_SIZE` is always at least the tag size, so the storage check already rejected every short buffer and the branch was unreachable.\n\nGenerated code is cheaper and more consistent on SBF. The compact-enum support helpers carry `#[inline(always)]` like their compact-struct twins, the compact `Ref` accessors and `Mut` setters carry `#[inline]`, and staged vector setters validate through `ZcValidate::validate_slice` so a trivially valid element removes the walk exactly as it does in the runtime and patch paths. The offset walk and prefix decode are unchanged by design; their validate-before-use licenses are now stated once on `compute_offset_tokens` and `read_len_expr`, including the associativity argument and which edits would require re-deriving it.\n\nThe generated compact `Ref`, `Mut`, and `Patch` surface now emits rustdoc, matching the fixed generator's precedent, and the derive crate's internal public items explain why each exists. The mdt graph grows a `derive-contracts` template: the compact field grammar, the initialize-zeroing contract, the Pina `UpdateResizableAccount` snippet, and the prefix-attribute rejection are each defined once and consumed wherever they were previously hand-copied, including the derive README. The feature table now lists `compact-commit-full-validation` and `kani`, install snippets say `pinapod = \"0.4\"`, and the benchmark page names Criterion 0.8.2 and carries a current measured comparison, matching the lockfile."
+    }
+  ],
+  "provider": {
+    "kind": "github",
+    "owner": "pina-rs",
+    "repo": "pinapod",
+    "host": null
+  }
+}
