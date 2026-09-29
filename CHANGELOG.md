@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.5](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.5) (2026-09-29)
+
+Grouped release for `pinapod-workspace`.
+
+### Fixes
+
+#### reject array-nested prefixes instead of rewriting them
+
+_Packages:_ 🟢 _pinapod_, 🟢 _pinapod-derive_
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #45](https://github.com/pina-rs/pinapod/pull/45)
+
+A compact field declared as `[PodString<8, 3>; 4]` previously skipped the prefix-width check entirely: validation descended through generic arguments but never through array elements, so the element-wise mapping silently re-encoded the field as `PodString<8, 1>` and the account compiled with a different wire layout than the schema declared. The runtime still validated whatever bytes the rewritten type produced, so this was never memory-unsound, but a client generated from the declared schema would disagree with the on-chain bytes — exactly the divergence the crate's every-unsupported-declaration-is-a-compile-error contract exists to prevent.
+
+The declaration is now a compile error with a focused diagnostic. The descent also covers `Option<[PodVec<u8, 8, 0>; 2]>` and parenthesized spellings, and a valid explicit width inside an array (such as `[PodString<300, 2>; 4]`) is still accepted. The regression is pinned from three directions: a derive unit test that fails on the pre-fix parser, two `ui/fail` fixtures with checked `.stderr` snapshots that compile successfully on the pre-fix parser, and a new adversarial suite (`tests/array_nested_prefixes.rs`) attacking the runtime side of the same surface — forged inner length prefixes, non-UTF-8 payloads, forged option tags over inactive array payloads, and short allocations, each rejected by the walk that owns it, with the layout-versus-semantics split asserted explicitly.
+
+#### trim compact-enum checks and document the generated surface
+
+_Packages:_ 🟢 _pinapod_, 🟢 _pinapod-derive_
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #46](https://github.com/pina-rs/pinapod/pull/46) · _Related issues:_ [#45](https://github.com/pina-rs/pinapod/issues/45)
+
+The compact-enum commit-entry check no longer interprets fixed payloads. `validate_layout` for a variant with a `Fixed` payload ran the nested `PinaPodFixed::validate_prefix` — a full semantic walk — although relocation consumes only the payload's compile-time range. The bounds half is now the pure range check, and the semantic half stays in `validate` and every value-exposing boundary, emitted from the same per-variant fragment so the two walks cannot drift. A derive contract test asserts the split, and the dead tag-size guard after `validate_storage_len` is gone with it: `MIN_SIZE` is always at least the tag size, so the storage check already rejected every short buffer and the branch was unreachable.
+
+Generated code is cheaper and more consistent on SBF. The compact-enum support helpers carry `#[inline(always)]` like their compact-struct twins, the compact `Ref` accessors and `Mut` setters carry `#[inline]`, and staged vector setters validate through `ZcValidate::validate_slice` so a trivially valid element removes the walk exactly as it does in the runtime and patch paths. The offset walk and prefix decode are unchanged by design; their validate-before-use licenses are now stated once on `compute_offset_tokens` and `read_len_expr`, including the associativity argument and which edits would require re-deriving it.
+
+The generated compact `Ref`, `Mut`, and `Patch` surface now emits rustdoc, matching the fixed generator's precedent, and the derive crate's internal public items explain why each exists. The mdt graph grows a `derive-contracts` template: the compact field grammar, the initialize-zeroing contract, the Pina `UpdateResizableAccount` snippet, and the prefix-attribute rejection are each defined once and consumed wherever they were previously hand-copied, including the derive README. The feature table now lists `compact-commit-full-validation` and `kani`, install snippets say `pinapod = "0.4"`, and the benchmark page names Criterion 0.8.2 and carries a current measured comparison, matching the lockfile.
+
 ## [0.4.4](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.4) (2026-09-24)
 
 Grouped release for `pinapod-workspace`.
