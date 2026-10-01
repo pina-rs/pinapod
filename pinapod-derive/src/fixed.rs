@@ -211,19 +211,25 @@ fn fixed_capacity_checks(ty: &Type) -> Vec<TokenStream> {
 fn collect_fixed_capacity_checks(ty: &Type, checks: &mut Vec<TokenStream>) {
 	if let Type::Array(array) = ty {
 		collect_fixed_capacity_checks(&array.elem, checks);
+
 		return;
 	}
 
 	let Type::Path(type_path) = ty else {
 		return;
 	};
+
 	if type_path.qself.is_some() {
 		return;
 	}
+
 	let segments: Vec<_> = type_path.path.segments.iter().collect();
+
 	let segment = match segments.as_slice() {
 		[name] => name,
+
 		[root, name] if root.ident == "pinapod" => name,
+
 		[root, module, name] if root.ident == "pinapod" && module.ident == "pod" => name,
 		[root, module, name]
 			if (root.ident == "core" || root.ident == "std") && module.ident == "option" =>
@@ -232,9 +238,11 @@ fn collect_fixed_capacity_checks(ty: &Type, checks: &mut Vec<TokenStream>) {
 		}
 		_ => return,
 	};
+
 	let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
 		return;
 	};
+
 	let arguments: Vec<_> = arguments.args.iter().collect();
 
 	match segment.ident.to_string().as_str() {
@@ -308,6 +316,7 @@ fn classify_accessor(ty: &Type, skip: bool) -> AccessorKind {
 	if let Type::Path(type_path) = ty {
 		if let Some(seg) = type_path.path.segments.last() {
 			let name = seg.ident.to_string();
+
 			match name.as_str() {
 				"u8" | "i8" => return AccessorKind::CopyDirect,
 				"u16" => {
@@ -379,6 +388,7 @@ fn extract_container_inner(ty: &Type) -> TokenStream {
 			}
 		}
 	}
+
 	// Fallback — shouldn't happen since we only call this for PodOption fields.
 	quote! { () }
 }
@@ -600,14 +610,17 @@ pub fn generate_enum(input: &syn::DeriveInput) -> TokenStream {
 	};
 
 	let mut variant_names = Vec::new();
+
 	for v in variants {
 		if !v.fields.is_empty() {
 			let msg = format!(
 				"PinaPod enum variant `{}` must be a unit variant (no data fields)",
 				v.ident
 			);
+
 			return quote! { compile_error!(#msg); };
 		}
+
 		match &v.discriminant {
 			Some(_) => {}
 			None => {
@@ -618,6 +631,7 @@ pub fn generate_enum(input: &syn::DeriveInput) -> TokenStream {
 				return quote! { compile_error!(#msg); };
 			}
 		}
+
 		variant_names.push(&v.ident);
 	}
 
@@ -698,6 +712,7 @@ pub fn generate_enum(input: &syn::DeriveInput) -> TokenStream {
 				value: &Self,
 			) -> ::core::result::Result<(), pinapod::PinaPodError> {
 				let v = value.get();
+
 				match v {
 					#( #valid_arms => ::core::result::Result::Ok(()), )*
 					_ => ::core::result::Result::Err(pinapod::PinaPodError::InvalidDiscriminant),
@@ -788,12 +803,12 @@ pub fn generate_enum(input: &syn::DeriveInput) -> TokenStream {
 		}
 
 		// --- Enum ergonomics ---
-
 		impl ::core::convert::From<#enum_name> for #zc_name {
 			fn from(v: #enum_name) -> Self {
 				let raw: #native_ty = match v {
 					#( #enum_name::#variant_names => #enum_name::#variant_names as #native_ty ),*
 				};
+
 				Self(raw.to_le_bytes())
 			}
 		}
@@ -803,6 +818,7 @@ pub fn generate_enum(input: &syn::DeriveInput) -> TokenStream {
 				let other_raw: #native_ty = match other {
 					#( #enum_name::#variant_names => #enum_name::#variant_names as #native_ty ),*
 				};
+
 				self.get() == other_raw
 			}
 		}
@@ -814,6 +830,7 @@ pub fn generate_enum(input: &syn::DeriveInput) -> TokenStream {
 				&self,
 			) -> ::core::result::Result<#enum_name, pinapod::PinaPodError> {
 				let val = self.get();
+
 				match val {
 					#( #valid_arms => ::core::result::Result::Ok(#enum_name::#variant_names), )*
 					_ => ::core::result::Result::Err(pinapod::PinaPodError::InvalidDiscriminant),
@@ -890,13 +907,16 @@ fn parse_enum_repr(input: &syn::DeriveInput) -> Option<String> {
 				} else if meta.path.is_ident("u64") {
 					repr_name = Some("u64".to_string());
 				}
+
 				Ok(())
 			});
+
 			if repr_name.is_some() {
 				return repr_name;
 			}
 		}
 	}
+
 	None
 }
 

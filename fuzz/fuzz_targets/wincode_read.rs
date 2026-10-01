@@ -13,6 +13,7 @@ use pinapod::pod::PodI64;
 use pinapod::pod::PodOption;
 use pinapod::pod::PodString;
 use pinapod::pod::PodU16;
+
 use pinapod::pod::PodVec;
 
 fuzz_target!(|data: &[u8]| {
@@ -42,6 +43,7 @@ fuzz_target!(|data: &[u8]| {
 			None => assert!(value.raw_tag() != 1),
 		}
 	}
+
 	let _ = wincode::deserialize::<PodOption<PodString<4>>>(data);
 	let _ = wincode::deserialize::<PodVec<PodBool, 6>>(data);
 

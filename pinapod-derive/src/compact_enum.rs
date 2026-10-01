@@ -15,6 +15,7 @@ use syn::DeriveInput;
 use syn::Expr;
 use syn::Fields;
 use syn::Type;
+
 use syn::Variant;
 
 use crate::type_map::FieldKind;
@@ -78,6 +79,7 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
 		Data::Enum(data) => &data.variants,
 		_ => unreachable!("compact enum generation called on non-enum"),
 	};
+
 	let is_fieldless = variants
 		.iter()
 		.all(|variant| matches!(variant.fields, Fields::Unit));
@@ -91,12 +93,14 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
 	};
 
 	let mut parsed = Vec::new();
+
 	for variant in variants {
 		let disc = match &variant.discriminant {
 			Some(_) if is_fieldless => {
 				let name = &variant.ident;
 				quote! { (#enum_name::#name as #native_ty) }
 			}
+
 			Some((
 				_,
 				Expr::Lit(syn::ExprLit {
@@ -166,6 +170,7 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
 			}
 		})
 		.collect();
+
 	if is_fieldless {
 		ref_variants.push(quote! {
 			#[doc(hidden)]
@@ -258,6 +263,7 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
 				// check already rejects every buffer shorter than the tag.
 				Self::validate_storage_len(data.len())?;
 				let __tag: #native_ty = #read_tag;
+
 				match __tag {
 					#( #validate_arms, )*
 					_ => Err(pinapod::PinaPodError::InvalidDiscriminant),
@@ -273,6 +279,7 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
 				// why no separate tag-size guard is needed.
 				Self::validate_storage_len(data.len())?;
 				let __tag: #native_ty = #read_tag;
+
 				match __tag {
 					#( #layout_arms, )*
 					_ => Err(pinapod::PinaPodError::InvalidDiscriminant),
@@ -285,6 +292,7 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
 			pub fn new(data: &'a [u8]) -> Result<Self, pinapod::PinaPodError> {
 				<#enum_name as pinapod::PinaPodCompact>::validate(data)?;
 				let __tag: #native_ty = #read_tag;
+
 				match __tag {
 					#( #ref_arms, )*
 					_ => Err(pinapod::PinaPodError::InvalidDiscriminant),
@@ -320,6 +328,7 @@ fn enum_min_size(variants: &[CompactVariant<'_>], tag_size: usize) -> TokenStrea
 				quote! { core::mem::size_of::<<#ty as pinapod::PinaPodFixed>::Zc>() }
 			}
 		};
+
 		quote! {
 			{
 				let __candidate = match (#tag_size as usize).checked_add(#payload_min) {
@@ -370,6 +379,7 @@ fn enum_max_size(variants: &[CompactVariant<'_>], tag_size: usize) -> TokenStrea
 				quote! { core::mem::size_of::<<#ty as pinapod::PinaPodFixed>::Zc>() }
 			}
 		};
+
 		quote! {
 			{
 				let __candidate = match (#tag_size as usize).checked_add(#payload_max) {
@@ -443,6 +453,7 @@ fn enum_support() -> TokenStream {
 			let bytes = data
 				.get(offset..end)
 				.ok_or(pinapod::PinaPodError::BufferTooSmall)?;
+
 			let value = match bytes {
 				[a] => u64::from(*a),
 				[a, b] => u64::from(u16::from_le_bytes([*a, *b])),
@@ -452,6 +463,7 @@ fn enum_support() -> TokenStream {
 				}
 				_ => return Err(pinapod::PinaPodError::InvalidLength),
 			};
+
 			// A stored length wider than the target usize is an invalid
 			// representation, matching the handwritten runtime's
 			// `try_decode_len`, not caller-requested arithmetic overflow.
@@ -515,6 +527,7 @@ fn generate_patch_impl(
 						if value.len() > #max {
 							return Err(pinapod::PinaPodError::Overflow);
 						}
+
 						__pinapod_check_prefix(value.len(), #pfx)?;
 						__pinapod_checked_add(
 							__pinapod_checked_add(#tag_size, #pfx)?,
@@ -550,11 +563,13 @@ fn generate_patch_impl(
 						if value.len() > #max {
 							return Err(pinapod::PinaPodError::Overflow);
 						}
+
 						__pinapod_check_prefix(value.len(), #pfx)?;
 						let __elem_size = core::mem::size_of::<#mapped_elem>();
 						if __elem_size == 0 {
 							return Err(pinapod::PinaPodError::InvalidLength);
 						}
+
 						<#mapped_elem as pinapod::ZcValidate>::validate_slice(value)?;
 						let __byte_len = __pinapod_checked_mul(value.len(), __elem_size)?;
 						__pinapod_checked_add(
@@ -660,6 +675,7 @@ fn generate_patch_impl(
 
 			fn current_encoded_len(data: &[u8]) -> Result<usize, pinapod::PinaPodError> {
 				let __tag: #native_ty = #read_tag;
+
 				match __tag {
 					#( #current_size_arms, )*
 					_ => Err(pinapod::PinaPodError::InvalidDiscriminant),
@@ -684,23 +700,28 @@ fn generate_patch_impl(
 				<#enum_name as pinapod::PinaPodCompact>::validate(data)?;
 				let old_encoded_len = Self::current_encoded_len(data)?;
 				let encoded_len = self.encoded_len()?;
+
 				if encoded_len > data.len() {
 					return Err(pinapod::PinaPodError::BufferTooSmall);
 				}
 
 				self.write(data);
+
 				if encoded_len < old_encoded_len {
 					data[encoded_len..old_encoded_len].fill(0);
 				}
+
 				Ok(encoded_len)
 			}
 
 			fn try_initialize(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
 				<#enum_name as pinapod::PinaPodCompact>::validate_storage_len(data.len())?;
 				let encoded_len = self.encoded_len()?;
+
 				if encoded_len > data.len() {
 					return Err(pinapod::PinaPodError::BufferTooSmall);
 				}
+
 				self.write(data);
 				<#enum_name as pinapod::PinaPodCompact>::validate(data)?;
 				Ok(encoded_len)
@@ -712,9 +733,11 @@ fn generate_patch_impl(
 			pub fn initialize(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
 				data.fill(0);
 				let result = self.try_initialize(data);
+
 				if result.is_err() {
 					data.fill(0);
 				}
+
 				result
 			}
 		}
@@ -783,6 +806,7 @@ fn generate_patch_impl(
 fn parse_payload(variant: &Variant) -> Result<VariantPayload, TokenStream> {
 	match &variant.fields {
 		Fields::Unit => Ok(VariantPayload::Unit),
+
 		Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
 			let ty = fields.unnamed[0].ty.clone();
 			validate_dynamic_prefix_args(&ty)?;
@@ -820,6 +844,7 @@ fn parse_payload(variant: &Variant) -> Result<VariantPayload, TokenStream> {
 				_ => Ok(VariantPayload::Fixed { ty }),
 			}
 		}
+
 		_ => {
 			let msg = format!(
 				"compact PinaPod enum variant `{}` must be unit-like or contain exactly one \
@@ -874,9 +899,11 @@ fn payload_bounds_tokens(payload: &VariantPayload, tag_size: usize) -> TokenStre
 		VariantPayload::String { max, pfx } => {
 			quote! {
 				let __byte_len = __pinapod_read_prefix(data, #tag_size, #pfx)?;
+
 				if __byte_len > #max {
 					return Err(pinapod::PinaPodError::InvalidLength);
 				}
+
 				let __payload_offset = __pinapod_checked_add(#tag_size, #pfx)?;
 				let __payload_end = __pinapod_checked_add(__payload_offset, __byte_len)?;
 				let __payload = data
@@ -888,9 +915,11 @@ fn payload_bounds_tokens(payload: &VariantPayload, tag_size: usize) -> TokenStre
 			let mapped_elem = map_to_pod_type(elem);
 			quote! {
 				let __count = __pinapod_read_prefix(data, #tag_size, #pfx)?;
+
 				if __count > #max {
 					return Err(pinapod::PinaPodError::InvalidLength);
 				}
+
 				let __payload_offset = __pinapod_checked_add(#tag_size, #pfx)?;
 				let __elem_size = core::mem::size_of::<#mapped_elem>();
 				let __byte_len = __pinapod_checked_mul(__count, __elem_size)?;
@@ -922,6 +951,7 @@ fn payload_bounds_tokens(payload: &VariantPayload, tag_size: usize) -> TokenStre
 fn validate_payload_tokens(payload: &VariantPayload, tag_size: usize) -> TokenStream {
 	let bounds = payload_bounds_tokens(payload, tag_size);
 	let proofs = payload_schema_proofs(payload);
+
 	match payload {
 		VariantPayload::Unit => {
 			quote! {
@@ -946,9 +976,11 @@ fn validate_payload_tokens(payload: &VariantPayload, tag_size: usize) -> TokenSt
 			quote! {
 				#proofs
 				#bounds
+
 				if core::str::from_utf8(__payload).is_err() {
 					return Err(pinapod::PinaPodError::InvalidUtf8);
 				}
+
 				Ok(())
 			}
 		}
@@ -1061,11 +1093,13 @@ fn has_compact_attr(attrs: &[syn::Attribute]) -> bool {
 		if !attr.path().is_ident("pinapod") {
 			return false;
 		}
+
 		let mut found = false;
 		let _ = attr.parse_nested_meta(|meta| {
 			if meta.path.is_ident("compact") {
 				found = true;
 			}
+
 			Ok(())
 		});
 		found
@@ -1086,13 +1120,16 @@ fn parse_enum_repr(input: &DeriveInput) -> Option<String> {
 				} else if meta.path.is_ident("u64") {
 					repr_name = Some("u64".to_string());
 				}
+
 				Ok(())
 			});
+
 			if repr_name.is_some() {
 				return repr_name;
 			}
 		}
 	}
+
 	None
 }
 

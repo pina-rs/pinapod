@@ -17,6 +17,7 @@ use fixed::types::I0F128;
 use fixed::types::I16F16;
 use fixed::types::U0F8;
 use fixed::types::U0F16;
+
 use fixed::types::U0F32;
 use fixed::types::U0F64;
 use fixed::types::U0F128;
@@ -25,6 +26,7 @@ use pinapod::PinaPod;
 use pinapod::ZcElem;
 use pinapod::ZcField;
 use pinapod::pod::PodI16;
+
 use pinapod::pod::PodI32;
 use pinapod::pod::PodI64;
 use pinapod::pod::PodI128;
@@ -52,6 +54,7 @@ fn every_fixed_width_maps_to_an_alignment_one_integer_pod() {
 	assert_mapping::<U0F8, u8>();
 	assert_mapping::<U0F16, PodU16>();
 	assert_mapping::<U0F32, PodU32>();
+
 	assert_mapping::<U0F64, PodU64>();
 	assert_mapping::<U0F128, PodU128>();
 }

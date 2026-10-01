@@ -13,6 +13,7 @@ use pinapod::pod::PodF32;
 use pinapod::pod::PodF64;
 use pinapod::pod::PodOption;
 use pinapod::pod::PodString;
+
 use pinapod::pod::PodU16;
 use pinapod::pod::PodVec;
 
@@ -235,6 +236,7 @@ fn option_of_option_preserves_both_tags_and_roundtrips() {
 			Some(None) => PodOption::some(PodOption::none()),
 			None => PodOption::<PodOption<PodU16>>::none(),
 		};
+
 		assert_eq!(wincode::serialized_size(&value).unwrap(), 4);
 
 		let bytes = serialize::<4, _>(&value);

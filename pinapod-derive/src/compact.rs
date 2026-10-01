@@ -29,6 +29,7 @@ pub fn generate(schema: &Schema) -> TokenStream {
 	let mut_name = format_ident!("{}Mut", struct_name);
 	let patch_name = format_ident!("{}Patch", struct_name);
 	let (_, ty_generics, _) = schema.generics.split_for_impl();
+
 	let header_ty = quote! { #header_name #ty_generics };
 
 	let header_ts = generate_header(schema, &header_name);
@@ -81,6 +82,7 @@ fn generate_support() -> TokenStream {
 				left = right;
 				right = remainder;
 			}
+
 			left
 		}
 
@@ -117,6 +119,7 @@ fn generate_support() -> TokenStream {
 				}
 				_ => return Err(pinapod::PinaPodError::InvalidLength),
 			};
+
 			// A stored length wider than the target usize is an invalid
 			// representation, matching the handwritten runtime's
 			// `try_decode_len`, not caller-requested arithmetic overflow.
@@ -159,7 +162,6 @@ fn generate_support() -> TokenStream {
 // ---------------------------------------------------------------------------
 // Header generation
 // ---------------------------------------------------------------------------
-
 fn generate_header(schema: &Schema, header_name: &syn::Ident) -> TokenStream {
 	let generics = &schema.generics;
 	let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
@@ -245,7 +247,6 @@ fn generate_header(schema: &Schema, header_name: &syn::Ident) -> TokenStream {
 // ---------------------------------------------------------------------------
 // PinaPodCompact trait impl
 // ---------------------------------------------------------------------------
-
 fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream {
 	let struct_name = &schema.name;
 	let (impl_generics, ty_generics, where_clause) = schema.generics.split_for_impl();
@@ -275,7 +276,9 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 	// adds. A bounds expression therefore cannot be tightened in one walk and
 	// left stale in the other.
 	let mut tail_validations = Vec::new();
+
 	let mut tail_layout_validations = Vec::new();
+
 	for f in schema.tail_fields() {
 		let (layout_stmts, full_stmts) = match &f.kind {
 			FieldKind::Tail(TailField::Segment {
@@ -287,9 +290,11 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 					bounded_tail_end_expr(quote! { __tail_offset }, quote! { #len_name }, *pfx);
 				let layout_stmts = quote! {
 					let #len_name = __pinapod_decode_prefix(&__hdr.#len_name)?;
+
 					if #len_name > #max {
 						return Err(pinapod::PinaPodError::InvalidLength);
 					}
+
 					let __tail_end = #tail_end;
 					let __tail = data
 						.get(__tail_offset..__tail_end)
@@ -298,6 +303,7 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 				};
 				let full_stmts = quote! {
 					#layout_stmts
+
 					if core::str::from_utf8(__tail).is_err() {
 						return Err(pinapod::PinaPodError::InvalidUtf8);
 					}
@@ -315,13 +321,17 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 					bounded_tail_end_expr(quote! { __tail_offset }, quote! { __byte_len }, *pfx);
 				let layout_stmts = quote! {
 					let #len_name = __pinapod_decode_prefix(&__hdr.#len_name)?;
+
 					if #len_name > #max {
 						return Err(pinapod::PinaPodError::InvalidLength);
 					}
+
 					let __elem_size = core::mem::size_of::<#mapped_elem>();
+
 					if __elem_size == 0 {
 						return Err(pinapod::PinaPodError::InvalidLength);
 					}
+
 					let __byte_len = #byte_len;
 					let __tail_end = #tail_end;
 					let __tail = data
@@ -355,9 +365,11 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 					bounded_tail_end_expr(quote! { __payload_offset }, quote! { __byte_len }, *pfx);
 				let bounds = quote! {
 					#read_len
+
 					if __byte_len > #max {
 						return Err(pinapod::PinaPodError::InvalidLength);
 					}
+
 					let __payload_offset = #payload_offset;
 					let __payload_end = #payload_end;
 					let __payload = data
@@ -407,13 +419,17 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 				let byte_len = bounded_byte_len_expr(quote! { __count }, &mapped_elem, *pfx);
 				let bounds = quote! {
 					#read_count
+
 					if __count > #max {
 						return Err(pinapod::PinaPodError::InvalidLength);
 					}
+
 					let __elem_size = core::mem::size_of::<#mapped_elem>();
+
 					if __elem_size == 0 {
 						return Err(pinapod::PinaPodError::InvalidLength);
 					}
+
 					let __payload_offset = #payload_offset;
 					let __byte_len = #byte_len;
 					let __payload_end = #payload_end;
@@ -460,6 +476,7 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 			}
 			_ => unreachable!(),
 		};
+
 		tail_layout_validations.push(layout_stmts);
 		tail_validations.push(full_stmts);
 	}
@@ -513,7 +530,6 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 // ---------------------------------------------------------------------------
 // Ref generation
 // ---------------------------------------------------------------------------
-
 fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident) -> TokenStream {
 	let struct_name = &schema.name;
 	let (_, struct_ty_generics, where_clause) = schema.generics.split_for_impl();
@@ -523,6 +539,7 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
 	let bounds = compact_bounds(schema);
 	let where_clause_with_bounds = where_clause_with_bounds(where_clause, bounds.iter());
 	let (marker_field, marker_init) = generic_marker_tokens(&schema.generics);
+
 	let tail_fields: Vec<_> = schema.tail_fields().collect();
 	let current_encoded_len = compute_offset_tokens(header_ty, &tail_fields, tail_fields.len());
 	let mut accessors = Vec::new();
@@ -589,6 +606,7 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
 						if __hdr.#tag_name[0] == 0 {
 							return None;
 						}
+
 						#offset_computation
 						let __byte_len = #read_len;
 						let __payload_offset = __offset + #pfx;
@@ -616,6 +634,7 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
 						if __hdr.#tag_name[0] == 0 {
 							return None;
 						}
+
 						#offset_computation
 						let __count = #read_len;
 						let __payload_offset = __offset + #pfx;
@@ -699,7 +718,6 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
 // ---------------------------------------------------------------------------
 // Mut generation
 // ---------------------------------------------------------------------------
-
 fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident) -> TokenStream {
 	let struct_name = &schema.name;
 	let (_, struct_ty_generics, where_clause) = schema.generics.split_for_impl();
@@ -709,6 +727,7 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
 	let bounds = compact_bounds(schema);
 	let where_clause_with_bounds = where_clause_with_bounds(where_clause, bounds.iter());
 	let (marker_field, marker_init) = generic_marker_tokens(&schema.generics);
+
 	let tail_fields: Vec<_> = schema.tail_fields().collect();
 	let inline_mut_accessors: Vec<_> = schema
 		.inline_fields()
@@ -728,8 +747,10 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
 
 	// Edit descriptor fields.
 	let mut edit_fields = Vec::new();
+
 	for f in &tail_fields {
 		let edit_name = format_ident!("__{}_edit", f.name);
+
 		match &f.kind {
 			FieldKind::Tail(TailField::Segment {
 				payload: TailPayload::String { .. } | TailPayload::Vec { .. },
@@ -751,6 +772,7 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
 
 	// Setter methods.
 	let mut setters = Vec::new();
+
 	for f in &tail_fields {
 		let fname = &f.name;
 		let setter_name = format_ident!("set_{}", fname);
@@ -768,6 +790,7 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
 						if value.len() > #max || __pinapod_check_prefix(value.len(), #pfx).is_err() {
 							return Err(pinapod::PinaPodError::Overflow);
 						}
+
 						self.#edit_name = Some((value.as_ptr(), value.len()));
 						Ok(())
 					}
@@ -784,6 +807,7 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
                         if value.len() > #max || __pinapod_check_prefix(value.len(), #pfx).is_err() {
                             return Err(pinapod::PinaPodError::Overflow);
                         }
+
                         // Through `validate_slice` rather than a local loop, so a
                         // trivially valid element removes the walk here exactly as
                         // it does in the runtime's array and patch paths.
@@ -809,10 +833,12 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
 							if value.len() > #max || __pinapod_check_prefix(value.len(), #pfx).is_err() {
 								return Err(pinapod::PinaPodError::Overflow);
 							}
+
 							self.#edit_name = Some((value.as_ptr(), value.len()));
 						} else {
 							self.#edit_name = Some((core::ptr::null(), 0));
 						}
+
 						Ok(())
 					}
 				});
@@ -829,6 +855,7 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
                             if value.len() > #max || __pinapod_check_prefix(value.len(), #pfx).is_err() {
                                 return Err(pinapod::PinaPodError::Overflow);
                             }
+
                             // Through `validate_slice` rather than a local loop, so a
                             // trivially valid element removes the walk here exactly as
                             // it does in the runtime's array and patch paths.
@@ -840,6 +867,7 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
                         } else {
                             self.#edit_name = Some((core::ptr::null(), 0));
                         }
+
                         Ok(())
                     }
                 });
@@ -852,6 +880,7 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
 	// it private lets the staged writer disappear when the atomic Patch API
 	// replaces it without making layout-planning internals public.
 	let mut projected_steps = Vec::new();
+
 	for (i, f) in tail_fields.iter().enumerate() {
 		let edit_name = format_ident!("__{}_edit", f.name);
 		let len_name = format_ident!("__{}_len", f.name);
@@ -915,6 +944,7 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
 						} else {
 							__pinapod_checked_add(#pfx, __byte_len)?
 						};
+
 						__total = __total
 							.checked_sub(__old_len)
 							.ok_or(pinapod::PinaPodError::Overflow)?;
@@ -946,6 +976,7 @@ fn generate_mut(schema: &Schema, header_ty: &TokenStream, mut_name: &syn::Ident)
 								)?,
 							)?
 						};
+
 						__total = __total
 							.checked_sub(__old_len)
 							.ok_or(pinapod::PinaPodError::Overflow)?;
@@ -1081,8 +1112,10 @@ fn generate_patch(
 		if field.skip_patch {
 			continue;
 		}
+
 		let name = &field.name;
 		field_inits.push(quote! { #name: None });
+
 		match &field.kind {
 			FieldKind::Inline => {
 				let pod_ty = map_to_pod_type(&field.ty);
@@ -1123,6 +1156,7 @@ fn generate_patch(
 						}
 					});
 				}
+
 				input_validations.push(quote! {
 					if let Some(value) = &self.#name {
 						<#pod_ty as pinapod::ZcValidate>::validate_ref(value)?;
@@ -1151,6 +1185,7 @@ fn generate_patch(
 						if value.len() > #max {
 							return Err(pinapod::PinaPodError::Overflow);
 						}
+
 						__pinapod_check_prefix(value.len(), #pfx)?;
 					}
 				});
@@ -1193,10 +1228,12 @@ fn generate_patch(
 						if value.len() > #max {
 							return Err(pinapod::PinaPodError::Overflow);
 						}
+
 						__pinapod_check_prefix(value.len(), #pfx)?;
 						if core::mem::size_of::<#mapped_elem>() == 0 {
 							return Err(pinapod::PinaPodError::InvalidLength);
 						}
+
 						<#mapped_elem as pinapod::ZcValidate>::validate_slice(value)?;
 					}
 				});
@@ -1248,6 +1285,7 @@ fn generate_patch(
 						if value.len() > #max {
 							return Err(pinapod::PinaPodError::Overflow);
 						}
+
 						__pinapod_check_prefix(value.len(), #pfx)?;
 					}
 				});
@@ -1258,6 +1296,7 @@ fn generate_patch(
 							Some(new) => __pinapod_checked_add(#pfx, new.len())?,
 							None => 0,
 						};
+
 						updated_len = updated_len
 							.checked_sub(#old_size)
 							.ok_or(pinapod::PinaPodError::Overflow)?;
@@ -1303,10 +1342,12 @@ fn generate_patch(
 						if value.len() > #max {
 							return Err(pinapod::PinaPodError::Overflow);
 						}
+
 						__pinapod_check_prefix(value.len(), #pfx)?;
 						if core::mem::size_of::<#mapped_elem>() == 0 {
 							return Err(pinapod::PinaPodError::InvalidLength);
 						}
+
 						<#mapped_elem as pinapod::ZcValidate>::validate_slice(value)?;
 					}
 				});
@@ -1323,6 +1364,7 @@ fn generate_patch(
 							)?,
 							None => 0,
 						};
+
 						updated_len = updated_len
 							.checked_sub(#old_size)
 							.ok_or(pinapod::PinaPodError::Overflow)?;
@@ -1458,9 +1500,11 @@ fn generate_patch(
 			/// Apply the patch in place and return the new encoded length.
 			pub fn update(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
 				let expected_len = self.updated_len(data)?;
+
 				if expected_len > data.len() {
 					return Err(pinapod::PinaPodError::BufferTooSmall);
 				}
+
 				let mut writer = unsafe {
 					// SAFETY: `updated_len` validated this exact buffer, and no
 					// bytes were mutated between that validation and this
@@ -1477,8 +1521,10 @@ fn generate_patch(
 				// would otherwise trust and persist a length the bytes do not
 				// support, and the next validated read would reject the account.
 				if encoded_len != expected_len {
+
 					return Err(pinapod::PinaPodError::InvalidLength);
 				}
+
 				Ok(encoded_len)
 			}
 
@@ -1487,9 +1533,11 @@ fn generate_patch(
 					data.len(),
 				)?;
 				let expected_len = self.initialized_len()?;
+
 				if expected_len > data.len() {
 					return Err(pinapod::PinaPodError::BufferTooSmall);
 				}
+
 				let encoded_len = {
 					let mut writer = unsafe { <#mut_elided_ty>::new_unchecked(data) };
 					#( #stage_steps )*
@@ -1515,6 +1563,7 @@ fn generate_patch(
 				if encoded_len != expected_len {
 					return Err(pinapod::PinaPodError::InvalidLength);
 				}
+
 				Ok(encoded_len)
 			}
 
@@ -1524,9 +1573,11 @@ fn generate_patch(
 			pub fn initialize(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
 				data.fill(0);
 				let result = self.try_initialize(data);
+
 				if result.is_err() {
 					data.fill(0);
 				}
+
 				result
 			}
 		}
@@ -1588,6 +1639,7 @@ fn generate_commit_body(
 ) -> TokenStream {
 	let struct_name = &schema.name;
 	let (_, ty_generics, _) = schema.generics.split_for_impl();
+
 	if tail_fields.is_empty() {
 		return quote! {
 			pub fn commit(&mut self) -> Result<usize, pinapod::PinaPodError> {
@@ -1605,6 +1657,7 @@ fn generate_commit_body(
 
 	// Step 1: compute per-field old/new offsets and lengths in field order.
 	let mut setup_positions = Vec::new();
+
 	for (i, f) in tail_fields.iter().enumerate() {
 		let fname = &f.name;
 		let edit_name = format_ident!("__{}_edit", fname);
@@ -1625,6 +1678,7 @@ fn generate_commit_body(
 			let prev_new_off = format_ident!("__new_off_{}", prev_f.name);
 			let prev_old_len = format_ident!("__old_len_{}", prev_f.name);
 			let prev_new_len = format_ident!("__new_len_{}", prev_f.name);
+
 			quote! {
 				let #old_off_var: usize = __pinapod_checked_add(#prev_old_off, #prev_old_len)?;
 				let #new_off_var: usize = __pinapod_checked_add(#prev_new_off, #prev_new_len)?;
@@ -1754,6 +1808,7 @@ fn generate_commit_body(
 				if __old_end > self.total_len {
 					return Err(pinapod::PinaPodError::BufferTooSmall);
 				}
+
 				let __new_end = __pinapod_checked_add(#new_off, #new_len)?;
 				if __new_end > self.data.len() {
 					return Err(pinapod::PinaPodError::BufferTooSmall);
@@ -1767,6 +1822,7 @@ fn generate_commit_body(
 	// This two-pass ordering ensures source bytes are never read after being
 	// overwritten by an earlier step, regardless of mixed grow/shrink edits.
 	let mut phase_1a = Vec::new();
+
 	for f in tail_fields {
 		let fname = &f.name;
 		let edit_name = format_ident!("__{}_edit", fname);
@@ -1790,6 +1846,7 @@ fn generate_commit_body(
 	}
 
 	let mut phase_1b = Vec::new();
+
 	for f in tail_fields.iter().rev() {
 		let fname = &f.name;
 		let edit_name = format_ident!("__{}_edit", fname);
@@ -1814,10 +1871,12 @@ fn generate_commit_body(
 
 	// Phase 2: write edited fields to their final positions.
 	let mut phase_2 = Vec::new();
+
 	for f in tail_fields {
 		let fname = &f.name;
 		let edit_name = format_ident!("__{}_edit", fname);
 		let new_off_var = format_ident!("__new_off_{}", fname);
+
 		match &f.kind {
 			FieldKind::Tail(TailField::Segment {
 				presence: TailPresence::Always,
@@ -1927,6 +1986,7 @@ fn generate_commit_body(
 
 	// Update header length prefixes for edited fields.
 	let mut update_lens = Vec::new();
+
 	for f in tail_fields {
 		let edit_name = format_ident!("__{}_edit", f.name);
 		let len_name = format_ident!("__{}_len", f.name);
@@ -2007,6 +2067,7 @@ fn generate_commit_body(
 
 			let __old_total = self.total_len;
 			let __final_total: usize = __pinapod_checked_add(#last_new_off, #last_new_len)?;
+
 			if __final_total > self.data.len() {
 				return Err(pinapod::PinaPodError::BufferTooSmall);
 			}
@@ -2045,7 +2106,6 @@ fn generate_commit_body(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
 fn compact_max_size(schema: &Schema, header_ty: &TokenStream) -> TokenStream {
 	let steps = schema.tail_fields().map(|field| {
 		let FieldKind::Tail(TailField::Segment { presence, payload }) = &field.kind else {
@@ -2075,6 +2135,7 @@ fn compact_max_size(schema: &Schema, header_ty: &TokenStream) -> TokenStream {
 				}
 			}
 		};
+
 		quote! {
 			__size = match __size.checked_add(#contribution) {
 				Some(value) => value,
@@ -2107,6 +2168,7 @@ fn compact_tail_alignment(schema: &Schema) -> TokenStream {
 			let prefix = payload.pfx();
 			atoms.push(quote! { #prefix });
 		}
+
 		atoms
 	});
 
@@ -2115,6 +2177,7 @@ fn compact_tail_alignment(schema: &Schema) -> TokenStream {
 		#(
 			__alignment = __pinapod_gcd(__alignment, #steps);
 		)*
+
 		if __alignment == 0 { 1 } else { __alignment }
 	}}
 }
@@ -2123,6 +2186,7 @@ fn compact_marker_type(field: &crate::schema::SchemaField) -> TokenStream {
 	let FieldKind::Tail(TailField::Segment { presence, payload }) = &field.kind else {
 		unreachable!("compact marker requested for an inline field")
 	};
+
 	let payload = match payload {
 		TailPayload::String { max, pfx } => {
 			quote! { pinapod::pod::PodString<#max, #pfx> }
@@ -2143,6 +2207,7 @@ fn compact_capacity_checks(field: &crate::schema::SchemaField) -> TokenStream {
 	let FieldKind::Tail(TailField::Segment { payload, .. }) = &field.kind else {
 		unreachable!("compact capacity check requested for an inline field")
 	};
+
 	match payload {
 		TailPayload::String { max, pfx } => {
 			quote! {
@@ -2171,6 +2236,7 @@ fn compact_capacity_checks(field: &crate::schema::SchemaField) -> TokenStream {
 			} else {
 				TokenStream::new()
 			};
+
 			quote! {
 				let _ = pinapod::pod::PodVec::<u8, #max, #pfx>::VALID;
 				let _ = const {
@@ -2215,6 +2281,7 @@ fn where_clause_with_bounds<'a>(
 	bounds: impl IntoIterator<Item = &'a TokenStream>,
 ) -> TokenStream {
 	let bounds: Vec<&TokenStream> = bounds.into_iter().collect();
+
 	match (where_clause, bounds.is_empty()) {
 		(Some(existing), false) => {
 			let predicates = existing.predicates.iter();
@@ -2352,6 +2419,7 @@ fn bounded_read_prefix_stmt(offset: TokenStream, target: TokenStream, pfx: usize
 			if #offset + #pfx > data.len() {
 				return Err(pinapod::PinaPodError::BufferTooSmall);
 			}
+
 			let #target = #read;
 		}
 	} else {
@@ -2410,6 +2478,7 @@ fn old_option_string_size_expr(
 				if __end > self.total_len {
 					return Err(pinapod::PinaPodError::BufferTooSmall);
 				}
+
 				__encoded_len
 			}
 			_ => return Err(pinapod::PinaPodError::InvalidTag),
@@ -2437,6 +2506,7 @@ fn old_option_vec_size_expr(
 				if __end > self.total_len {
 					return Err(pinapod::PinaPodError::BufferTooSmall);
 				}
+
 				__encoded_len
 			}
 			_ => return Err(pinapod::PinaPodError::InvalidTag),
@@ -2480,6 +2550,7 @@ fn compute_offset_tokens(
 ) -> TokenStream {
 	let header_size = quote! { core::mem::size_of::<#header_ty>() };
 	let mut steps = Vec::new();
+
 	for f in &tail_fields[..target_index] {
 		let len_name = format_ident!("__{}_len", f.name);
 		let pfx = tail_pfx(&f.kind);
@@ -2744,6 +2815,7 @@ mod tests {
 			let check = commit
 				.find("commit_entry_validate")
 				.expect("the commit-entry check is emitted");
+
 			if let Some(offsets) = commit.find("__old_off_") {
 				assert!(
 					check < offsets,

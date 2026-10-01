@@ -32,6 +32,7 @@ const SMALL_UPDATE_LABEL: &str = "tiny!";
 const MAX_LABEL: &str = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 const SMALL_VALUE_COUNT: usize = 2;
 const MAX_VALUE_COUNT: usize = 16;
+
 const SMALL_COMPACT_SIZE: usize = COMPACT_HEADER_SIZE + SMALL_LABEL.len() + SMALL_VALUE_COUNT * 8;
 const MAX_COMPACT_SIZE: usize = COMPACT_HEADER_SIZE + MAX_LABEL.len() + MAX_VALUE_COUNT * 8;
 
@@ -374,6 +375,7 @@ fn fixtures() -> Fixtures {
 	let mut upstream_small = [0u8; COMPACT_CAPACITY];
 	let mut current_max = [0u8; COMPACT_CAPACITY];
 	let mut previous_max = [0u8; COMPACT_CAPACITY];
+
 	let mut upstream_max = [0u8; COMPACT_CAPACITY];
 
 	current::write_fixed(&mut current_fixed);
@@ -388,6 +390,7 @@ fn fixtures() -> Fixtures {
 		upstream::write_compact(&mut upstream_small, SMALL_LABEL, SMALL_VALUE_COUNT, 1);
 	let current_max_len = current::write_compact(&mut current_max, MAX_LABEL, MAX_VALUE_COUNT, 1);
 	let previous_max_len =
+
 		previous::write_compact(&mut previous_max, MAX_LABEL, MAX_VALUE_COUNT, 1);
 	let upstream_max_len =
 		upstream::write_compact(&mut upstream_max, MAX_LABEL, MAX_VALUE_COUNT, 1);
@@ -598,6 +601,7 @@ fn bench_fixed(c: &mut Criterion, fixtures: &Fixtures) {
 	read.bench_function("zeropod-upstream-78e6e5f", |bench| {
 		bench.iter(|| black_box(upstream_view.read()));
 	});
+
 	read.finish();
 
 	let mut write = c.benchmark_group("fixed/write");

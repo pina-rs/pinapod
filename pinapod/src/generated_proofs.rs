@@ -53,13 +53,16 @@ impl SymbolicValues {
 #[kani::unwind(12)]
 fn validated_accessors_are_bounded() {
 	let data: [u8; STORAGE] = kani::any();
+
 	if let Ok(view) = Bounded::read_prefix(&data) {
 		assert!(view.label().len() <= 2);
 		assert!(view.values().len() <= 2);
+
 		match view.note() {
 			Some(note) => assert!(note.len() <= 2),
 			None => {}
 		}
+
 		assert!(view.encoded_len() <= view.storage_len());
 		assert!(view.encoded_len() >= <Bounded as PinaPodCompact>::HEADER_SIZE);
 		assert_eq!(
@@ -82,6 +85,7 @@ fn initialize_builds_a_valid_view() {
 	kani::assume(values_len <= 2);
 	let note_present: bool = kani::any();
 	let note_len: usize = kani::any();
+
 	kani::assume(note_len <= 2);
 
 	// Concrete garbage start: `initialize` zeroes the destination before
@@ -107,6 +111,7 @@ fn initialize_builds_a_valid_view() {
 	assert_eq!(view.seq, seq);
 	assert_eq!(view.label(), &LABEL[..label_len]);
 	assert_eq!(view.values(), &values_pod[..values_len]);
+
 	match (view.note(), note_present) {
 		(Some(note), true) => assert_eq!(note, &NOTE[..note_len]),
 		(None, false) => {}
@@ -138,6 +143,7 @@ fn update_preserves_roundtrip() {
 	kani::assume(values_len <= 2);
 	let note_present: bool = kani::any();
 	let note_len: usize = kani::any();
+
 	kani::assume(note_len <= 2);
 
 	let values_pod = values.pod();
@@ -159,6 +165,7 @@ fn update_preserves_roundtrip() {
 	assert_eq!(view.seq, seq);
 	assert_eq!(view.label(), &LABEL[..label_len]);
 	assert_eq!(view.values(), &values_pod[..values_len]);
+
 	match (view.note(), note_present) {
 		(Some(note), true) => assert_eq!(note, &NOTE[..note_len]),
 		(None, false) => {}
