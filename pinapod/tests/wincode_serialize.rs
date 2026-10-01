@@ -235,6 +235,7 @@ fn option_of_option_preserves_both_tags_and_roundtrips() {
 			Some(None) => PodOption::some(PodOption::none()),
 			None => PodOption::<PodOption<PodU16>>::none(),
 		};
+
 		assert_eq!(wincode::serialized_size(&value).unwrap(), 4);
 
 		let bytes = serialize::<4, _>(&value);

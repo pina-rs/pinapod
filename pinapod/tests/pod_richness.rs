@@ -9,7 +9,6 @@ use pinapod::PinaPod;
 use pinapod::pod::*;
 
 // --- Numeric: overflow behavior is explicit ---
-
 #[test]
 fn numeric_arithmetic_is_explicit() {
 	let mut balance = PodU64::from(1000u64);
@@ -36,7 +35,6 @@ fn numeric_arithmetic_is_explicit() {
 }
 
 // --- Bool: feels like native bool ---
-
 #[test]
 fn bool_feels_native() {
 	let mut flag = PodBool::from(false);
@@ -56,7 +54,6 @@ fn bool_feels_native() {
 }
 
 // --- String: ergonomic text handling ---
-
 #[test]
 fn string_feels_ergonomic() {
 	let mut name = PodString::<32>::default();
@@ -80,7 +77,6 @@ fn string_feels_ergonomic() {
 }
 
 // --- Vec: ergonomic collection ---
-
 #[test]
 fn vec_feels_ergonomic() {
 	let mut scores = PodVec::<u8, 5>::default();
@@ -105,7 +101,6 @@ fn vec_feels_ergonomic() {
 }
 
 // --- Option: feels like Option<T> ---
-
 #[test]
 fn option_feels_native() {
 	let mut maybe = PodOption::<PodU64>::none();
@@ -130,7 +125,6 @@ fn option_feels_native() {
 }
 
 // --- Enum: feels like Rust enum ---
-
 #[derive(PinaPod, Debug, PartialEq)]
 #[repr(u8)]
 enum Direction {

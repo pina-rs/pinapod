@@ -15,7 +15,6 @@ use syn::Type;
 // ---------------------------------------------------------------------------
 // Field classification
 // ---------------------------------------------------------------------------
-
 /// How one field is stored: inline in the representation, or as a compact
 /// tail after the fixed header.
 #[derive(Debug, Clone)]
@@ -76,12 +75,15 @@ pub fn classify_field(ty: &Type) -> FieldKind {
 	if let Some(tail) = classify_option_dynamic(ty) {
 		return FieldKind::Tail(tail);
 	}
+
 	if let Some(tail) = classify_string(ty) {
 		return FieldKind::Tail(tail);
 	}
+
 	if let Some(tail) = classify_vec(ty) {
 		return FieldKind::Tail(tail);
 	}
+
 	FieldKind::Inline
 }
 
@@ -107,13 +109,16 @@ fn recognized_dynamic_name(ty: &Type) -> Option<DynamicName> {
 	let Type::Path(type_path) = ty else {
 		return None;
 	};
+
 	if type_path.qself.is_some() {
 		return None;
 	}
+
 	let segments: Vec<_> = type_path.path.segments.iter().collect();
 	let name = segments.last()?;
 	let namespaced_by_pinapod =
 		segments.len() >= 2 && segments[segments.len() - 2].ident == "pinapod";
+
 	let namespaced_by_pinapod_pod = segments.len() >= 3
 		&& segments[segments.len() - 2].ident == "pod"
 		&& segments[segments.len() - 3].ident == "pinapod";
@@ -122,6 +127,7 @@ fn recognized_dynamic_name(ty: &Type) -> Option<DynamicName> {
 		&& (segments[0].ident == "core" || segments[0].ident == "std")
 		&& segments[1].ident == "option"
 		&& name.ident == "Option";
+
 	if segments.len() != 1
 		&& !namespaced_by_pinapod
 		&& !namespaced_by_pinapod_pod
@@ -130,6 +136,7 @@ fn recognized_dynamic_name(ty: &Type) -> Option<DynamicName> {
 	{
 		return None;
 	}
+
 	match name.ident.to_string().as_str() {
 		"String" | "PodString" => Some(DynamicName::String),
 		"Vec" | "PodVec" => Some(DynamicName::Vec),
@@ -152,6 +159,7 @@ pub fn validate_dynamic_prefix_args(ty: &Type) -> Result<(), TokenStream> {
 		Type::Group(group) => return validate_dynamic_prefix_args(&group.elem),
 		_ => {}
 	}
+
 	let Some(segment) = last_path_segment(ty) else {
 		return Ok(());
 	};
@@ -165,12 +173,14 @@ pub fn validate_dynamic_prefix_args(ty: &Type) -> Result<(), TokenStream> {
 		Some(DynamicName::Vec) => Some(2),
 		_ => None,
 	};
+
 	if let Some(prefix) = prefix_index.and_then(|index| args.iter().nth(index)) {
 		if parse_prefix_arg(prefix).is_none() {
 			let message = format!(
 				"{} length prefix must be the byte width 1, 2, 4, or 8",
 				segment.ident
 			);
+
 			return Err(syn::Error::new_spanned(prefix, message).to_compile_error());
 		}
 	}
@@ -188,6 +198,7 @@ fn classify_string(ty: &Type) -> Option<TailField> {
 	if recognized_dynamic_name(ty) != Some(DynamicName::String) {
 		return None;
 	}
+
 	let seg = last_path_segment(ty)?;
 	let args = angle_args(&seg.arguments)?;
 	let mut iter = args.iter();
@@ -203,15 +214,19 @@ fn classify_vec(ty: &Type) -> Option<TailField> {
 	if recognized_dynamic_name(ty) != Some(DynamicName::Vec) {
 		return None;
 	}
+
 	let seg = last_path_segment(ty)?;
 	let args = angle_args(&seg.arguments)?;
 	let mut iter = args.iter();
+
 	let elem = match iter.next()? {
 		GenericArgument::Type(t) => t.clone(),
 		_ => return None,
 	};
+
 	let max = extract_const_expr(iter.next()?)?;
 	let pfx = iter.next().and_then(parse_prefix_arg).unwrap_or(2);
+
 	Some(TailField::Segment {
 		presence: TailPresence::Always,
 		payload: TailPayload::Vec {
@@ -230,6 +245,7 @@ fn classify_string_checked(ty: &Type) -> Result<TailField, TokenStream> {
 			"compact strings must be `String<CAPACITY>` or `PodString<CAPACITY, PREFIX>`",
 		)
 	})?;
+
 	if !(1..=2).contains(&arguments.len()) {
 		return Err(compact_type_error(
 			ty,
@@ -240,6 +256,7 @@ fn classify_string_checked(ty: &Type) -> Result<TailField, TokenStream> {
 	let max = extract_const_expr(&arguments[0]).ok_or_else(|| {
 		compact_type_error(ty, "compact string capacity must be a const expression")
 	})?;
+
 	let pfx = match arguments.get(1) {
 		Some(argument) => {
 			parse_prefix_arg(argument).ok_or_else(|| {
@@ -263,6 +280,7 @@ fn classify_vec_checked(ty: &Type) -> Result<TailField, TokenStream> {
 			"compact vectors must be `Vec<T, CAPACITY>` or `PodVec<T, CAPACITY, PREFIX>`",
 		)
 	})?;
+
 	if !(2..=3).contains(&arguments.len()) {
 		return Err(compact_type_error(
 			ty,
@@ -280,9 +298,11 @@ fn classify_vec_checked(ty: &Type) -> Result<TailField, TokenStream> {
 			));
 		}
 	};
+
 	let max = extract_const_expr(&arguments[1]).ok_or_else(|| {
 		compact_type_error(ty, "compact vector capacity must be a const expression")
 	})?;
+
 	let pfx = match arguments.get(2) {
 		Some(argument) => {
 			parse_prefix_arg(argument).ok_or_else(|| {
@@ -303,6 +323,7 @@ fn classify_vec_checked(ty: &Type) -> Result<TailField, TokenStream> {
 			},
 		});
 	}
+
 	if contains_dynamic_type(&elem) {
 		return Err(compact_type_error(
 			&elem,
@@ -326,12 +347,14 @@ fn classify_option_checked(ty: &Type) -> Result<FieldKind, TokenStream> {
 	let segment = last_path_segment(ty).expect("checked by caller");
 	let arguments = angle_args(&segment.arguments)
 		.ok_or_else(|| compact_type_error(ty, "compact options must be `Option<T>`"))?;
+
 	if arguments.len() != 1 {
 		return Err(compact_type_error(
 			ty,
 			"compact options require exactly one type argument",
 		));
 	}
+
 	let inner = match &arguments[0] {
 		GenericArgument::Type(inner) => inner,
 		_ => {
@@ -355,6 +378,7 @@ fn classify_option_checked(ty: &Type) -> Result<FieldKind, TokenStream> {
 			payload: TailPayload::String { max, pfx },
 		}));
 	}
+
 	if is_vec_type(inner) {
 		if vec_element(inner).is_some_and(is_string_type) {
 			return Err(compact_type_error(
@@ -365,8 +389,10 @@ fn classify_option_checked(ty: &Type) -> Result<FieldKind, TokenStream> {
 				 `T`, and `Vec<String<M>, N>`",
 			));
 		}
+
 		let tail = classify_vec_checked(inner)?;
 		let TailField::Segment { payload, .. } = tail;
+
 		return match payload {
 			TailPayload::Vec { elem, max, pfx } => {
 				Ok(FieldKind::Tail(TailField::Segment {
@@ -377,6 +403,7 @@ fn classify_option_checked(ty: &Type) -> Result<FieldKind, TokenStream> {
 			TailPayload::String { .. } => unreachable!("vector classification cannot be a string"),
 		};
 	}
+
 	if contains_dynamic_type(inner) {
 		return Err(compact_type_error(
 			inner,
@@ -393,8 +420,10 @@ fn classify_option_dynamic(ty: &Type) -> Option<TailField> {
 	if recognized_dynamic_name(ty) != Some(DynamicName::Option) {
 		return None;
 	}
+
 	let seg = last_path_segment(ty)?;
 	let args = angle_args(&seg.arguments)?;
+
 	let inner = match args.first()? {
 		GenericArgument::Type(t) => t,
 		_ => return None,
@@ -409,6 +438,7 @@ fn classify_option_dynamic(ty: &Type) -> Option<TailField> {
 			payload: TailPayload::String { max, pfx },
 		});
 	}
+
 	if let Some(TailField::Segment {
 		payload: TailPayload::Vec { elem, max, pfx },
 		..
@@ -419,6 +449,7 @@ fn classify_option_dynamic(ty: &Type) -> Option<TailField> {
 			payload: TailPayload::Vec { elem, max, pfx },
 		});
 	}
+
 	None
 }
 
@@ -450,7 +481,6 @@ impl TailPayload {
 // ---------------------------------------------------------------------------
 // Type mapping: schema type → pod storage type
 // ---------------------------------------------------------------------------
-
 /// Map a declared schema type to its stored pod type.
 ///
 /// The mapping is type-directed: dynamic spellings map to their pods, arrays
@@ -484,6 +514,7 @@ pub fn map_to_pod_type(ty: &Type) -> TokenStream {
 	if let Type::Array(array) = ty {
 		let element = map_to_pod_type(&array.elem);
 		let length = &array.len;
+
 		return quote! { [#element; #length] };
 	}
 
@@ -498,6 +529,7 @@ fn try_map_string(ty: &Type) -> Option<TokenStream> {
 	if recognized_dynamic_name(ty) != Some(DynamicName::String) {
 		return None;
 	}
+
 	let seg = last_path_segment(ty)?;
 	let args = angle_args(&seg.arguments)?;
 	let mut iter = args.iter();
@@ -510,15 +542,19 @@ fn try_map_vec(ty: &Type) -> Option<TokenStream> {
 	if recognized_dynamic_name(ty) != Some(DynamicName::Vec) {
 		return None;
 	}
+
 	let seg = last_path_segment(ty)?;
 	let args = angle_args(&seg.arguments)?;
 	let mut iter = args.iter();
+
 	let t_arg = match iter.next()? {
 		GenericArgument::Type(t) => t,
 		_ => return None,
 	};
+
 	let n_arg = iter.next()?;
 	let pfx: usize = iter.next().and_then(parse_prefix_arg).unwrap_or(2);
+
 	let mapped_t = map_to_pod_type(t_arg);
 	Some(quote! { pinapod::pod::PodVecRepr<#mapped_t, #n_arg, #pfx> })
 }
@@ -538,6 +574,7 @@ pub fn option_inner_type(ty: &Type) -> Option<&Type> {
 	let segment = last_path_segment(ty)?;
 	let arguments = angle_args(&segment.arguments)?;
 	let mut arguments = arguments.iter();
+
 	let inner = match arguments.next()? {
 		GenericArgument::Type(inner) => inner,
 		_ => return None,
@@ -552,18 +589,23 @@ pub fn option_inner_type(ty: &Type) -> Option<&Type> {
 
 fn try_map_pod_option(ty: &Type) -> Option<TokenStream> {
 	let seg = last_path_segment(ty)?;
+
 	if seg.ident != "PodOption" {
 		return None;
 	}
+
 	let args = angle_args(&seg.arguments)?;
 	let mut iter = args.iter();
+
 	let inner = match iter.next()? {
 		GenericArgument::Type(t) => t,
 		_ => return None,
 	};
+
 	let mapped_inner = map_to_pod_type(inner);
 	// Pass through PFX if present.
 	let pfx = iter.next();
+
 	match pfx {
 		Some(pfx_arg) => Some(quote! { pinapod::pod::PodOption<#mapped_inner, #pfx_arg> }),
 		None => Some(quote! { pinapod::pod::PodOption<#mapped_inner> }),
@@ -573,12 +615,12 @@ fn try_map_pod_option(ty: &Type) -> Option<TokenStream> {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
 /// Return the last segment of a path such as `pinapod::String<32>`.
 fn last_path_segment(ty: &Type) -> Option<&syn::PathSegment> {
 	if let Type::Path(type_path) = ty {
 		return type_path.path.segments.last();
 	}
+
 	None
 }
 
@@ -594,12 +636,15 @@ fn contains_dynamic_type(ty: &Type) -> bool {
 	let Some(segment) = last_path_segment(ty) else {
 		return false;
 	};
+
 	if is_string_type(ty) || is_vec_type(ty) {
 		return true;
 	}
+
 	if segment.ident != "Option" {
 		return false;
 	}
+
 	angle_args(&segment.arguments)
 		.and_then(|arguments| arguments.first())
 		.and_then(|argument| {
@@ -615,7 +660,9 @@ fn vec_element(ty: &Type) -> Option<&Type> {
 	if !is_vec_type(ty) {
 		return None;
 	}
+
 	let arguments = angle_args(&last_path_segment(ty)?.arguments)?;
+
 	match arguments.first()? {
 		GenericArgument::Type(element) => Some(element),
 		_ => None,

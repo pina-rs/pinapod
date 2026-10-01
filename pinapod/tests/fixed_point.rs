@@ -52,6 +52,7 @@ fn every_fixed_width_maps_to_an_alignment_one_integer_pod() {
 	assert_mapping::<U0F8, u8>();
 	assert_mapping::<U0F16, PodU16>();
 	assert_mapping::<U0F32, PodU32>();
+
 	assert_mapping::<U0F64, PodU64>();
 	assert_mapping::<U0F128, PodU128>();
 }

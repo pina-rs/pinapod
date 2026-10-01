@@ -136,7 +136,6 @@ const _: () = assert!(core::mem::size_of::<PodBool>() == 1);
 // ---------------------------------------------------------------------------
 // Kani model-checking proof harnesses
 // ---------------------------------------------------------------------------
-
 #[cfg(all(kani, feature = "kani"))]
 mod kani_proofs {
 	use super::*;

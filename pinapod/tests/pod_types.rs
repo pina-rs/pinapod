@@ -10,7 +10,6 @@ use pinapod::PinaPodError;
 use pinapod::pod::*;
 
 // ---- PodOption tests ----
-
 #[test]
 fn pod_option_none() {
 	let opt = PodOption::<u8>::none();
@@ -109,6 +108,7 @@ fn pod_option_eq() {
 	assert_eq!(first, same);
 	assert_ne!(first, different);
 	assert_ne!(first, absent);
+
 	assert_eq!(absent, also_absent);
 }
 
@@ -121,7 +121,6 @@ fn pod_option_debug() {
 }
 
 // ---- Numeric pod type smoke tests ----
-
 #[test]
 fn numeric_alignment() {
 	assert_eq!(core::mem::align_of::<PodU16>(), 1);
@@ -132,6 +131,7 @@ fn numeric_alignment() {
 	assert_eq!(core::mem::align_of::<PodI32>(), 1);
 	assert_eq!(core::mem::align_of::<PodI64>(), 1);
 	assert_eq!(core::mem::align_of::<PodI128>(), 1);
+
 	assert_eq!(core::mem::align_of::<PodBool>(), 1);
 }
 
@@ -145,11 +145,11 @@ fn numeric_size() {
 	assert_eq!(core::mem::size_of::<PodI32>(), 4);
 	assert_eq!(core::mem::size_of::<PodI64>(), 8);
 	assert_eq!(core::mem::size_of::<PodI128>(), 16);
+
 	assert_eq!(core::mem::size_of::<PodBool>(), 1);
 }
 
 // ---- PodU64 roundtrip, explicit arithmetic, comparison ----
-
 #[test]
 fn pod_u64_roundtrip() {
 	let val = 123_456_789_u64;
@@ -197,7 +197,6 @@ fn pod_u64_is_zero() {
 }
 
 // ---- PodBool tests ----
-
 #[test]
 fn pod_bool_roundtrip() {
 	assert!(PodBool::from(true).get());
@@ -207,7 +206,6 @@ fn pod_bool_roundtrip() {
 }
 
 // ---- PodString basic operations ----
-
 #[test]
 fn pod_string_basic() {
 	let mut s = PodString::<32>::default();
@@ -282,7 +280,6 @@ fn zero_capacity_containers_accept_only_empty_values() {
 }
 
 // ---- PodVec basic operations ----
-
 #[test]
 fn pod_vec_basic() {
 	let mut v = PodVec::<u8, 10>::default();
@@ -300,9 +297,11 @@ fn pod_vec_iterates_by_shared_and_mutable_reference() {
 	values.try_set_from_slice(&[1, 2, 3]).unwrap();
 
 	assert_eq!((&values).into_iter().copied().sum::<u8>(), 6);
+
 	for value in &mut values {
 		*value += 1;
 	}
+
 	assert_eq!(values.as_slice(), &[2, 3, 4]);
 }
 
@@ -333,6 +332,7 @@ fn pod_vec_push_pop() {
 	assert_eq!(v.pop(), Some(30));
 	assert_eq!(v.pop(), Some(20));
 	assert_eq!(v.pop(), Some(10));
+
 	assert_eq!(v.pop(), None);
 }
 
@@ -526,6 +526,7 @@ fn pod_string_hash() {
 	let mut hb = TestHasher(0);
 	a.hash(&mut ha);
 	b.hash(&mut hb);
+
 	assert_eq!(ha.finish(), hb.finish());
 }
 
@@ -592,6 +593,7 @@ fn pod_vec_hash() {
 	let _ = b.try_push(2);
 	let mut ha = TestHasher(0);
 	let mut hb = TestHasher(0);
+
 	a.hash(&mut ha);
 	b.hash(&mut hb);
 	assert_eq!(ha.finish(), hb.finish());
