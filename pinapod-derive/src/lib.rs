@@ -73,7 +73,6 @@ use proc_macro2::TokenStream as TokenStream2;
 use proc_macro2::TokenTree;
 use quote::format_ident;
 use quote::quote;
-
 use syn::DeriveInput;
 use syn::parse_macro_input;
 

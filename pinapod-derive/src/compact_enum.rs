@@ -15,7 +15,6 @@ use syn::DeriveInput;
 use syn::Expr;
 use syn::Fields;
 use syn::Type;
-
 use syn::Variant;
 
 use crate::type_map::FieldKind;

@@ -687,7 +687,6 @@ fn extract_const_expr(arg: &GenericArgument) -> Option<Expr> {
 	match arg {
 		GenericArgument::Const(expr) => Some(expr.clone()),
 		GenericArgument::Type(Type::Path(type_path))
-
 			if type_path.qself.is_none()
 				&& type_path.path.leading_colon.is_none()
 				&& type_path.path.segments.len() == 1 =>

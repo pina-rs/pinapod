@@ -390,7 +390,6 @@ fn fixtures() -> Fixtures {
 		upstream::write_compact(&mut upstream_small, SMALL_LABEL, SMALL_VALUE_COUNT, 1);
 	let current_max_len = current::write_compact(&mut current_max, MAX_LABEL, MAX_VALUE_COUNT, 1);
 	let previous_max_len =
-
 		previous::write_compact(&mut previous_max, MAX_LABEL, MAX_VALUE_COUNT, 1);
 	let upstream_max_len =
 		upstream::write_compact(&mut upstream_max, MAX_LABEL, MAX_VALUE_COUNT, 1);

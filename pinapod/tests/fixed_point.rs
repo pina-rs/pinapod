@@ -17,7 +17,6 @@ use fixed::types::I0F128;
 use fixed::types::I16F16;
 use fixed::types::U0F8;
 use fixed::types::U0F16;
-
 use fixed::types::U0F32;
 use fixed::types::U0F64;
 use fixed::types::U0F128;
@@ -26,7 +25,6 @@ use pinapod::PinaPod;
 use pinapod::ZcElem;
 use pinapod::ZcField;
 use pinapod::pod::PodI16;
-
 use pinapod::pod::PodI32;
 use pinapod::pod::PodI64;
 use pinapod::pod::PodI128;

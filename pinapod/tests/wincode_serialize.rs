@@ -13,7 +13,6 @@ use pinapod::pod::PodF32;
 use pinapod::pod::PodF64;
 use pinapod::pod::PodOption;
 use pinapod::pod::PodString;
-
 use pinapod::pod::PodU16;
 use pinapod::pod::PodVec;
 

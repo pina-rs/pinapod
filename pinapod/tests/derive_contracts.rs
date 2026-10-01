@@ -16,7 +16,6 @@ where
 	T: pinapod::ZcField,
 	<T as pinapod::ZcField>::Pod: pinapod::ZcElem,
 {
-
 	values: pinapod::Vec<T, CAPACITY>,
 }
 
