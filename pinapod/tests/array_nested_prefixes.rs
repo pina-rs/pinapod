@@ -110,6 +110,7 @@ fn zeroed_array_nested_storage_is_valid_and_empty() {
 	for name in &registry.names {
 		assert!(name.is_empty());
 	}
+
 	assert!(registry.aliases.get().is_none());
 }
 
@@ -152,9 +153,11 @@ fn layout_walk_skips_inline_array_content_and_validate_interprets_it() {
 	// `validate_layout_accepts_a_semantically_invalid_but_readable_layout`
 	// pins for tails.
 	let mut utf8_forged = valid_registry_buffer();
+
 	for offset in 0..4 {
 		utf8_forged[name_payload_offset(0) + offset] = 0xFF;
 	}
+
 	assert!(Registry::validate_layout(&utf8_forged).is_ok());
 	assert_eq!(
 		Registry::validate(&utf8_forged),
@@ -179,6 +182,7 @@ fn absent_option_hides_arbitrary_inactive_array_payload() {
 	// may expose the stale payload.
 	let option_tag = option_tag_offset();
 	data[option_tag] = 0;
+
 	for byte in &mut data[option_tag + 1..Registry::HEADER_SIZE] {
 		*byte = 0xA5;
 	}

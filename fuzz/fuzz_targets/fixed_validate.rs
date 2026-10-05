@@ -92,6 +92,7 @@ fuzz_target!(|data: &[u8]| {
 		assert!(view.tail().len() <= 40);
 		assert!(view.values().len() <= 64);
 	}
+
 	assert_eq!(
 		WidePrefixKitchen::read_exact(data).is_ok(),
 		wide_validation.is_ok() && data.len() == WidePrefixKitchen::SIZE,

@@ -92,6 +92,7 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
 	pub(crate) fn try_decode_len(&self) -> Result<usize, PinaPodError> {
 		#[allow(clippy::let_unit_value)]
 		let _ = Self::_CAP_CHECK;
+
 		match PFX {
 			1 => Ok(self.len[0] as usize),
 			2 => Ok(u16::from_le_bytes([self.len[0], self.len[1]]) as usize),
@@ -121,6 +122,7 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
 	fn encode_len(&mut self, n: usize) {
 		#[allow(clippy::let_unit_value)]
 		let _ = Self::_CAP_CHECK;
+
 		match PFX {
 			1 => self.len[0] = n as u8,
 			2 => {
@@ -218,9 +220,11 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
 	/// The destination keeps its previous contents, so a rejected write is a no-op.<!-- {/podWriteCapacityContract} -->
 	pub fn try_push<V: Into<T>>(&mut self, value: V) -> Result<(), PinaPodError> {
 		let cur = self.len();
+
 		if cur >= N {
 			return Err(PinaPodError::Overflow);
 		}
+
 		self.data[cur] = MaybeUninit::new(value.into());
 		self.encode_len(cur + 1);
 		Ok(())
@@ -236,17 +240,22 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
 	/// The destination keeps its previous contents, so a rejected write is a no-op.<!-- {/podWriteCapacityContract} -->
 	pub fn try_set_from_slice(&mut self, values: &[T]) -> Result<(), PinaPodError> {
 		let vlen = values.len();
+
 		if vlen > N {
 			return Err(PinaPodError::Overflow);
 		}
+
 		let old_len = self.len();
 		unsafe {
 			core::ptr::copy_nonoverlapping(values.as_ptr(), self.data.as_mut_ptr() as *mut T, vlen);
 		}
+
 		if vlen < old_len {
 			self.zero_range(vlen..old_len);
 		}
+
 		self.encode_len(vlen);
+
 		Ok(())
 	}
 
@@ -269,11 +278,13 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
 	{
 		let values = values.as_ref();
 		let new_len = values.len();
+
 		if new_len > N {
 			return Err(PinaPodError::Overflow);
 		}
 
 		let old_len = self.len();
+
 		for (slot, value) in self.data.iter_mut().zip(values) {
 			*slot = MaybeUninit::new((*value).into());
 		}
@@ -281,6 +292,7 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
 		if new_len < old_len {
 			self.zero_range(new_len..old_len);
 		}
+
 		self.encode_len(new_len);
 		Ok(())
 	}
@@ -348,9 +360,11 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
 	#[inline(always)]
 	pub fn pop(&mut self) -> Option<T> {
 		let cur = self.len();
+
 		if cur == 0 {
 			return None;
 		}
+
 		let new_len = cur - 1;
 		let val = unsafe { self.data[new_len].assume_init() };
 		self.data[new_len] = MaybeUninit::zeroed();
@@ -371,15 +385,20 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
 	#[inline(always)]
 	pub fn swap_remove(&mut self, index: usize) -> Option<T> {
 		let cur = self.len();
+
 		if index >= cur {
 			return None;
 		}
+
 		let last = cur - 1;
 		let removed = unsafe { self.data[index].assume_init() };
+
 		if index != last {
 			self.data[index] = self.data[last];
 		}
+
 		self.data[last] = MaybeUninit::zeroed();
+
 		self.encode_len(last);
 		Some(removed)
 	}
@@ -397,11 +416,14 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
 	#[inline(always)]
 	pub fn remove(&mut self, index: usize) -> Option<T> {
 		let cur = self.len();
+
 		if index >= cur {
 			return None;
 		}
+
 		let removed = unsafe { self.data[index].assume_init() };
 		let tail = cur - index - 1;
+
 		if tail > 0 {
 			unsafe {
 				core::ptr::copy(
@@ -411,7 +433,9 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
 				);
 			}
 		}
+
 		let new_len = cur - 1;
+
 		self.data[new_len] = MaybeUninit::zeroed();
 		self.encode_len(new_len);
 		Some(removed)
@@ -426,6 +450,7 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
 	#[inline(always)]
 	pub fn truncate(&mut self, new_len: usize) {
 		let cur = self.len();
+
 		if new_len < cur {
 			self.zero_range(new_len..cur);
 			self.encode_len(new_len);
@@ -441,13 +466,16 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
 	pub fn retain(&mut self, mut f: impl FnMut(&T) -> bool) {
 		let mut write = 0;
 		let cur = self.len();
+
 		for read in 0..cur {
 			let val = unsafe { self.data[read].assume_init() };
+
 			if f(&val) {
 				self.data[write] = MaybeUninit::new(val);
 				write += 1;
 			}
 		}
+
 		self.zero_range(write..cur);
 		self.encode_len(write);
 	}
@@ -576,7 +604,6 @@ impl<T: ZcElem + core::hash::Hash, const N: usize, const PFX: usize> core::hash:
 // ---------------------------------------------------------------------------
 // Kani model-checking proof harnesses
 // ---------------------------------------------------------------------------
-
 #[cfg(all(kani, feature = "kani"))]
 mod kani_proofs {
 	use super::*;
@@ -668,6 +695,7 @@ mod kani_proofs {
 		assert!(v.try_push(b).is_ok());
 		assert!(v.try_push(c).is_ok());
 		assert!(v.swap_remove(0) == Some(a));
+
 		assert!(v.len() == 2);
 		assert!(v.as_slice()[0] == c);
 		assert!(v.as_slice()[1] == b);

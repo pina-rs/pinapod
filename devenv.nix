@@ -7,6 +7,7 @@
 }:
 let
   currentDir = builtins.dirOf __curPos.file;
+
   custom = inputs.ifiokjr-nixpkgs.packages.${pkgs.stdenv.hostPlatform.system};
   # Kani's prebuilt driver links the compiler libraries of one exact nightly
   # release, so the proof environment ships that toolchain alongside it. The

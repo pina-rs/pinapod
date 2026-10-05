@@ -132,6 +132,7 @@ impl Schema {
 				} else {
 					classify_field(&ty)
 				};
+
 				let (skip_accessor, skip_patch, pinapod_attrs) =
 					parse_pinapod_field_attrs(&f.attrs)?;
 				Ok(SchemaField {
@@ -151,6 +152,7 @@ impl Schema {
 		if is_compact {
 			let mut seen_tail = false;
 			let mut first_tail_name: Option<&syn::Ident> = None;
+
 			for f in &fields {
 				match &f.kind {
 					FieldKind::Tail(_) => {

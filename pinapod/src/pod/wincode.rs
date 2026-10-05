@@ -77,11 +77,13 @@ fn write_zeroed_padding(
 	mut remaining: usize,
 ) -> wincode::error::WriteResult<()> {
 	const ZEROS: [u8; 64] = [0; 64];
+
 	while remaining != 0 {
 		let count = remaining.min(ZEROS.len());
 		writer.write(&ZEROS[..count])?;
 		remaining -= count;
 	}
+
 	Ok(())
 }
 
@@ -104,7 +106,6 @@ where
 // ---------------------------------------------------------------------------
 // PodString
 // ---------------------------------------------------------------------------
-
 unsafe impl<const N: usize, const PFX: usize, C: ConfigCore> wincode::SchemaWrite<C>
 	for PodString<N, PFX>
 {
@@ -129,6 +130,7 @@ unsafe impl<const N: usize, const PFX: usize, C: ConfigCore> wincode::SchemaWrit
 				"PinaPod string length prefix exceeds its capacity",
 			));
 		}
+
 		write_initialized_prefix(__writer.by_ref(), src, PFX)?;
 		__writer.write(src.as_bytes())?;
 		write_zeroed_padding(__writer, N - src.len())
@@ -158,7 +160,6 @@ unsafe impl<'__de, const N: usize, const PFX: usize, C: ConfigCore> wincode::Sch
 // ---------------------------------------------------------------------------
 // PodVec
 // ---------------------------------------------------------------------------
-
 unsafe impl<T, const N: usize, const PFX: usize, C> wincode::SchemaWrite<C>
 	for PodVecRepr<T, N, PFX>
 where
@@ -171,6 +172,7 @@ where
 		TypeMeta::Static { size, .. } if size == core::mem::size_of::<T>() => {
 			static_encoded!(Self)
 		}
+
 		_ => TypeMeta::Dynamic,
 	};
 
@@ -192,10 +194,13 @@ where
 				"PinaPod vector length prefix exceeds its capacity",
 			));
 		}
+
 		write_initialized_prefix(__writer.by_ref(), src, PFX)?;
+
 		for value in src.as_slice() {
 			<T as wincode::SchemaWrite<C>>::write(__writer.by_ref(), value)?;
 		}
+
 		write_zeroed_padding(__writer, (N - src.len()) * element_size)
 	}
 }
@@ -223,7 +228,6 @@ unsafe impl<'__de, T: ZcElem, const N: usize, const PFX: usize, C: ConfigCore>
 // ---------------------------------------------------------------------------
 // PodOption
 // ---------------------------------------------------------------------------
-
 unsafe impl<T, const PFX: usize, C> wincode::SchemaWrite<C> for PodOption<T, PFX>
 where
 	T: ZcElem + wincode::SchemaWrite<C, Src = T>,
@@ -235,6 +239,7 @@ where
 		TypeMeta::Static { size, .. } if size == core::mem::size_of::<T>() => {
 			static_encoded!(Self)
 		}
+
 		_ => TypeMeta::Dynamic,
 	};
 
@@ -249,8 +254,10 @@ where
 	) -> wincode::error::WriteResult<()> {
 		let value_size = require_fixed_wire_size::<T, C>()?;
 		write_initialized_prefix(__writer.by_ref(), src, PFX)?;
+
 		match src.get_ref() {
 			Some(value) => <T as wincode::SchemaWrite<C>>::write(__writer, value),
+
 			None if src.tag_valid() => write_zeroed_padding(__writer, value_size),
 			None => {
 				Err(wincode::error::WriteError::Custom(

@@ -42,6 +42,7 @@ fuzz_target!(|data: &[u8]| {
 			None => assert!(value.raw_tag() != 1),
 		}
 	}
+
 	let _ = wincode::deserialize::<PodOption<PodString<4>>>(data);
 	let _ = wincode::deserialize::<PodVec<PodBool, 6>>(data);
 

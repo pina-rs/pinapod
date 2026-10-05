@@ -76,6 +76,7 @@ fn decode_fields(plan: &mut Plan<'_>) -> Fields {
 	let mut sequence = [0u8; 8];
 	let chunk = plan.take(8);
 	sequence[..chunk.len()].copy_from_slice(chunk);
+
 	let mut revision = [0u8; 4];
 	let chunk = plan.take(4);
 	revision[..chunk.len()].copy_from_slice(chunk);
@@ -113,6 +114,7 @@ fn assert_roundtrip(data: &[u8], fields: &Fields) {
 	assert_eq!(view.revision, fields.revision);
 	assert_eq!(view.label(), fields.label);
 	assert_eq!(view.values(), fields.values.as_slice());
+
 	match (&fields.note, view.note()) {
 		(Some(expected), Some(actual)) => assert_eq!(actual, expected),
 		(None, None) => {}

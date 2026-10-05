@@ -63,6 +63,7 @@ fn golden_all_pod_align_1() {
 	assert_eq!(core::mem::align_of::<PodI32>(), 1);
 	assert_eq!(core::mem::align_of::<PodI64>(), 1);
 	assert_eq!(core::mem::align_of::<PodI128>(), 1);
+
 	assert_eq!(core::mem::align_of::<PodBool>(), 1);
 	assert_eq!(core::mem::align_of::<PodOption<PodU64>>(), 1);
 	assert_eq!(core::mem::align_of::<PodString<32>>(), 1);

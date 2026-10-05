@@ -27,14 +27,12 @@ struct Validatable {
 //   name:   offset 18, size 9  (PodString<8,1>: len 1 + data 8)
 //   items:  offset 27, size 6  (PodVec<u8,4,2>: len 2 + data 4)
 //   total: 33
-
 #[test]
 fn validate_correct_size() {
 	assert_eq!(Validatable::SIZE, 33);
 }
 
 // --- `validate_layout`'s default is the full walk ---
-
 /// A hand-written compact schema, the case the additive method must not break.
 ///
 /// `validate_layout` is a *provided* method on `PinaPodCompact`, so this impl
@@ -52,6 +50,7 @@ impl pinapod::ZcValidate for HandWrittenHeader {
 		if value.value.get() > 100 {
 			return Err(pinapod::PinaPodError::InvalidLength);
 		}
+
 		Ok(())
 	}
 }
@@ -156,7 +155,6 @@ fn validate_overlength_vec() {
 }
 
 // --- ZcValidate: invalid UTF-8 in fixed PodString ---
-
 #[test]
 fn validate_rejects_invalid_utf8_in_string() {
 	let mut buf = [0u8; 33];
@@ -170,7 +168,6 @@ fn validate_rejects_invalid_utf8_in_string() {
 }
 
 // --- ZcValidate: Option<bool> inner validation ---
-
 #[allow(dead_code)]
 #[derive(PinaPod)]
 struct WithOptionBool {
@@ -178,7 +175,6 @@ struct WithOptionBool {
 }
 
 // Layout: PodOption<PodBool>: tag(1) + PodBool(1) = 2
-
 #[test]
 fn validate_option_bool_none_ok() {
 	let buf = [0u8; 2]; // tag=0, None
@@ -198,7 +194,6 @@ fn validate_option_bool_some_invalid_inner() {
 }
 
 // --- ZcValidate: Option<Enum> inner validation ---
-
 #[derive(PinaPod, Debug, PartialEq)]
 #[repr(u8)]
 enum Color {
@@ -214,7 +209,6 @@ struct WithOptionEnum {
 }
 
 // Layout: PodOption<ColorZc>: tag(1) + ColorZc(1) = 2
-
 #[test]
 fn validate_option_enum_none_ok() {
 	let buf = [0u8; 2]; // tag=0, None
@@ -234,7 +228,6 @@ fn validate_option_enum_some_invalid_inner() {
 }
 
 // --- Compact validation ---
-
 #[allow(dead_code)]
 #[derive(PinaPod)]
 #[pinapod(compact)]
@@ -244,7 +237,6 @@ struct CompactVal {
 }
 
 // Compact header: authority(32) + bio_len(1, PFX=1) = 33
-
 #[test]
 fn compact_validate_overlength_tail_string() {
 	let mut buf = vec![0u8; 100];
@@ -272,7 +264,6 @@ fn compact_validate_rejects_invalid_utf8_in_tail_string() {
 }
 
 // --- Compact: inline bool validation via ZcValidate ---
-
 #[allow(dead_code)]
 #[derive(PinaPod)]
 #[pinapod(compact)]
@@ -282,7 +273,6 @@ struct CompactWithBool {
 }
 
 // Header: PodBool(1) + bio_len(1) = 2
-
 #[test]
 fn compact_validate_inline_bad_bool() {
 	let mut buf = vec![0u8; 20];
@@ -296,7 +286,6 @@ fn compact_validate_inline_bad_bool() {
 // We test at the storage level directly (no derive) since the derive lowers
 // bool → PodBool automatically, and PodVec<bool> is intentionally not valid
 // (bool is not ZcElem because &bool from arbitrary bytes is UB).
-
 #[test]
 fn validate_vec_bool_all_valid() {
 	// Layout: PodVec<PodBool, 5, 2>: len(2) + data(5) = 7
@@ -348,9 +337,7 @@ fn validate_rejects_eight_byte_lengths_that_do_not_fit_usize() {
 // expands to PodVec<Enum, N> and Enum isn't Copy. This is a known v1
 // limitation. For enum vectors, use PodBool as a proxy test since
 // the ZcValidate recursion works the same way for any validated element type.
-
 // --- PodString truncate char boundary ---
-
 #[test]
 fn podstring_truncate_snaps_to_char_boundary() {
 	use pinapod::pod::PodString;
@@ -380,7 +367,6 @@ fn podstring_truncate_at_boundary_is_exact() {
 }
 
 // --- Error variant specificity tests ---
-
 #[test]
 fn error_invalid_bool_variant() {
 	let buf = [2u8]; // bad bool byte
@@ -398,7 +384,6 @@ fn error_invalid_tag_variant() {
 }
 
 // --- PodOption: is_some/is_none on invalid tag ---
-
 #[test]
 fn pod_option_invalid_tag_is_not_some() {
 	// Construct a PodOption with raw tag = 0xFF (invalid).
@@ -416,7 +401,6 @@ fn pod_option_invalid_tag_is_not_some() {
 }
 
 // --- Wincode: PodOption inner validation ---
-
 #[cfg(feature = "wincode")]
 mod wincode_option_validation {
 	use pinapod::pod::PodBool;
@@ -449,7 +433,6 @@ mod wincode_option_validation {
 }
 
 // --- Compact: tail Vec element validation ---
-
 #[allow(dead_code)]
 #[derive(PinaPod)]
 #[pinapod(compact)]
@@ -460,7 +443,6 @@ struct CompactWithVecBool {
 
 // Compact header: score(PodU64=8) + flags_len([u8;2]=2) = 10
 // On-chain: [header(10)][tail: flags data]
-
 #[test]
 fn compact_validate_rejects_invalid_vec_bool_element() {
 	let mut buf = vec![0u8; 13]; // 10 header + 3 tail

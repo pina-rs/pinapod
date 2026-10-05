@@ -99,6 +99,7 @@ fn fixed_layout_supports_recursively_bounded_containers() {
 		Some("ifi")
 	);
 	assert_eq!(value.preferred().map(|values| values[1].get()), Some(11));
+
 	assert_eq!(value.history()[0].get(), 42);
 	assert_eq!(value.label(), "a wider prefix");
 }

@@ -70,6 +70,7 @@ const _: () = assert!(core::mem::align_of::<PodString<32>>() == 1);
 const _: () = assert!(core::mem::align_of::<PodString<255>>() == 1);
 // Compile-time layout invariants — PFX=2.
 const _: () = assert!(core::mem::size_of::<PodString<0, 2>>() == 2);
+
 const _: () = assert!(core::mem::size_of::<PodString<100, 2>>() == 102);
 const _: () = assert!(core::mem::align_of::<PodString<0, 2>>() == 1);
 // Compile-time layout invariants — PFX=4.
@@ -85,6 +86,7 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
 	pub(crate) fn try_decode_len(&self) -> Result<usize, PinaPodError> {
 		#[allow(clippy::let_unit_value)]
 		let _ = Self::_CAP_CHECK;
+
 		match PFX {
 			1 => Ok(self.len[0] as usize),
 			2 => Ok(u16::from_le_bytes([self.len[0], self.len[1]]) as usize),
@@ -114,6 +116,7 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
 	fn encode_len(&mut self, n: usize) {
 		#[allow(clippy::let_unit_value)]
 		let _ = Self::_CAP_CHECK;
+
 		match PFX {
 			1 => self.len[0] = n as u8,
 			2 => {
@@ -186,17 +189,22 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
 	/// The destination keeps its previous contents, so a rejected write is a no-op.<!-- {/podWriteCapacityContract} -->
 	pub fn try_set(&mut self, value: &str) -> Result<(), PinaPodError> {
 		let vlen = value.len();
+
 		if vlen > N {
 			return Err(PinaPodError::Overflow);
 		}
+
 		let old_len = self.len();
 		unsafe {
 			core::ptr::copy_nonoverlapping(value.as_ptr(), self.data.as_mut_ptr() as *mut u8, vlen);
 		}
+
 		if vlen < old_len {
 			self.zero_range(vlen..old_len);
 		}
+
 		self.encode_len(vlen);
+
 		Ok(())
 	}
 
@@ -212,9 +220,11 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
 		let cur = self.len();
 		let vlen = value.len();
 		let new_len = cur.checked_add(vlen).ok_or(PinaPodError::Overflow)?;
+
 		if new_len > N {
 			return Err(PinaPodError::Overflow);
 		}
+
 		unsafe {
 			core::ptr::copy_nonoverlapping(
 				value.as_ptr(),
@@ -252,11 +262,14 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
 		if new_len >= self.len() {
 			return;
 		}
+
 		let s = self.as_str();
 		let mut boundary = new_len;
+
 		while boundary > 0 && !s.is_char_boundary(boundary) {
 			boundary -= 1;
 		}
+
 		self.zero_range(boundary..self.len());
 		self.encode_len(boundary);
 	}
@@ -364,7 +377,6 @@ impl<const N: usize, const PFX: usize> TryFrom<&str> for PodString<N, PFX> {
 // ---------------------------------------------------------------------------
 // Kani model-checking proof harnesses
 // ---------------------------------------------------------------------------
-
 #[cfg(all(kani, feature = "kani"))]
 mod kani_proofs {
 	use super::*;
