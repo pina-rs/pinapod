@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.6](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.6) (2026-10-05)
+
+Grouped release for `pinapod-workspace`.
+
+### Fixes
+
+- **Monostyle style pass.** Breathing room around control flow and returns, group splits, and collapsed blank runs, applied by `monostyle fix` and kept where rustfmt puts them. No behavior change. _Packages:_ 🟢 _pinapod_, 🟢 _pinapod-derive_ _Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #44](https://github.com/pina-rs/pinapod/pull/44)
+
 ## [0.4.5](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.5) (2026-09-29)
 
 Grouped release for `pinapod-workspace`.

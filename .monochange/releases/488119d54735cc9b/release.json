@@ -1,0 +1,223 @@
+{
+  "schema_version": "0.9",
+  "kind": "monochange.releaseRecord",
+  "created_at": "2026-10-05T11:06:51Z",
+  "command": "release",
+  "version": "0.4.6",
+  "versions": {
+    "pinapod-workspace": "0.4.6"
+  },
+  "release_targets": [
+    {
+      "id": "pinapod-workspace",
+      "kind": "group",
+      "version": "0.4.6",
+      "version_format": "pinapod/v{{ version }}",
+      "tag": true,
+      "release": true,
+      "tag_name": "pinapod/v0.4.6",
+      "rendered_title": "v0.4.6 (2026-10-05)",
+      "rendered_changelog_title": "[0.4.6](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.6) (2026-10-05)",
+      "members": [
+        "pinapod",
+        "pinapod-derive"
+      ]
+    }
+  ],
+  "released_packages": [
+    "pinapod",
+    "pinapod-derive"
+  ],
+  "changed_files": [
+    "CHANGELOG.md",
+    "Cargo.lock",
+    "Cargo.toml",
+    "pinapod/Cargo.toml",
+    "pinapod/tests/fixed_reexport/Cargo.lock",
+    "pinapod/tests/renamed_dependency/Cargo.lock",
+    "pinapod-derive/Cargo.toml"
+  ],
+  "package_publications": [
+    {
+      "package": "pinapod",
+      "ecosystem": "cargo",
+      "registry": "crates_io",
+      "version": "0.4.6",
+      "mode": "builtin",
+      "trusted_publishing": {
+        "enabled": true,
+        "mode": "required",
+        "repository": "pina-rs/pinapod",
+        "workflow": "publish.yml",
+        "environment": "publisher"
+      }
+    },
+    {
+      "package": "pinapod-derive",
+      "ecosystem": "cargo",
+      "registry": "crates_io",
+      "version": "0.4.6",
+      "mode": "builtin",
+      "trusted_publishing": {
+        "enabled": true,
+        "mode": "required",
+        "repository": "pina-rs/pinapod",
+        "workflow": "publish.yml",
+        "environment": "publisher"
+      }
+    }
+  ],
+  "updated_changelogs": [
+    "CHANGELOG.md"
+  ],
+  "deleted_changesets": [
+    ".changeset/monostyle-style-pass.md"
+  ],
+  "changesets": [
+    {
+      "path": ".changeset/monostyle-style-pass.md",
+      "summary": "Monostyle style pass",
+      "details": "Breathing room around control flow and returns, group splits, and collapsed blank runs, applied by `monostyle fix` and kept where rustfmt puts them. No behavior change.",
+      "targets": [
+        {
+          "id": "pinapod",
+          "kind": "package",
+          "bump": "patch",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "fix"
+        },
+        {
+          "id": "pinapod-derive",
+          "kind": "package",
+          "bump": "patch",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "fix"
+        }
+      ],
+      "context": {
+        "provider": "github",
+        "host": "github.com",
+        "capabilities": {
+          "commit_web_urls": true,
+          "actor_profiles": true,
+          "review_request_lookup": true,
+          "related_issues": true,
+          "issue_comments": true
+        },
+        "introduced": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "4cd51f4849a5d744cb618faf7cbfa077f312429f",
+            "short_sha": "4cd51f4",
+            "url": "https://github.com/pina-rs/pinapod/commit/4cd51f4849a5d744cb618faf7cbfa077f312429f",
+            "authored_at": "2026-10-05T12:02:48+01:00",
+            "committed_at": "2026-10-05T12:02:48+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#44",
+            "title": "chore(style): add monostyle with inline annotations",
+            "url": "https://github.com/pina-rs/pinapod/pull/44",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "last_updated": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "4cd51f4849a5d744cb618faf7cbfa077f312429f",
+            "short_sha": "4cd51f4",
+            "url": "https://github.com/pina-rs/pinapod/commit/4cd51f4849a5d744cb618faf7cbfa077f312429f",
+            "authored_at": "2026-10-05T12:02:48+01:00",
+            "committed_at": "2026-10-05T12:02:48+01:00",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#44",
+            "title": "chore(style): add monostyle with inline annotations",
+            "url": "https://github.com/pina-rs/pinapod/pull/44",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "related_issues": []
+      }
+    }
+  ],
+  "changelogs": [
+    {
+      "owner_id": "pinapod-workspace",
+      "owner_kind": "group",
+      "output": "default",
+      "stream": "default",
+      "path": "CHANGELOG.md",
+      "format": "keep_a_changelog",
+      "notes": {
+        "title": "[0.4.6](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.6) (2026-10-05)",
+        "summary": [
+          "Grouped release for `pinapod-workspace`."
+        ],
+        "sections": [
+          {
+            "title": "Fixes",
+            "collapsed": false,
+            "entries": [
+              "- **Monostyle style pass.** Breathing room around control flow and returns, group splits, and collapsed blank runs, applied by `monostyle fix` and kept where rustfmt puts them. No behavior change.\n  _Packages:_ 🟢 _pinapod_, 🟢 _pinapod-derive_\n  _Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #44](https://github.com/pina-rs/pinapod/pull/44)"
+            ]
+          }
+        ]
+      },
+      "rendered": "## [0.4.6](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.6) (2026-10-05)\n\nGrouped release for `pinapod-workspace`.\n\n### Fixes\n\n- **Monostyle style pass.** Breathing room around control flow and returns, group splits, and collapsed blank runs, applied by `monostyle fix` and kept where rustfmt puts them. No behavior change.\n  _Packages:_ 🟢 _pinapod_, 🟢 _pinapod-derive_\n  _Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #44](https://github.com/pina-rs/pinapod/pull/44)"
+    }
+  ],
+  "provider": {
+    "kind": "github",
+    "owner": "pina-rs",
+    "repo": "pinapod",
+    "host": null
+  }
+}
