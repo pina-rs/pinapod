@@ -76,8 +76,8 @@ fn decode_fields(plan: &mut Plan<'_>) -> Fields {
 	let mut sequence = [0u8; 8];
 	let chunk = plan.take(8);
 	sequence[..chunk.len()].copy_from_slice(chunk);
-	let mut revision = [0u8; 4];
 
+	let mut revision = [0u8; 4];
 	let chunk = plan.take(4);
 	revision[..chunk.len()].copy_from_slice(chunk);
 
