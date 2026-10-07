@@ -414,12 +414,12 @@ dependencies = [
 
 [[package]]
 name = "pinapod"
-version = "0.4.5"
+version = "0.4.6"
 dependencies = [
  "criterion",
  "fixed",
  "pinapod 0.1.0",
- "pinapod-derive 0.4.5",
+ "pinapod-derive 0.4.6",
  "solana-address",
  "solana-program-error",
  "stats_alloc",
@@ -440,7 +440,7 @@ dependencies = [
 
 [[package]]
 name = "pinapod-derive"
-version = "0.4.5"
+version = "0.4.6"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
