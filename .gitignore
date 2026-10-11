@@ -7,6 +7,10 @@
 /.video_agent
 /.mdt
 
+# cargo-deny's advisory database clone (see `deny.toml`): it must stay
+# outside the cached `target` directory, so it gets its own ignored root.
+/.advisory-db
+
 # llvm-cov writes profraw artifacts next to the binaries it runs; they are
 # build output, never sources, and have been committed by accident before.
 *.profraw
