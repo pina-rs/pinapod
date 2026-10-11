@@ -8,6 +8,16 @@ updates:
       default-days: 7
     open-pull-requests-limit: 10
 
+  # The fuzz suite is a standalone workspace whose lock file CI verifies with
+  # `cargo metadata --locked`; keep its registry dependencies tracked too.
+  - package-ecosystem: "cargo"
+    directory: "/fuzz"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 10
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

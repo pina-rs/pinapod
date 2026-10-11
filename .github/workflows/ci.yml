@@ -41,6 +41,9 @@ jobs:
       - name: checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # `security:secrets` scans the full commit history for leaked
+          # credentials, so a shallow checkout is not enough here.
+          fetch-depth: 0
           persist-credentials: false
       - name: setup
         uses: $/.github/actions/devenv
@@ -48,6 +51,9 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: audit dependencies
         run: security:audit
+        shell: devenv shell -c -- bash -e {0}
+      - name: scan for committed secrets
+        run: security:secrets
         shell: devenv shell -c -- bash -e {0}
 
   cargo-deny:

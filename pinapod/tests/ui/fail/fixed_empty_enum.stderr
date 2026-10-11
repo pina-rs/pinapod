@@ -1,0 +1,13 @@
+error: PinaPod enums require at least one variant: an empty enum has no discriminant to store and no representation to validate
+ --> tests/ui/fail/fixed_empty_enum.rs:9:6
+  |
+9 | enum EmptyFixed {}
+  |      ^^^^^^^^^^
+
+error[E0084]: unsupported representation for zero-variant enum
+ --> tests/ui/fail/fixed_empty_enum.rs:8:8
+  |
+8 | #[repr(u8)]
+  |        ^^
+9 | enum EmptyFixed {}
+  | --------------- zero-variant enum

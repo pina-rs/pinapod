@@ -1,6 +1,18 @@
 name: fuzz
 
 on:
+  # Merges to main carry the smoke budget too, so a direct push (including a
+  # release commit) is fuzzed before the weekly run reaches it.
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/fuzz.yml
+      - Cargo.toml
+      - rust-toolchain.toml
+      - pinapod/Cargo.toml
+      - pinapod/src/**
+      - pinapod-derive/src/**
+      - fuzz/**
   pull_request:
     branches: [main]
     paths:
@@ -46,9 +58,9 @@ jobs:
           - wincode_read
           - pod_containers
     env:
-      # Smoke budgets on pull requests; full budgets on the weekly run and
-      # manual dispatch.
-      MAX_TOTAL_TIME: ${{ github.event_name == 'pull_request' && '30' || (inputs.max_total_time || '600') }}
+      # Smoke budgets on pull requests and merges to main; full budgets on
+      # the weekly run and manual dispatch.
+      MAX_TOTAL_TIME: ${{ (github.event_name == 'pull_request' || github.event_name == 'push') && '30' || (inputs.max_total_time || '600') }}
     steps:
       - name: checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -57,6 +69,16 @@ jobs:
 
       - name: install cargo-fuzz
         run: cargo install cargo-fuzz --version 0.13.2 --locked
+        shell: bash
+
+      # The fuzz suite is part of the security boundary, so its dependency
+      # set is reproducible: this fails when the committed `fuzz/Cargo.lock`
+      # no longer satisfies the manifests, instead of letting the run below
+      # silently rewrite it. Refresh the lockfile on purpose when a dependency
+      # changes.
+      - name: verify the fuzz lockfile
+        run: cargo metadata --locked --format-version 1 > /dev/null
+        working-directory: fuzz
         shell: bash
 
       - name: fuzz target
@@ -72,3 +94,11 @@ jobs:
         run: |
           find fuzz/artifacts -type f -print -exec sh -c 'echo "-- $1"; od -A x -t x1z "$1"' _ {} \;
         shell: bash
+
+      - name: upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: crash-${{ matrix.target }}
+          path: fuzz/artifacts
+          if-no-files-found: ignore

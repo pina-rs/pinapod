@@ -5,6 +5,17 @@
 //! existing account. Writers therefore emit only active values and canonical
 //! zero padding. This prevents stale-capacity disclosure and makes equivalent
 //! logical values encode identically.
+//!
+//! Every writer also validates the value it is about to emit — prefix, tag,
+//! and content alike — through [`ZcValidate`](crate::ZcValidate), the same
+//! walk its reader runs. A value whose metadata is in range but whose content
+//! is invalid (non-UTF-8 string bytes, an out-of-domain `PodBool` element)
+//! therefore fails at the writer instead of producing bytes the matching
+//! reader refuses: the canonical-output contract holds for every accepted
+//! serialization, not only for already-valid values. Because a pod value can
+//! only reach a writer with invalid content through an unchecked reference,
+//! this is a hardening boundary rather than a reachable defect; it exists so
+//! the writer and reader enforce one contract.
 
 use wincode::TypeMeta;
 use wincode::config::ConfigCore;
@@ -24,6 +35,15 @@ macro_rules! static_encoded {
 	};
 }
 
+/// Run the stored-value validation walk a reader would run, reporting
+/// failures with the writer's boundary message.
+fn validate_wire_value<T: crate::ZcValidate>(
+	src: &T,
+	message: &'static str,
+) -> wincode::error::WriteResult<()> {
+	crate::ZcValidate::validate_ref(src).map_err(|_| wincode::error::WriteError::Custom(message))
+}
+
 unsafe impl<C: ConfigCore> wincode::SchemaWrite<C> for PodBool {
 	type Src = Self;
 
@@ -37,6 +57,7 @@ unsafe impl<C: ConfigCore> wincode::SchemaWrite<C> for PodBool {
 		mut __writer: impl wincode::io::Writer,
 		src: &Self,
 	) -> wincode::error::WriteResult<()> {
+		validate_wire_value(src, "PinaPod bool content failed validation")?;
 		__writer.write(src.as_ref())?;
 		Ok(())
 	}
@@ -130,6 +151,10 @@ unsafe impl<const N: usize, const PFX: usize, C: ConfigCore> wincode::SchemaWrit
 				"PinaPod string length prefix exceeds its capacity",
 			));
 		}
+		// The content walk the reader runs: an in-range prefix over
+		// non-UTF-8 bytes fails here instead of emitting bytes that fail on
+		// re-read.
+		validate_wire_value(src, "PinaPod string content failed validation")?;
 
 		write_initialized_prefix(__writer.by_ref(), src, PFX)?;
 		__writer.write(src.as_bytes())?;
@@ -194,6 +219,10 @@ where
 				"PinaPod vector length prefix exceeds its capacity",
 			));
 		}
+		// The element walk the reader runs: a valid count over out-of-domain
+		// elements (a `PodBool` byte above one, non-UTF-8 nested string bytes)
+		// fails here instead of emitting bytes that fail on re-read.
+		validate_wire_value(src, "PinaPod vector content failed validation")?;
 
 		write_initialized_prefix(__writer.by_ref(), src, PFX)?;
 
@@ -253,17 +282,27 @@ where
 		src: &Self,
 	) -> wincode::error::WriteResult<()> {
 		let value_size = require_fixed_wire_size::<T, C>()?;
+		// The tag is emitted verbatim, so an invalid one must fail before any
+		// byte is written, matching the string and vector writers' rejection
+		// ordering: a rejected serialization leaves the destination alone.
+		if !src.tag_valid() {
+			return Err(wincode::error::WriteError::Custom(
+				"PinaPod option has an invalid tag",
+			));
+		}
+		// The payload walk the reader runs: a valid tag over an invalid
+		// payload (an out-of-domain `PodBool`, non-UTF-8 nested string bytes)
+		// fails here instead of emitting bytes that fail on re-read.
+		validate_wire_value(src, "PinaPod option content failed validation")?;
+
 		write_initialized_prefix(__writer.by_ref(), src, PFX)?;
 
 		match src.get_ref() {
 			Some(value) => <T as wincode::SchemaWrite<C>>::write(__writer, value),
 
-			None if src.tag_valid() => write_zeroed_padding(__writer, value_size),
-			None => {
-				Err(wincode::error::WriteError::Custom(
-					"PinaPod option has an invalid tag",
-				))
-			}
+			// `tag_valid` accepted the tag, so `None` can only mean the tag
+			// encodes absent and the inactive payload stays unemitted.
+			None => write_zeroed_padding(__writer, value_size),
 		}
 	}
 }

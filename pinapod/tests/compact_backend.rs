@@ -644,6 +644,81 @@ fn compact_optional_tail_with_eight_byte_prefix_roundtrips() {
 	assert_eq!(view.note(), None);
 }
 
+// --- Present-but-empty optional payloads ---
+//
+// The staged-edit representation distinguishes an edited option from a
+// cleared one by pointer: a present payload stages the (possibly null-for-
+// empty) `slice::as_ptr()`, while a clear stages `core::ptr::null()`. That
+// makes `Some("")` and `Some(&[])` the discriminating cases: their pointers
+// are non-null with a zero length, so the commit must keep their tags set and
+// their prefixes zero rather than demoting them to absent.
+
+#[test]
+fn present_empty_optional_tails_round_trip_through_initialize_and_update() {
+	let mut buffer = vec![0u8; <OptionalTailProfile as PinaPodCompact>::MAX_SIZE];
+	let patch = OptionalTailProfilePatch::new()
+		.nickname(Some(""))
+		.replace_tags(Some(&[][..]))
+		.note("");
+	let encoded = OptionalTailProfile::initialize(&mut buffer, &patch).unwrap();
+
+	let view = OptionalTailProfile::read_prefix(&buffer).unwrap();
+	assert_eq!(view.nickname(), Some(""));
+	assert_eq!(view.tags(), Some(&[][..]));
+	assert_eq!(view.note(), "");
+	assert_eq!(encoded, view.encoded_len());
+
+	// Growing over a present-empty value exercises the relocation path with a
+	// zero-length old region on the left of the moved tails.
+	let grown = OptionalTailProfilePatch::new()
+		.nickname(Some("probe"))
+		.replace_tags(Some(&[[1u8; 4], [2u8; 4]][..]))
+		.note("hi");
+	let encoded = OptionalTailProfile::update(&mut buffer, &grown).unwrap();
+	let view = OptionalTailProfile::read_prefix(&buffer).unwrap();
+	assert_eq!(view.nickname(), Some("probe"));
+	assert_eq!(view.tags(), Some(&[[1u8; 4], [2u8; 4]][..]));
+	assert_eq!(view.note(), "hi");
+	assert_eq!(encoded, view.encoded_len());
+
+	// Shrinking back to present-empty keeps the tags present: an empty value
+	// is `Some` with zero length, never an absent payload.
+	let shrunk = OptionalTailProfilePatch::new()
+		.nickname(Some(""))
+		.replace_tags(Some(&[][..]))
+		.note("");
+	let encoded = OptionalTailProfile::update(&mut buffer, &shrunk).unwrap();
+	let view = OptionalTailProfile::read_prefix(&buffer).unwrap();
+	assert_eq!(view.nickname(), Some(""));
+	assert_eq!(view.tags(), Some(&[][..]));
+	assert_eq!(view.note(), "");
+	assert_eq!(encoded, view.encoded_len());
+
+	// Clearing is still distinct from present-empty.
+	let cleared = OptionalTailProfilePatch::new()
+		.nickname(None)
+		.replace_tags(None);
+	let encoded = OptionalTailProfile::update(&mut buffer, &cleared).unwrap();
+	let view = OptionalTailProfile::read_prefix(&buffer).unwrap();
+	assert_eq!(view.nickname(), None);
+	assert_eq!(view.tags(), None);
+	assert_eq!(encoded, view.encoded_len());
+}
+
+#[test]
+fn present_empty_vector_of_strings_round_trips() {
+	let mut buffer = vec![0u8; <StringVectorProfile as PinaPodCompact>::MAX_SIZE];
+	let patch = StringVectorProfilePatch::new()
+		.replace_names(&[] as &[pinapod::String<8>])
+		.note("");
+	let encoded = StringVectorProfile::initialize(&mut buffer, &patch).unwrap();
+
+	let view = StringVectorProfile::read_prefix(&buffer).unwrap();
+	assert_eq!(view.names().len(), 0);
+	assert_eq!(view.note(), "");
+	assert_eq!(encoded, view.encoded_len());
+}
+
 // --- Patch tests ---
 #[test]
 fn borrowed_compact_patch_uses_the_patch_trait() {

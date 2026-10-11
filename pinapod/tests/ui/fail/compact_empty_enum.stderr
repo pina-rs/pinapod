@@ -1,0 +1,13 @@
+error: compact PinaPod enums require at least one variant: an empty enum has no tag value and leaves `MIN_SIZE` above `MAX_SIZE`
+  --> tests/ui/fail/compact_empty_enum.rs:11:6
+   |
+11 | enum EmptyCompact {}
+   |      ^^^^^^^^^^^^
+
+error[E0084]: unsupported representation for zero-variant enum
+  --> tests/ui/fail/compact_empty_enum.rs:10:8
+   |
+10 | #[repr(u8)]
+   |        ^^
+11 | enum EmptyCompact {}
+   | ----------------- zero-variant enum

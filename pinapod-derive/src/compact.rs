@@ -45,6 +45,19 @@ pub fn generate(schema: &Schema) -> TokenStream {
 		mod #module_name {
 			use super::*;
 
+			// The glob above imports the schema module's names, and a glob
+			// import loses to these explicit bindings: the bare `Result`,
+			// `Option`, `Some`, `None`, `Ok`, `Err`, and primitive names the
+			// generated body spells can no longer resolve to a schema-module
+			// item. Without them, a schema module defining (or glob-importing)
+			// an `Ok`-shaped function rebinds every validation return the
+			// generated code spells. The fixed generator states the same
+			// immunity with fully qualified spellings; a module-wrapped
+			// generator binds the names once instead.
+			use ::core::option::Option::{self, None, Some};
+			use ::core::result::Result::{self, Err, Ok};
+			use ::core::primitive::{bool, isize, str, u8, u16, u32, u64, usize};
+
 			#support_ts
 			#header_ts
 			#trait_impl_ts

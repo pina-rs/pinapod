@@ -349,3 +349,98 @@ fn float_pods_roundtrip_nan_payloads_through_wincode() {
 	let decoded = wincode::deserialize::<PodF32>(&stored).unwrap();
 	assert_eq!(decoded.to_bits(), 0x7fc0_0001);
 }
+
+// --- Writers validate the content their readers will judge ---
+//
+// The prefix and tag checks above reject metadata a value carries. The
+// tests below forge values whose *content* is invalid while their metadata
+// is in range: an in-range length prefix over non-UTF-8 bytes, a valid count
+// over an out-of-domain bool element, a valid tag over an invalid payload,
+// and a nested option wrapping an invalid string. Serialization must reject
+// each one, or the writer emits bytes its own reader refuses and the
+// canonical-output contract holds only for already-valid values.
+
+#[test]
+fn bool_writer_rejects_a_byte_outside_the_bool_domain() {
+	// SAFETY: PodBool permits every initialized byte pattern; the stored byte
+	// is validated by readers, and now by the writer boundary too.
+	let invalid_byte = 5_u8;
+	let value = unsafe { core::ptr::read_unaligned((&raw const invalid_byte).cast::<PodBool>()) };
+	let mut output = [0u8; 1];
+	let error = wincode::serialize_into(output.as_mut_slice(), &value).unwrap_err();
+	assert!(matches!(
+		error,
+		wincode::WriteError::Custom("PinaPod bool content failed validation")
+	));
+}
+
+#[test]
+fn string_writer_rejects_non_utf8_content_within_capacity() {
+	// An in-range length prefix of three over three non-UTF-8 bytes: only the
+	// content check can reject this value.
+	let bytes = [3u8, 0xFF, 0xFE, 0xFD, 0, 0, 0, 0, 0];
+	// SAFETY: PodString permits every initialized byte pattern; the active
+	// bytes are validated by readers, and now by the writer boundary too.
+	let value = unsafe { core::ptr::read_unaligned(bytes.as_ptr().cast::<PodString<8>>()) };
+	let mut output = [0u8; 9];
+	let error = wincode::serialize_into(output.as_mut_slice(), &value).unwrap_err();
+	assert!(matches!(
+		error,
+		wincode::WriteError::Custom("PinaPod string content failed validation")
+	));
+
+	// The rejected write must leave the destination untouched, exactly like a
+	// rejected container write does.
+	assert_eq!(output, [0u8; 9]);
+}
+
+#[test]
+fn vec_writer_rejects_an_invalid_bool_element_within_capacity() {
+	// An in-range count of two over one valid and one out-of-domain element.
+	let bytes = [2u8, 0, 1, 5];
+	// SAFETY: PodVec permits every initialized byte pattern; the element
+	// domain is validated by readers, and now by the writer boundary too.
+	let value = unsafe { core::ptr::read_unaligned(bytes.as_ptr().cast::<PodVec<PodBool, 2>>()) };
+	let mut output = [0u8; 4];
+	let error = wincode::serialize_into(output.as_mut_slice(), &value).unwrap_err();
+	assert!(matches!(
+		error,
+		wincode::WriteError::Custom("PinaPod vector content failed validation")
+	));
+}
+
+#[test]
+fn option_writer_rejects_a_valid_tag_over_an_invalid_payload() {
+	// Tag one (Some) over an out-of-domain bool payload.
+	let bytes = [1u8, 5];
+	// SAFETY: PodOption permits every initialized byte pattern; the payload is
+	// validated by readers, and now by the writer boundary too.
+	let value = unsafe { core::ptr::read_unaligned(bytes.as_ptr().cast::<PodOption<PodBool>>()) };
+	let mut output = [0u8; 2];
+	let error = wincode::serialize_into(output.as_mut_slice(), &value).unwrap_err();
+	assert!(matches!(
+		error,
+		wincode::WriteError::Custom("PinaPod option content failed validation")
+	));
+}
+
+#[test]
+fn option_writer_rejects_a_nested_string_with_invalid_utf8() {
+	// Tag one (Some) over a string whose prefix is in range but whose active
+	// bytes are not UTF-8: the option's stored validation reaches through to
+	// the nested payload before any byte is written.
+	let bytes = [1u8, 3, 0xFF, 0xFE, 0xFD, 0];
+	// SAFETY: PodOption permits every initialized byte pattern; the nested
+	// payload is validated by readers, and now by the writer boundary too.
+	let value =
+		unsafe { core::ptr::read_unaligned(bytes.as_ptr().cast::<PodOption<PodString<4>>>()) };
+	let mut output = [0u8; 6];
+	let error = wincode::serialize_into(output.as_mut_slice(), &value).unwrap_err();
+	assert!(matches!(
+		error,
+		wincode::WriteError::Custom("PinaPod option content failed validation")
+	));
+
+	// The tag bytes must not be written ahead of the rejected write.
+	assert_eq!(output, [0u8; 6]);
+}
