@@ -106,6 +106,10 @@ lockfile_commands = [
   # bump so the fixtures' `--locked` checks stay valid.
   { command = "cargo update", cwd = "pinapod/tests/renamed_dependency", shell = "bash" },
   { command = "cargo update", cwd = "pinapod/tests/fixed_reexport", shell = "bash" },
+  # The fuzz suite is a standalone workspace whose lock file CI verifies with
+  # `cargo metadata --locked`; refresh it with every release bump so the
+  # verification and the released versions stay in step.
+  { command = "cargo update", cwd = "fuzz", shell = "bash" },
 ]
 
 [ecosystems.cargo.publish]

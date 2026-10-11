@@ -609,6 +609,15 @@ pub fn generate_enum(input: &syn::DeriveInput) -> TokenStream {
 		_ => unreachable!("generate_enum called on non-enum"),
 	};
 
+	if variants.is_empty() {
+		return syn::Error::new_spanned(
+			enum_name,
+			"PinaPod enums require at least one variant: an empty enum has no discriminant to \
+			 store and no representation to validate",
+		)
+		.to_compile_error();
+	}
+
 	let mut variant_names = Vec::new();
 
 	for v in variants {

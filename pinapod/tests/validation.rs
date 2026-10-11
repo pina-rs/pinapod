@@ -470,3 +470,56 @@ fn compact_validate_accepts_valid_vec_bool_elements() {
 
 	assert!(CompactWithVecBool::validate(&buf).is_ok());
 }
+
+// --- `as_str` trusts what every validating boundary rejects ---
+//
+// `PodString::as_str` forms a `&str` through `from_utf8_unchecked`, so its
+// safety does not rest on the length clamp its documentation used to
+// advertise: the active bytes must also be valid UTF-8, which only a
+// validating read or a safe constructor establishes. This regression pins the
+// boundary from the forging side: a `PodString` over non-UTF-8 account bytes
+// with an in-range prefix is rejected by `ZcValidate`, by the fixed reader,
+// and by the compact reader, so no safe path can reach the unchecked
+// reference. The accessor's documentation now carries that precondition
+// instead of implying the clamp is the whole contract.
+
+// Compact header: score(PodU64=8) + label_len([u8;1]=1) = 9
+#[allow(dead_code)]
+#[derive(PinaPod)]
+#[pinapod(compact)]
+struct CompactWithStringTail {
+	pub score: u64,
+	label: pinapod::String<8>,
+}
+
+#[test]
+fn forged_non_utf8_podstring_is_rejected_by_every_validating_boundary() {
+	// A one-byte prefix of three over three non-UTF-8 bytes, the smallest
+	// value that is in-range but unreadable.
+	let bytes = [3u8, 0xFF, 0xFE, 0xFD, 0, 0, 0, 0, 0];
+	// SAFETY: PodString accepts every initialized bit pattern as a reference
+	// target; semantic validity is the reader's job, exercised below.
+	let forged = unsafe { core::ptr::read_unaligned(bytes.as_ptr().cast::<pinapod::String<8>>()) };
+
+	assert!(matches!(
+		pinapod::ZcValidate::validate_ref(&forged),
+		Err(pinapod::PinaPodError::InvalidUtf8)
+	));
+
+	// The same nine bytes in the `Validatable` schema's name slot: the fixed
+	// reader rejects the whole representation before any reference is formed.
+	let mut buffer = [0u8; 33];
+	buffer[18..27].copy_from_slice(&bytes);
+	assert!(Validatable::validate_exact(&buffer).is_err());
+	assert!(Validatable::read_exact(&buffer).is_err());
+
+	// A compact string tail carrying the same forged prefix is rejected
+	// before the accessor can hand out the unchecked reference.
+	let mut compact = vec![0u8; <CompactWithStringTail as PinaPodCompact>::MAX_SIZE];
+	compact[8] = 3; // label_len at offset 8, PFX=1: three active bytes
+	compact[9] = 0xFF;
+	compact[10] = 0xFE;
+	compact[11] = 0xFD;
+	assert!(CompactWithStringTail::validate(&compact).is_err());
+	assert!(CompactWithStringTail::read_prefix(&compact).is_err());
+}

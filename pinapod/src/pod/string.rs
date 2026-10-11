@@ -19,8 +19,13 @@ pub(crate) const fn max_n_for_pfx(pfx: usize) -> usize {
 ///
 /// The representation is a `PFX`-byte little-endian length followed by `N` payload
 /// bytes, so `PodString<N, PFX>` occupies `PFX + N` bytes with alignment one and can be
-/// read at any byte offset. Active bytes are always valid UTF-8: a reader validates them,
-/// and every writer takes a `&str`.
+/// read at any byte offset. Active bytes are valid UTF-8 whenever the value was
+/// written through a safe constructor or reached through a validating reader:
+/// the writers take a `&str`, and every reader in this crate runs
+/// [`ZcValidate`](crate::ZcValidate) before it exposes the string. A value formed
+/// by casting raw account bytes without a validating read in between has no such
+/// guarantee, and the string-bearing accessors below trust it rather than re-check
+/// it — see [`as_str`](Self::as_str).
 ///
 /// <!-- {=podPrefixWidthRule|trim|linePrefix:"/// ":true} -->
 /// `PFX` is the width in bytes of the length prefix or tag that precedes the payload, and it must be `1`, `2`, `4`, or `8`.<!-- {/podPrefixWidthRule} -->
@@ -161,8 +166,19 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
 
 	/// Borrows the active bytes as a UTF-8 string slice.
 	///
-	/// The length is clamped to the capacity, so this never reads past `N`. Validate
-	/// through a reader first when the prefix itself must be trusted.
+	/// The length is clamped to the capacity, so this never reads past `N`, and
+	/// the reference is formed through `from_utf8_unchecked`: unlike the
+	/// length, UTF-8 validity is *not* re-established here. It holds only for a
+	/// value written through a safe constructor (`try_set`, `try_push_str`, the
+	/// `&str` writers) or reached through a validating reader — the readers in
+	/// this crate run [`ZcValidate`](crate::ZcValidate) before exposing a
+	/// string field. Casting raw account bytes to a `PodString` and calling
+	/// this accessor without a validating read in between can produce an
+	/// invalid `&str`, which is undefined behavior the moment it is used, so
+	/// unchecked readers must validate first.
+	///
+	/// The `Deref` and `AsRef<str>` implementations route through this method
+	/// and carry the same precondition.
 	#[inline(always)]
 	pub fn as_str(&self) -> &str {
 		let len = self.len();
@@ -173,6 +189,10 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
 	}
 
 	/// Borrows the active bytes, excluding the prefix and the inactive capacity.
+	///
+	/// The active bytes are UTF-8 for every safely constructed or
+	/// reader-validated value; see [`as_str`](Self::as_str) for the
+	/// precondition an unchecked reference carries.
 	#[inline(always)]
 	pub fn as_bytes(&self) -> &[u8] {
 		let len = self.len();
@@ -237,12 +257,18 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
 	}
 
 	/// Iterates the active characters.
+	///
+	/// Routes through [`as_str`](Self::as_str), so the active bytes must be
+	/// UTF-8 — true for every safely constructed or reader-validated value.
 	#[inline(always)]
 	pub fn chars(&self) -> core::str::Chars<'_> {
 		self.as_str().chars()
 	}
 
 	/// Iterates the active bytes.
+	///
+	/// Routes through [`as_str`](Self::as_str), so the active bytes must be
+	/// UTF-8 — true for every safely constructed or reader-validated value.
 	#[inline(always)]
 	pub fn bytes(&self) -> core::str::Bytes<'_> {
 		self.as_str().bytes()
@@ -251,7 +277,9 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
 	/// Shortens the active bytes to at most `new_len`.
 	///
 	/// The new length is rounded down to the nearest UTF-8 character boundary, so the
-	/// result stays a valid string.
+	/// result stays a valid string. The boundary walk reads through
+	/// [`as_str`](Self::as_str), so the active bytes must be UTF-8 on entry —
+	/// true for every safely constructed or reader-validated value.
 	///
 	/// <!-- {=podZeroedInactiveCapacityContract|trim|linePrefix:"/// ":true|indent:"\t"} -->
 	/// Every container starts with fully initialized backing storage.

@@ -354,17 +354,28 @@ in
     "security:deny" = {
       exec = ''
         set -euo pipefail
-        cargo-deny check bans licenses sources
+        cargo-deny check advisories bans licenses sources
       '';
-      description = "Check dependency licenses, sources, and bans.";
+      description = "Check dependency advisories, licenses, sources, and bans.";
       binary = "bash";
     };
     "security:audit" = {
       exec = ''
         set -euo pipefail
         cargo-audit audit --deny yanked --file "$DEVENV_ROOT/Cargo.lock"
+        # The fuzz suite is a standalone workspace and part of the security
+        # boundary, so its registry dependencies are audited too.
+        cargo-audit audit --deny yanked --file "$DEVENV_ROOT/fuzz/Cargo.lock"
       '';
-      description = "Audit the locked dependency graph against RustSec.";
+      description = "Audit the locked dependency graphs, including the fuzz suite, against RustSec.";
+      binary = "bash";
+    };
+    "security:secrets" = {
+      exec = ''
+        set -euo pipefail
+        gitleaks detect --redact --no-banner
+      '';
+      description = "Scan the commit history for committed secrets.";
       binary = "bash";
     };
     "security:zizmor" = {
@@ -380,9 +391,10 @@ in
         set -euo pipefail
         security:deny
         security:audit
+        security:secrets
         security:zizmor
       '';
-      description = "Run dependency and workflow security checks.";
+      description = "Run dependency, secret, and workflow security checks.";
       binary = "bash";
     };
   };

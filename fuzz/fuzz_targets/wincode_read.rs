@@ -38,13 +38,44 @@ fuzz_target!(|data: &[u8]| {
 	}
 	if let Ok(value) = wincode::deserialize::<PodOption<PodBool>>(data) {
 		match value.get() {
-			Some(inner) => assert_eq!(value.raw_tag(), 1),
+			Some(_) => assert_eq!(value.raw_tag(), 1),
 			None => assert!(value.raw_tag() != 1),
 		}
 	}
 
-	let _ = wincode::deserialize::<PodOption<PodString<4>>>(data);
-	let _ = wincode::deserialize::<PodVec<PodBool, 6>>(data);
+	if let Ok(value) = wincode::deserialize::<PodOption<PodString<4>>>(data) {
+		// A present payload is only reachable after its nested validation, so
+		// both the tag and the nested string's bytes must hold up.
+		assert!(ZcValidate::validate_ref(&value).is_ok());
+		match value.get() {
+			Some(string) => assert!(string.len() <= 4),
+			None => {
+				assert_ne!(
+					value.raw_tag(),
+					1,
+					"an absent payload cannot carry the Some tag"
+				)
+			}
+		}
+	}
+	if let Ok(value) = wincode::deserialize::<PodVec<PodBool, 6>>(data) {
+		// Every accepted element must be in the bool domain, so the whole
+		// vector stays valid and in capacity.
+		assert!(value.len() <= 6);
+		assert!(ZcValidate::validate_ref(&value).is_ok());
+	}
+
+	// Wide length prefixes through the wincode reader: the eight-byte prefix
+	// decode and the four-byte count share the validate-before-expose
+	// boundary with the direct readers.
+	if let Ok(value) = wincode::deserialize::<PodString<192, 8>>(data) {
+		assert!(value.len() <= 192);
+		assert!(ZcValidate::validate_ref(&value).is_ok());
+	}
+	if let Ok(value) = wincode::deserialize::<PodVec<PodU16, 96, 4>>(data) {
+		assert!(value.len() <= 96);
+		assert!(ZcValidate::validate_ref(&value).is_ok());
+	}
 
 	// Serialization is canonical: equivalent logical values encode equally,
 	// and serialized bytes deserialize back to the same active contents.

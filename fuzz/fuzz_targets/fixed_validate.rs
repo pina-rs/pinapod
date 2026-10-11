@@ -78,6 +78,34 @@ fuzz_target!(|data: &[u8]| {
 		"read_exact must require exact size and valid content"
 	);
 
+	// Mutable reads run the same validating boundary before their casts, and
+	// the returned view must carry the same invariants as the shared one.
+	let mut scratch = data.to_vec();
+	let mut_validation = Kitchen::validate_prefix(&scratch);
+	assert_eq!(mut_validation.is_ok(), validation.is_ok());
+	if let Ok(view) = Kitchen::read_prefix_mut(&mut scratch) {
+		assert!(view.name().len() <= 12);
+		assert!(view.tags().len() <= 6);
+		match view.note() {
+			Some(note) => assert!(note.len() <= 9),
+			None => {}
+		}
+		match view.flags() {
+			Some(flags) => assert!(flags.len() <= 3),
+			None => {}
+		}
+	}
+	if expect_exact {
+		let mut exact = data[..Kitchen::SIZE].to_vec();
+		assert!(
+			Kitchen::read_exact_mut(&mut exact).is_ok(),
+			"read_exact_mut must agree with the exact read contract"
+		);
+	} else {
+		let mut wrong_size = scratch.clone();
+		assert!(Kitchen::read_exact_mut(&mut wrong_size).is_err());
+	}
+
 	let wide_validation = WidePrefixKitchen::validate_prefix(data);
 	if data.len() < WidePrefixKitchen::SIZE {
 		assert!(

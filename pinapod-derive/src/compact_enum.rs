@@ -79,6 +79,15 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
 		_ => unreachable!("compact enum generation called on non-enum"),
 	};
 
+	if variants.is_empty() {
+		return syn::Error::new_spanned(
+			enum_name,
+			"compact PinaPod enums require at least one variant: an empty enum has no tag value \
+			 and leaves `MIN_SIZE` above `MAX_SIZE`",
+		)
+		.to_compile_error();
+	}
+
 	let is_fieldless = variants
 		.iter()
 		.all(|variant| matches!(variant.fields, Fields::Unit));
@@ -307,6 +316,14 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
 		#[allow(dead_code, non_snake_case, unused_imports)]
 		mod #module_name {
 			use super::*;
+
+			// The same prelude bindings the compact struct generator states:
+			// a glob import loses to these, so the bare `Result`, `Option`,
+			// `Some`, `None`, `Ok`, `Err`, and primitive names the generated
+			// body spells cannot resolve to a schema-module item.
+			use ::core::option::Option::{self, None, Some};
+			use ::core::result::Result::{self, Err, Ok};
+			use ::core::primitive::{bool, isize, str, u8, u16, u32, u64, usize};
 
 			#generated
 		}
