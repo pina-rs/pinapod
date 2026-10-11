@@ -2,6 +2,56 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.7](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.7) (2026-10-11)
+
+Grouped release for `pinapod-workspace`.
+
+### Fixes
+
+#### harden the verification boundary: fuzz lock, CI checks
+
+_Packages:_ 🟢 _pinapod_, 🟢 _pinapod-derive_
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #51](https://github.com/pina-rs/pinapod/pull/51)
+
+The security-audit follow-ups that live around the crates rather than inside them, applied together because they close one boundary:
+
+- `fuzz/Cargo.lock` still recorded pinapod 0.4.1 while the workspace was at 0.4.6, and the fuzz workflow ran `cargo fuzz` without a lock check, so the fuzz suite — part of the declared security boundary — silently rewrote its registry dependencies on every CI run. The lock is refreshed, the workflow verifies it up front with `cargo metadata --locked` and fails closed, the release flow refreshes it through monochange's `lockfile_commands`, dependabot tracks `/fuzz`, and `security:audit` now audits the fuzz lock alongside the root lock.
+- `cargo-deny`'s `[advisories]` section was configured but never checked; `security:deny` now runs `cargo-deny check advisories bans licenses sources`.
+- `gitleaks` shipped in devenv but nothing ran it. A `security:secrets` script now scans the commit history, and the CI security job runs it with a full-depth checkout.
+- The fuzz workflow now also triggers on merges to main with the smoke budget, so direct merges are fuzzed before the weekly run, and crash artifacts are uploaded as workflow artifacts in addition to the hexdump.
+- The coverage workflow's `id-token: write` moved to a dedicated upload job that runs no repository code — no checkout and no repo-local composite action — so the OIDC-holding job executes only the pinned download and codecov actions over the artifact the build job produced.
+
+The fuzz targets also gained the coverage the audit mapped as missing: a mutable-read pass over attacker bytes in `fixed_validate`, post-condition assertions and four- and eight-byte prefixes through the wincode reader in `wincode_read`, and a third compact schema in `compact_validate` covering the nested tail grammar (`Option<Vec<u64, 4>>` and `Vec<String<4>, 2>`, whose per-element walk owns the nested UTF-8 checks). `compact_backend` additionally pins present-but-empty optional payloads (`Some("")`, `Some(&[])`) through initialize and update: their staged pointers are non-null with zero length, which is the discriminating case for the null-means-clear sentinel, and were previously untested.
+
+#### wincode writers validate the content their readers judge
+
+_Packages:_ 🟢 _pinapod_
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #51](https://github.com/pina-rs/pinapod/pull/51)
+
+The wincode writers rejected a corrupt length prefix and a corrupt option tag, but emitted corrupt _content_ verbatim: a `PodString` whose prefix was in range over non-UTF-8 bytes, a `PodVec<PodBool>` with an out-of-domain element, and a `PodOption` with a valid tag over an invalid payload all serialized successfully into bytes the crate's own reader refuses. The canonical-output contract therefore held only for already-valid values, which only an unchecked reference could violate — but that is exactly the tier the prefix and tag checks were added for, so the boundary was inconsistent.
+
+Every writer now runs the `ZcValidate` walk its reader runs before the first byte is written: `PodBool`, `PodString`, `PodVecRepr`, and `PodOption` each reject invalid stored content with a focused message (`PinaPod string content failed validation`, and the matching variants), and the option writer checks its tag _before_ writing the prefix, so all three rejection orderings match and a rejected serialization leaves the destination untouched. Valid values serialize identically; the added walk is proportional to what the writer already emits and is a no-op for trivially valid elements through the existing `ZcValidate::validate_slice` fast path.
+
+The regression is pinned from the forging side in `wincode_serialize.rs`: five tests hand-cast values whose metadata is in range and whose content is invalid, and assert serialization fails without touching the destination.
+
+`PodString`'s documentation now also states the precondition its accessors trust: `as_str` forms its reference through `from_utf8_unchecked`, so the active bytes are UTF-8 because a safe constructor wrote them or a validating reader accepted them — not because the length clamp checks them. `as_bytes`, `chars`, `bytes`, and `truncate`'s boundary walk carry the same note, and a `validation.rs` regression pins the boundary by proving every validating reader rejects a forged non-UTF-8 string before a reference exists.
+
+#### generated compact modules bind the prelude names they spell
+
+_Packages:_ 🟢 _pinapod-derive_
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #51](https://github.com/pina-rs/pinapod/pull/51)
+
+The compact generators wrap their output in a child module that opens with `use super::*`, and a glob import outranks the prelude. A schema module that defines (or glob-imports) an item named `Ok` with a matching signature therefore rebound every validation return the generated code spelled: the generated commit path compiled the shadow in and called it at runtime. An `Ok`-shaped function that panics turned every generated read, update, and initialize into a panic; `Some`/`None`-shaped functions and a `usize`-named type instead broke compilation with type errors pointing inside the generated module. The fixed generator was already immune through fully qualified `::core` spellings, so only the compact generators were exposed.
+
+The generated compact struct and enum modules now bind those names to `core` explicitly (`use ::core::option::Option::{self, None, Some}` and companions), which outranks the schema module's glob for every bare `Result`, `Option`, `Some`, `None`, `Ok`, `Err`, and primitive the generated body spells, without rewriting the hundreds of emission sites. Schema modules can shadow prelude names again without reaching generated code.
+
+The regression is pinned from three directions: `compact_prelude_shadowing.rs` defines a panicking `Ok` shadow plus type-identical `Result`/`Option` aliases in the schema module and runs full initialize/update/read round trips for both a compact struct and a compact enum — before the fix the first generated `Ok(())` panicked — and the `compact_prelude_patterns` fixture covers the shapes that were compile errors before the fix (`Some`/`None` functions and a `usize`-named type) behind the compile-pass gate.
+
+Zero-variant enums are also now a focused derive error rather than an opaque one: both layout paths previously emitted a degenerate representation for `enum Never {}` and let rustc surface `E0084`/`E0004` from the declaration and the generated module. The derive rejects the schema at the declaration site for both layouts, pinned by `compact_empty_enum` and `fixed_empty_enum` compile-fail fixtures.
+
 ## [0.4.6](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.6) (2026-10-05)
 
 Grouped release for `pinapod-workspace`.
