@@ -2,8 +2,16 @@
 all-features = true
 
 [advisories]
-db-path = "target/advisory-db"
+# The advisory database is a git clone, so it lives outside every directory
+# the CI caches save and restore: a clone stored under `target/` did not
+# survive a rust-cache round trip, and cargo-deny then failed to load any
+# advisories from the restored copy on the release branch. A repo-relative
+# directory is freshly cloned on every runner, and the git CLI performs the
+# clone and fetches — the same mechanism cargo-audit uses successfully in
+# the adjacent security job — instead of the embedded git implementation.
+db-path = ".advisory-db"
 db-urls = ["https://github.com/RustSec/advisory-db.git"]
+git-fetch-with-cli = true
 yanked = "deny"
 
 [licenses]
