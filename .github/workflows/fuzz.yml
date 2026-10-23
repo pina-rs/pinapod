@@ -15,14 +15,6 @@ on:
       - fuzz/**
   pull_request:
     branches: [main]
-    paths:
-      - .github/workflows/fuzz.yml
-      - Cargo.toml
-      - rust-toolchain.toml
-      - pinapod/Cargo.toml
-      - pinapod/src/**
-      - pinapod-derive/src/**
-      - fuzz/**
   schedule:
     # Every Monday at 06:00 UTC.
     - cron: "0 6 * * 1"
