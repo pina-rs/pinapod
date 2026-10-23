@@ -3,19 +3,6 @@ name: benchmark
 on:
   pull_request:
     branches: [main]
-    paths:
-      - .github/actions/devenv/**
-      - .github/workflows/benchmark.yml
-      - Cargo.lock
-      - Cargo.toml
-      - devenv.lock
-      - devenv.nix
-      - rust-toolchain.toml
-      - pinapod/Cargo.toml
-      - pinapod/benches/**
-      - pinapod/src/**
-      - pinapod-derive/Cargo.toml
-      - pinapod-derive/src/**
 
 permissions:
   contents: read
