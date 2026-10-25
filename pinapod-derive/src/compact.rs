@@ -554,6 +554,21 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
 	let (marker_field, marker_init) = generic_marker_tokens(&schema.generics);
 
 	let tail_fields: Vec<_> = schema.tail_fields().collect();
+	// The view exposes shared pod borrows through byte casts. Model them so
+	// auto traits and lifetimes follow both the header and vector elements,
+	// which have no typed storage in the header itself.
+	let tail_pod_types: Vec<_> = tail_fields
+		.iter()
+		.filter_map(|field| {
+			match &field.kind {
+				FieldKind::Tail(TailField::Segment {
+					payload: TailPayload::Vec { elem, .. },
+					..
+				}) => Some(map_to_pod_type(elem)),
+				_ => None,
+			}
+		})
+		.collect();
 	let current_encoded_len = compute_offset_tokens(header_ty, &tail_fields, tail_fields.len());
 	let mut accessors = Vec::new();
 
@@ -666,6 +681,9 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
 		pub struct #ref_name #ref_generics #where_clause_with_bounds {
 			data: &#data_lifetime [u8],
 			encoded_len: usize,
+			__pinapod_borrow_marker: core::marker::PhantomData<
+				&#data_lifetime (#header_ty, #(#tail_pod_types,)*)
+			>,
 			#marker_field
 		}
 
@@ -683,6 +701,7 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
 				let mut value = Self {
 					data,
 					encoded_len: 0,
+					__pinapod_borrow_marker: core::marker::PhantomData,
 					#marker_init
 				};
 				value.encoded_len = value.current_encoded_len();
