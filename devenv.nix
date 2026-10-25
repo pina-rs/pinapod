@@ -43,6 +43,7 @@ let
 in
 {
   packages = with pkgs; [
+    bun
     cargo-audit
     cargo-deny
     cargo-llvm-cov
@@ -50,6 +51,7 @@ in
     gh
     git
     gitleaks
+    jq
     mdbook
     custom.mdt
     custom.monochange
@@ -122,9 +124,18 @@ in
     "test:all" = {
       exec = ''
         set -euo pipefail
+        test:publish
         cargo test --workspace --all-features --locked
       '';
       description = "Run the complete workspace test suite.";
+      binary = "bash";
+    };
+    "test:publish" = {
+      exec = ''
+        set -euo pipefail
+        bun test "$DEVENV_ROOT/scripts/publish-provenance.test.ts"
+      '';
+      description = "Verify release provenance gates against real git history and MonoChange records.";
       binary = "bash";
     };
     "test:miri" = {
