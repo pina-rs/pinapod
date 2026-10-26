@@ -104,10 +104,10 @@ The `performance` workflow runs the gate on **every** pull request, not only one
 The baseline changes only through a deliberate update:
 
 ```sh
-devenv shell bench:iai:update
+devenv --profile perf shell -- bench:iai:update
 ```
 
-Run it on Linux with Valgrind installed (the same environment as CI), review the diff, and justify the movement in the pull request: an accepted hot-path change moves a few entries, and a toolchain pin bump may move every entry by a small factor. A tolerance-exceeding regression with no baseline update is a failed check by design — that is the gate doing its job. Entries are keyed by the benchmark's module path, so renaming a bench function is a baseline update too.
+Run it on Linux under the perf profile, which carries Valgrind (the same environment as CI), review the diff, and justify the movement in the pull request: an accepted hot-path change moves a few entries, and a toolchain pin bump may move every entry by a small factor. A tolerance-exceeding regression with no baseline update is a failed check by design — that is the gate doing its job. Entries are keyed by the benchmark's module path, so renaming a bench function is a baseline update too.
 
 Two operational notes. The runner binary must match the library version pinned in `Cargo.lock` — the library refuses a mismatched runner — and the library compiles on every host while running it requires Valgrind, so `cargo test` on any platform builds the target but never executes it.
 

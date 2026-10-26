@@ -84,6 +84,11 @@ in
   # `z3` has to be timed out on the signed 128-bit division proof. Both solvers
   # ship here so a harness can switch between them during investigation, and so
   # the same proofs run locally instead of only in CI.
+  # The instruction-count gate drives Valgrind's Callgrind through
+  # iai-callgrind. Valgrind exists only on Linux, and the profile keeps it out
+  # of every other shell: run the gate with `devenv --profile perf shell --`.
+  profiles.perf.module.packages = lib.optionals pkgs.stdenv.isLinux [ pkgs.valgrind ];
+
   profiles.kani.module.packages = [
     kani
     pkgs.cvc5
@@ -263,7 +268,7 @@ in
         cargo bench --manifest-path pinapod/Cargo.toml --bench iai_hot_paths --locked -- --save-summary=json
         deno run --allow-read --allow-write=pinapod/benches scripts/check-iai-baseline.ts
       '';
-      description = "Run the instruction-count gate against the committed baseline. Requires Linux with Valgrind.";
+      description = "Run the instruction-count gate against the committed baseline. Linux only; run inside the perf profile: devenv --profile perf shell -- bench:iai";
       binary = "bash";
     };
     "bench:iai:update" = {
@@ -272,7 +277,7 @@ in
         cargo bench --manifest-path pinapod/Cargo.toml --bench iai_hot_paths --locked -- --save-summary=json
         deno run --allow-read --allow-write=pinapod/benches scripts/check-iai-baseline.ts --update
       '';
-      description = "Regenerate the committed instruction-count baseline from the current checkout. Requires Linux with Valgrind.";
+      description = "Regenerate the committed instruction-count baseline from the current checkout. Linux only; run inside the perf profile: devenv --profile perf shell -- bench:iai:update";
       binary = "bash";
     };
     "fix:format" = {

@@ -29,23 +29,21 @@ jobs:
         uses: $/.github/actions/devenv
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: install Valgrind
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y valgrind
+      # Valgrind is Linux-only, so it ships in the perf profile rather than the
+      # base shell; every step below runs inside that profile.
       - name: install iai-callgrind runner
         # The runner binary must match the library version pinned in
         # Cargo.lock; the library refuses a mismatched runner.
         run: cargo install iai-callgrind-runner --version 0.16.1 --locked
-        shell: devenv shell -c -- bash -e {0}
+        shell: devenv --profile perf shell -c -- bash -e {0}
       - name: measure hot paths
         run: >
           cargo bench --manifest-path pinapod/Cargo.toml --bench iai_hot_paths --locked --
           --save-summary=json
-        shell: devenv shell -c -- bash -e {0}
+        shell: devenv --profile perf shell -c -- bash -e {0}
       - name: compare with committed baseline
         run: deno run --allow-read --allow-write=pinapod/benches scripts/check-iai-baseline.ts
-        shell: devenv shell -c -- bash -e {0}
+        shell: devenv --profile perf shell -c -- bash -e {0}
       - name: upload instruction summaries
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
