@@ -52,6 +52,37 @@ unsafe impl ZcField for LocalPod {
 	type Pod = Self;
 }
 
+// The companion value traits and materialization demand the value vocabulary
+// from custom pods; these impls compare and print the stored byte and keep the
+// Cell marker's !Sync semantics untouched.
+impl PartialEq for LocalPod {
+	fn eq(&self, other: &Self) -> bool {
+		self.byte == other.byte
+	}
+}
+
+impl Eq for LocalPod {}
+
+impl core::hash::Hash for LocalPod {
+	fn hash<__State: core::hash::Hasher>(&self, state: &mut __State) {
+		self.byte.hash(state);
+	}
+}
+
+impl core::fmt::Debug for LocalPod {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		f.debug_struct("LocalPod")
+			.field("byte", &self.byte)
+			.finish()
+	}
+}
+
+impl pinapod::FromZc for LocalPod {
+	fn from_zc(pod: &Self) -> Result<Self, PinaPodError> {
+		Ok(*pod)
+	}
+}
+
 #[repr(transparent)]
 #[derive(Clone, Copy)]
 struct SyncOnlyPod(u8, PhantomData<*const ()>);
@@ -74,11 +105,61 @@ unsafe impl ZcField for SyncOnlyPod {
 	type Pod = Self;
 }
 
+impl PartialEq for SyncOnlyPod {
+	fn eq(&self, other: &Self) -> bool {
+		self.0 == other.0
+	}
+}
+
+impl Eq for SyncOnlyPod {}
+
+impl core::hash::Hash for SyncOnlyPod {
+	fn hash<__State: core::hash::Hasher>(&self, state: &mut __State) {
+		self.0.hash(state);
+	}
+}
+
+impl core::fmt::Debug for SyncOnlyPod {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		f.debug_struct("SyncOnlyPod").field("0", &self.0).finish()
+	}
+}
+
+impl pinapod::FromZc for SyncOnlyPod {
+	fn from_zc(pod: &Self) -> Result<Self, PinaPodError> {
+		Ok(*pod)
+	}
+}
+
 struct LocalSchema(PhantomData<*const ()>);
 
 // SAFETY: only the associated pod is stored, and u8 meets the ZcElem contract.
 unsafe impl ZcField for LocalSchema {
 	type Pod = u8;
+}
+
+impl PartialEq for LocalSchema {
+	fn eq(&self, _other: &Self) -> bool {
+		true
+	}
+}
+
+impl Eq for LocalSchema {}
+
+impl core::hash::Hash for LocalSchema {
+	fn hash<__State: core::hash::Hasher>(&self, _state: &mut __State) {}
+}
+
+impl core::fmt::Debug for LocalSchema {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		f.write_str("LocalSchema")
+	}
+}
+
+impl pinapod::FromZc for LocalSchema {
+	fn from_zc(_pod: &u8) -> Result<Self, PinaPodError> {
+		Ok(Self(PhantomData))
+	}
 }
 
 #[derive(PinaPod)]

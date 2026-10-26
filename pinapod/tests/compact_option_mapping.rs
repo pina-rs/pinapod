@@ -43,6 +43,29 @@ unsafe impl ZcField for unrelated::PodOption<u8> {
 	type Pod = Marker;
 }
 
+// The companion value traits and materialization demand the value vocabulary
+// from custom pods; Marker already derives the equality and Debug traits, so
+// only Hash and the materialization mapping are missing.
+impl core::hash::Hash for Marker {
+	fn hash<__State: core::hash::Hasher>(&self, state: &mut __State) {
+		self.0.hash(state);
+	}
+}
+
+impl pinapod::FromZc for Marker {
+	fn from_zc(pod: &Self) -> Result<Self, PinaPodError> {
+		Ok(*pod)
+	}
+}
+
+impl pinapod::FromZc for unrelated::PodOption<u8> {
+	fn from_zc(pod: &Self::Pod) -> Result<Self, PinaPodError> {
+		// The stored Marker's two bytes are the semantic tag and the payload;
+		// the mapping under test keeps them exactly as written.
+		Ok(unrelated::PodOption(pod.0[1]))
+	}
+}
+
 #[derive(PinaPod)]
 #[pinapod(compact)]
 struct Inline {
