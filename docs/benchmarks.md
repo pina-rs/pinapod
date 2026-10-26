@@ -4,12 +4,16 @@
 
 The benchmark derives separate, wire-identical schemas for every implementation. It asserts equality of their fixed and compact encodings before collecting samples, including compact vector counts of 1, 4, 8, and 16. A mismatch therefore fails instead of producing a misleading performance comparison. The normal integration suite repeats this three-way wire check, so `cargo test` catches compatibility regressions without running Criterion. Criterion labels the three contenders as `pinapod-current`, `pinapod-previous-71ad8be`, and `zeropod-upstream-78e6e5f`.
 
-| Workload         | Wire bytes | What is timed                                                                                                |
-| ---------------- | ---------: | ------------------------------------------------------------------------------------------------------------ |
-| Fixed            |         45 | Parse, validation-only, read four fields from a validated view, mutate a valid value, or initialize a value  |
-| Compact small    |         36 | Parse, validation-only, access a five-byte string and two `u64` values, update from a small record           |
-| Compact maximum  |        207 | Parse, validation-only, access a 64-byte string and 16 `u64` values, grow a small record to maximum capacity |
-| Many-tail fields |        145 | Parse plus access of every field, or only the last field, on a six-tail compact schema                       |
+| Workload         |      Wire bytes | What is timed                                                                                                                              |
+| ---------------- | --------------: | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Fixed            |              45 | Parse, validation-only, read four fields from a validated view, mutate a valid value, or initialize a value                                |
+| Compact small    |              36 | Parse, validation-only, access a five-byte string and two `u64` values, update from a small record                                         |
+| Compact maximum  |             207 | Parse, validation-only, access a 64-byte string and 16 `u64` values, grow a small record to maximum capacity                               |
+| Many-tail fields |             145 | Parse plus access of every field, or only the last field, on a six-tail compact schema                                                     |
+| Large tails      | 8 KiB – 256 KiB | Parse, validation-only, access the first and last `u64`, or grow a half-full vector to full, on 1024/8192/32768-element `u64` vector tails |
+| Unchecked floor  |              45 | A `bytemuck` alignment-one cast over the same fixed bytes plus the same four field decodes, without validation                             |
+
+The large-tail fixtures exist because accounts may allocate up to 10 MiB: compact validation and relocation are also measured at tail sizes the 207-byte fixture cannot reach, so scaling regressions at real account sizes are visible instead of inferred. The unchecked-cast floor prices the same read with validation removed, which is the honest comparison for PinaPod's central claim: the gap between `bytemuck-unchecked-cast` and `pinapod-current` in the fixed parse group is the cost of the safety the crate sells, and it should only move when a check is added or removed.
 
 The many-tail fixture guards reader and update scaling with the number of tail fields rather than the number of elements. Each accessor walks the preceding length prefixes, and the update preflight walks the current tails once with locals — measured on-chain (SBF), per-accessor offset caching cost more compute than it returned, so 0.3.1 keeps accessors uncached and the preflight flat. The fixture times parse, a full six-field sweep, and a last-field-only read so the scaling stays visible.
 
@@ -88,6 +92,24 @@ The table below is a full local run of the same harness against this checkout (0
 Read as follows. The fixed path is at parity with or faster than both contenders except initialization, which is not an apples-to-apples workload: this checkout zeroes the destination before configuration and re-zeroes it on failure, while the pinned fixtures alias the historical validate-and-write path over a pre-zeroed buffer (see the note above). Compact parse, validation, and access sit inside or near the contenders' intervals wherever the elements are trivially valid, and pull clearly ahead where per-element validation work exists: at eight active elements this checkout validates roughly 21% faster than upstream ZeroPod and accesses roughly 46% faster, because a trivially valid element removes the element walk outright and the uncached accessor replay is shorter than upstream's cached-view path on this host.
 
 The update rows are the deliberate cost, not a finding to optimize away: a PinaPod update runs the full semantic preflight, commits through the layout-checked entry, and zeroes the vacated suffix, which is what makes a rejected update a no-op and a completed update canonical. The pinned fixtures' mutable views perform none of those steps — the "deliberate costs" section above lists the writes that must not be removed. On-chain, the same trade is priced in the safety model's performance log, where the commit-entry check costs single-digit to low-double-digit compute units per commit.
+
+## Instruction-count regression gate
+
+Wall-clock comparisons answer how PinaPod stands against the pinned historical implementations. A second harness, `pinapod/benches/iai_hot_paths.rs`, answers a different question with a different instrument: did a pull request change the instruction count of a hot path?
+
+The gate uses iai-callgrind, which drives Valgrind's Callgrind and counts retired instructions (`Ir`). The write and initialize benches derive their written values from the runtime fixture bytes, because a constant-valued writer lets LLVM fold the entire operation into a constant materialization — measured that way, a write costs seven instructions, which measures nothing. An instruction count is a property of the compiled binary, not the machine, so the same checkout produces the same counts on any Linux runner and no timing noise can hide a regression. The gate covers every hot path the Criterion harness covers — fixed parse, validate, read, write, and initialize; compact small and maximum parse, validate, access, and update; the six-tail accessors; and large-tail parse, validate, access, and grow-to-full update at a 64 KiB tail — over the same shared fixtures in `pinapod/benches/common`.
+
+The `performance` workflow runs the gate on **every** pull request, not only ones that touch benchmarked paths. It measures the current checkout, then `scripts/check-iai-baseline.ts` compares the counts against the committed baseline in `pinapod/benches/iai-baseline.json` with a +3% tolerance. A hot path above the tolerance, a new benchmark without a baseline entry, and a baseline entry no longer measured each fail the check. The workflow uploads the raw summaries under `target/iai` as an artifact so a failure can be inspected exactly.
+
+The baseline changes only through a deliberate update:
+
+```sh
+devenv --profile perf shell -- bench:iai:update
+```
+
+Run it on Linux under the perf profile, which carries Valgrind (the same environment as CI), review the diff, and justify the movement in the pull request: an accepted hot-path change moves a few entries, and a toolchain pin bump may move every entry by a small factor. A tolerance-exceeding regression with no baseline update is a failed check by design — that is the gate doing its job. Entries are keyed by the benchmark's module path, so renaming a bench function is a baseline update too.
+
+Two operational notes. The runner binary must match the library version pinned in `Cargo.lock` — the library refuses a mismatched runner — and the library compiles on every host while running it requires Valgrind, so `cargo test` on any platform builds the target but never executes it.
 
 ## Run
 

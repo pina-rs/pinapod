@@ -1,0 +1,22 @@
+{
+  "iai_hot_paths::compact_max::compact_grow_to_max_update": 884,
+  "iai_hot_paths::compact_max::compact_max_access": 650,
+  "iai_hot_paths::compact_max::compact_max_parse": 671,
+  "iai_hot_paths::compact_max::compact_max_validate": 650,
+  "iai_hot_paths::compact_small::compact_small_access": 564,
+  "iai_hot_paths::compact_small::compact_small_parse": 585,
+  "iai_hot_paths::compact_small::compact_small_update": 876,
+  "iai_hot_paths::compact_small::compact_small_validate": 566,
+  "iai_hot_paths::fixed::fixed_initialize": 114,
+  "iai_hot_paths::fixed::fixed_parse": 120,
+  "iai_hot_paths::fixed::fixed_read": 112,
+  "iai_hot_paths::fixed::fixed_validate": 103,
+  "iai_hot_paths::fixed::fixed_write": 114,
+  "iai_hot_paths::large::large_access": 213839,
+  "iai_hot_paths::large::large_grow_to_full_update": 328630,
+  "iai_hot_paths::large::large_parse": 213735,
+  "iai_hot_paths::large::large_validate": 213748,
+  "iai_hot_paths::many_tail::many_tail_access_all": 1759,
+  "iai_hot_paths::many_tail::many_tail_access_last": 1730,
+  "iai_hot_paths::many_tail::many_tail_parse": 1620
+}

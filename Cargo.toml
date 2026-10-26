@@ -13,8 +13,13 @@ repository = "https://github.com/pina-rs/pinapod"
 rust-version = "1.89.0"
 
 [workspace.dependencies]
+bytemuck = { default-features = false, version = "^1" }
 criterion = { default-features = false, version = "^0.8.2" }
 fixed = { version = "=1.30.0", default-features = false }
+# Instruction-count gate harness: the library builds on every host, and only
+# running it requires Linux, because Valgrind does not exist elsewhere. The
+# benchmark API itself is gated behind iai-callgrind's `default` feature.
+iai-callgrind = { version = "^0.16" }
 proc-macro-crate = { default-features = false, version = "^3" }
 proc-macro2 = { default-features = false, version = "^1" }
 quote = { default-features = false, version = "^1" }

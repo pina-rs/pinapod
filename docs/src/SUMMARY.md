@@ -5,6 +5,7 @@
   - [Fixed accounts](./fixed-accounts.md)
   - [Compact accounts](./compact-accounts.md)
 - [Pod containers and prefixes](./containers.md)
+- [Discriminators and versioning](./discriminators.md)
 - [Traits, errors, and features](./traits-and-features.md)
 - [Migrate from v0.1 to v0.2](./migration-v0.2.md)
 - [Migrate from v0.2 to v0.3](./migration-v0.3.md)
