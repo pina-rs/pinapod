@@ -1,5 +1,8 @@
 ---
 pinapod: patch
+pinapod-derive:
+  type: none
+  caused_by: ["pinapod"]
 ---
 
 # instruction-count performance gates on every pull request

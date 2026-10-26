@@ -13,6 +13,16 @@ db-path = ".advisory-db"
 db-urls = ["https://github.com/RustSec/advisory-db.git"]
 git-fetch-with-cli = true
 yanked = "deny"
+ignore = [
+  # Both arrive only through iai-callgrind, the Linux-only instruction-count
+  # bench harness: bincode 1.x serializes the bench definition for its runner
+  # process, and proc-macro-error2 backs iai-callgrind's macros. Neither is
+  # reachable from the published crates, both advisories are unmaintained
+  # notices rather than vulnerabilities, and the harness is pinned by
+  # Cargo.lock. Revisit when iai-callgrind replaces bincode.
+  { id = "RUSTSEC-2025-0141", reason = "bincode 1 is unmaintained; bench-only transitive of iai-callgrind, never shipped" },
+  { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 is unmaintained; bench-only transitive of iai-callgrind, never shipped" },
+]
 
 [licenses]
 allow = [
