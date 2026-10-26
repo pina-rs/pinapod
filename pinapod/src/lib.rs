@@ -155,6 +155,7 @@ pub use fixed;
 pub use pinapod_derive::PinaPod;
 pub use pod::PodString;
 pub use pod::PodVec;
+pub use traits::FromZc;
 pub use traits::PinaPod;
 pub use traits::PinaPodCompact;
 pub use traits::PinaPodFixed;

@@ -338,6 +338,21 @@ impl<T: ZcElem + PartialEq, const PFX: usize> PartialEq<Option<T>> for PodOption
 	}
 }
 
+impl<T: ZcElem + core::hash::Hash, const PFX: usize> core::hash::Hash for PodOption<T, PFX> {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		// Hash the semantic state — absent, or present with its payload — so
+		// `None` and a corrupt tag hash differently only in domain terms the
+		// reader walk already separates.
+		match self.raw_tag() {
+			0 => state.write_u8(0),
+			_ => {
+				state.write_u8(1);
+				self.get().hash(state);
+			}
+		}
+	}
+}
+
 impl<T: ZcElem + core::fmt::Debug, const PFX: usize> core::fmt::Debug for PodOption<T, PFX> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self.get() {
