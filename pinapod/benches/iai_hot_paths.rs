@@ -113,17 +113,22 @@ fn fixed_read() -> (u8, u64, u32, bool) {
 	black_box(current::parse_fixed(&*FIXED)).read()
 }
 
+// Write and initialize derive their values from the runtime fixture bytes:
+// constant-valued writers let LLVM fold the whole operation into a constant
+// materialization, which would pin the cost of a write at seven instructions.
 #[library_benchmark]
 fn fixed_write() -> [u8; FIXED_SIZE] {
+	let base = u64::from_le_bytes(black_box(FIXED[..8].try_into().unwrap()));
 	let mut data = [0u8; FIXED_SIZE];
-	current::write_fixed(&mut data);
+	current::write_fixed_from(&mut data, base);
 	black_box(data)
 }
 
 #[library_benchmark]
 fn fixed_initialize() -> [u8; FIXED_SIZE] {
+	let base = u64::from_le_bytes(black_box(FIXED[..8].try_into().unwrap()));
 	let mut data = [0u8; FIXED_SIZE];
-	current::initialize_fixed(&mut data);
+	current::initialize_fixed_from(&mut data, base);
 	black_box(data)
 }
 

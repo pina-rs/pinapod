@@ -72,6 +72,34 @@ pub mod current {
 		.unwrap();
 	}
 
+	/// Mutates a valid value with values derived from `base`.
+	///
+	/// The instruction-count gate writes runtime-derived values because the
+	/// constant-valued writer lets LLVM fold the whole operation into a
+	/// constant materialization, which measures nothing.
+	pub fn write_fixed_from(data: &mut [u8], base: u64) {
+		let record = Fixed::read_exact_mut(data).unwrap();
+
+		record.authority = [(base % 256) as u8; 32];
+		record.amount = base.into();
+		record.revision = (base as u32).into();
+		record.active = (base % 2 == 0).into();
+	}
+
+	/// Initializes a destination with values derived from `base`, for the same
+	/// reason as [`write_fixed_from`](self::write_fixed_from).
+	pub fn initialize_fixed_from(data: &mut [u8], base: u64) {
+		Fixed::initialize(data, |record| {
+			record.authority = [(base % 256) as u8; 32];
+			record.amount = base.into();
+			record.revision = (base as u32).into();
+			record.active = (base % 2 == 0).into();
+
+			Ok(())
+		})
+		.unwrap();
+	}
+
 	pub fn parse_fixed(data: &[u8]) -> FixedView<'_> {
 		FixedView(Fixed::read_exact(data).unwrap())
 	}

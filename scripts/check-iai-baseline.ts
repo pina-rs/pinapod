@@ -26,15 +26,22 @@ const DEFAULT_BASELINE = "pinapod/benches/iai-baseline.json";
 
 type Baseline = Record<string, number>;
 
-type SummaryLine = {
+/** One benchmark summary as iai-callgrind writes it under `--save-summary=json`. */
+type BenchmarkSummary = {
   module_path?: string;
-  function_name?: string;
   id?: string | null;
-  metrics?: {
-    callgrind?: {
-      events?: Record<string, number>;
+  profiles?: Array<{
+    summaries?: {
+      parts?: Array<{
+        metrics_summary?: {
+          Callgrind?: Record<
+            string,
+            { metrics?: { Left?: { Int?: number } } }
+          >;
+        };
+      }>;
     };
-  };
+  }>;
 };
 
 function parseArgs(): {
@@ -75,7 +82,7 @@ async function collectSummaryFiles(dir: string): Promise<string[]> {
 }
 
 /** Summary files are one JSON object per benchmark per line. */
-function parseSummary(text: string): SummaryLine[] {
+function parseSummary(text: string): BenchmarkSummary[] {
   const lines = text
     .split("\n")
     .map((line) => line.trim())
@@ -83,7 +90,9 @@ function parseSummary(text: string): SummaryLine[] {
 
   return lines.flatMap((line) => {
     try {
-      const parsed = JSON.parse(line) as SummaryLine | SummaryLine[];
+      const parsed = JSON.parse(line) as
+        | BenchmarkSummary
+        | BenchmarkSummary[];
 
       return Array.isArray(parsed) ? parsed : [parsed];
     } catch {
@@ -92,22 +101,35 @@ function parseSummary(text: string): SummaryLine[] {
   });
 }
 
-function benchmarkId(summary: SummaryLine): string | null {
+function benchmarkId(summary: BenchmarkSummary): string | null {
   const module = summary.module_path ?? "";
-  const name = summary.function_name ?? "";
 
-  if (name === "") {
+  // The runner already nests the function under its group module
+  // ("iai_hot_paths::fixed::fixed_parse"), so the module path alone is the
+  // unique, stable key; a benchmark with an explicit id appends it.
+  if (module === "") {
     return null;
   }
 
-  // The module path repeats the crate segment ("iai_hot_paths::fixed"),
-  // and the runner nests the function under its group module. Keep the
-  // full path; it is unique and stable across runs.
-  const id = summary.id
-    ? `${module}::${name}::${summary.id}`
-    : `${module}::${name}`;
+  return summary.id ? `${module}::${summary.id}` : module;
+}
 
-  return id.replace(/^::+/, "");
+function instructionCount(summary: BenchmarkSummary): number | null {
+  let total = 0;
+  let found = false;
+
+  for (const profile of summary.profiles ?? []) {
+    for (const part of profile.summaries?.parts ?? []) {
+      const count = part.metrics_summary?.Callgrind?.Ir?.metrics?.Left?.Int;
+
+      if (typeof count === "number") {
+        total += count;
+        found = true;
+      }
+    }
+  }
+
+  return found ? total : null;
 }
 
 async function measure(summaryDir: string): Promise<Map<string, number>> {
@@ -115,9 +137,9 @@ async function measure(summaryDir: string): Promise<Map<string, number>> {
 
   for (const file of await collectSummaryFiles(summaryDir)) {
     for (const summary of parseSummary(await Deno.readTextFile(file))) {
-      const instructions = summary.metrics?.callgrind?.events?.Ir;
+      const instructions = instructionCount(summary);
 
-      if (typeof instructions !== "number") {
+      if (instructions === null) {
         continue;
       }
 
