@@ -83,7 +83,7 @@ pub mod current {
 		record.authority = [(base % 256) as u8; 32];
 		record.amount = base.into();
 		record.revision = (base as u32).into();
-		record.active = (base % 2 == 0).into();
+		record.active = base.is_multiple_of(2).into();
 	}
 
 	/// Initializes a destination with values derived from `base`, for the same
@@ -93,7 +93,7 @@ pub mod current {
 			record.authority = [(base % 256) as u8; 32];
 			record.amount = base.into();
 			record.revision = (base as u32).into();
-			record.active = (base % 2 == 0).into();
+			record.active = base.is_multiple_of(2).into();
 
 			Ok(())
 		})
