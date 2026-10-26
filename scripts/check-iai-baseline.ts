@@ -52,8 +52,7 @@ function parseArgs(): {
   const args = Deno.args;
   const update = args.includes("--update");
   const positional = args.filter((arg) => !arg.startsWith("--"));
-  const [summaryDir = DEFAULT_SUMMARY_DIR, baselinePath = DEFAULT_BASELINE] =
-    positional;
+  const [summaryDir = DEFAULT_SUMMARY_DIR, baselinePath = DEFAULT_BASELINE] = positional;
 
   return { update, summaryDir, baselinePath };
 }
@@ -230,9 +229,7 @@ async function main(): Promise<void> {
 
     if (actual > limit) {
       failures.push(
-        `REGRESS  ${id}: ${actual} Ir vs baseline ${expected} Ir (+${delta}, tolerance +${
-          TOLERANCE * 100
-        }%)`,
+        `REGRESS  ${id}: ${actual} Ir vs baseline ${expected} Ir (+${delta}, tolerance +${TOLERANCE * 100}%)`,
       );
     } else if (delta !== 0) {
       const direction = delta > 0 ? "+" : "";
@@ -248,16 +245,12 @@ async function main(): Promise<void> {
     }
 
     throw new Error(
-      `${failures.length} hot path(s) regressed beyond the ${
-        TOLERANCE * 100
-      }% instruction tolerance`,
+      `${failures.length} hot path(s) regressed beyond the ${TOLERANCE * 100}% instruction tolerance`,
     );
   }
 
   console.log(
-    `instruction gate passed: ${measured.size} benchmarks within +${
-      TOLERANCE * 100
-    }% of the baseline`,
+    `instruction gate passed: ${measured.size} benchmarks within +${TOLERANCE * 100}% of the baseline`,
   );
 }
 
