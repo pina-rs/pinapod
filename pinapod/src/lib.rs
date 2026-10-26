@@ -144,6 +144,7 @@ pub mod pod;
 )]
 pub mod traits;
 
+pub use error::Diagnostic;
 pub use error::PinaPodError;
 // The workspace pins `fixed` to one exact version, and a schema field's
 // `ZcField` mapping belongs to whichever release the program resolves.

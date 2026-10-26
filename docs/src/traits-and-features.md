@@ -65,6 +65,24 @@ It maps every invalid representation and every write overflow to `ProgramError::
 
 <!-- {/podErrorProgramErrorMapping} -->
 
+## Diagnostics
+
+A flat error answers whether a buffer holds a valid value; it cannot answer which field rejected it. Every derived schema exposes `diagnose` for the second question:
+
+```rust
+match Journal::read_prefix(&account.data) {
+	Ok(view) => { /* ... */ }
+	Err(error) => {
+		// The investigation path: same acceptance contract, field attributed.
+		if let Ok(diagnostic) = Journal::diagnose(&account.data) {
+			log::warn!("rejected at `{}`: {}", diagnostic.field, diagnostic.error);
+		}
+	}
+}
+```
+
+`diagnose` re-runs the validation walk with attribution, so its result carries a field name (`Diagnostic::field`) beside the underlying `PinaPodError`; allocation-level failures are attributed to the schema's own name, because no field owns them. Acceptance is exactly the readers' — a buffer `diagnose` rejects is a buffer the reader rejects, with the same error variant, which the test suite pins across pseudo-randomly corrupted buffers. Because it re-runs the walk, call it where an error is investigated — an explorer, a simulator, a test failure — not in a hot loop that only needs the yes-or-no answer.
+
 ## Pod types
 
 Every schema field maps to one of these alignment-one representations. `PFX` is a prefix width in bytes.

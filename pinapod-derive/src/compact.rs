@@ -37,6 +37,8 @@ pub fn generate(schema: &Schema) -> TokenStream {
 	let ref_ts = generate_ref(schema, &header_ty, &ref_name);
 	let mut_ts = generate_mut(schema, &header_ty, &mut_name);
 	let patch_ts = generate_patch(schema, &header_ty, &ref_name, &mut_name, &patch_name);
+	let diagnose_ts = generate_diagnose(schema, &header_ty);
+
 	let support_ts = generate_support();
 
 	quote! {
@@ -64,10 +66,289 @@ pub fn generate(schema: &Schema) -> TokenStream {
 			#ref_ts
 			#mut_ts
 			#patch_ts
+			// Emitted after the views and patch so the layout-walk contract
+			// test's region — `validate_layout` up to the next `pub struct` —
+			// keeps measuring only the two validation depths.
+			#diagnose_ts
 		}
 
 		#[allow(unused_imports)]
 		#vis use #module_name::{#header_name, #patch_name, #ref_name};
+	}
+}
+
+/// Generate the attributing counterpart of `validate` for one compact schema.
+///
+/// The walk uses only the checked helpers — unlike the reader accessors, it
+/// runs on bytes that may be invalid, so no validate-before-use license
+/// applies. Every rejection carries the field name it was attributed to;
+/// allocation-level failures carry the schema's own name. The acceptance
+/// contract is pinned by tests: `diagnose` accepts and rejects exactly what
+/// `validate` does, with the same error variant.
+fn generate_diagnose(schema: &Schema, header_ty: &TokenStream) -> TokenStream {
+	let struct_name = &schema.name;
+	let (impl_generics, ty_generics, where_clause) = schema.generics.split_for_impl();
+	let bounds = compact_bounds(schema);
+	let where_clause_with_bounds = where_clause_with_bounds(where_clause, bounds.iter());
+	let struct_name_literal = struct_name.to_string();
+
+	let inline_probes: Vec<TokenStream> = schema
+		.inline_fields()
+		.map(|f| {
+			let name = &f.name;
+			let name_literal = name.to_string();
+			let pod_ty = map_to_pod_type(&f.ty);
+			quote! {
+				<#pod_ty as pinapod::ZcValidate>::validate_ref(&__hdr.#name)
+					.map_err(|error| pinapod::Diagnostic::new(#name_literal, error))?;
+			}
+		})
+		.collect();
+
+	let mut tail_probes: Vec<TokenStream> = Vec::new();
+
+	for f in schema.tail_fields() {
+		let fname = &f.name;
+		let fname_literal = fname.to_string();
+
+		match &f.kind {
+			FieldKind::Tail(TailField::Segment {
+				presence: TailPresence::Always,
+				// The prefix width is a property of the header field type and
+				// the checked decode below; the probe never names it.
+				payload: TailPayload::String { max, .. },
+			}) => {
+				let len_name = format_ident!("__{}_len", fname);
+				tail_probes.push(quote! {
+					let __len = __pinapod_decode_prefix(&__hdr.#len_name)
+						.map_err(|error| pinapod::Diagnostic::new(#fname_literal, error))?;
+
+					if __len > #max {
+						return Err(pinapod::Diagnostic::new(
+							#fname_literal,
+							pinapod::PinaPodError::InvalidLength,
+						));
+					}
+
+					let __end = __pinapod_checked_add(__tail_offset, __len)
+						.map_err(|error| pinapod::Diagnostic::new(#fname_literal, error))?;
+					let __tail = data
+						.get(__tail_offset..__end)
+						.ok_or(pinapod::Diagnostic::new(
+							#fname_literal,
+							pinapod::PinaPodError::BufferTooSmall,
+						))?;
+
+					if core::str::from_utf8(__tail).is_err() {
+						return Err(pinapod::Diagnostic::new(
+							#fname_literal,
+							pinapod::PinaPodError::InvalidUtf8,
+						));
+					}
+
+					__tail_offset = __end;
+				});
+			}
+			FieldKind::Tail(TailField::Segment {
+				presence: TailPresence::Always,
+				payload: TailPayload::Vec { elem, max, .. },
+			}) => {
+				let len_name = format_ident!("__{}_len", fname);
+				let mapped_elem = map_to_pod_type(elem);
+				tail_probes.push(quote! {
+					let __count = __pinapod_decode_prefix(&__hdr.#len_name)
+						.map_err(|error| pinapod::Diagnostic::new(#fname_literal, error))?;
+
+					if __count > #max {
+						return Err(pinapod::Diagnostic::new(
+							#fname_literal,
+							pinapod::PinaPodError::InvalidLength,
+						));
+					}
+
+					let __elem_size = core::mem::size_of::<#mapped_elem>();
+
+					if __elem_size == 0 {
+						return Err(pinapod::Diagnostic::new(
+							#fname_literal,
+							pinapod::PinaPodError::InvalidLength,
+						));
+					}
+
+					let __byte_len = __pinapod_checked_mul(__count, __elem_size)
+						.map_err(|error| pinapod::Diagnostic::new(#fname_literal, error))?;
+					let __end = __pinapod_checked_add(__tail_offset, __byte_len)
+						.map_err(|error| pinapod::Diagnostic::new(#fname_literal, error))?;
+					let __tail = data
+						.get(__tail_offset..__end)
+						.ok_or(pinapod::Diagnostic::new(
+							#fname_literal,
+							pinapod::PinaPodError::BufferTooSmall,
+						))?;
+
+					// SAFETY: `__byte_len` is `__count * __elem_size` and the
+					// bounds check above proved it fits `__tail`, so the first
+					// `__count` elements lie inside the slice, and `ZcElem`
+					// guarantees alignment one and bit-pattern validity.
+					let __elems = unsafe {
+						core::slice::from_raw_parts(
+							__tail.as_ptr() as *const #mapped_elem,
+							__count,
+						)
+					};
+
+					<#mapped_elem as pinapod::ZcValidate>::validate_slice(__elems)
+						.map_err(|error| pinapod::Diagnostic::new(#fname_literal, error))?;
+					__tail_offset = __end;
+				});
+			}
+			FieldKind::Tail(TailField::Segment {
+				presence: TailPresence::OptionTag,
+				payload: TailPayload::String { max, pfx },
+			}) => {
+				let tag_name = format_ident!("__{}_tag", fname);
+				tail_probes.push(quote! {
+					match __hdr.#tag_name[0] {
+						0 => {}
+						1 => {
+							let __len = __pinapod_read_prefix(data, __tail_offset, #pfx)
+								.map_err(|error| pinapod::Diagnostic::new(#fname_literal, error))?;
+
+							if __len > #max {
+								return Err(pinapod::Diagnostic::new(
+									#fname_literal,
+									pinapod::PinaPodError::InvalidLength,
+								));
+							}
+
+							let __payload_offset = __pinapod_checked_add(__tail_offset, #pfx)
+								.map_err(|error| pinapod::Diagnostic::new(#fname_literal, error))?;
+							let __payload_end = __pinapod_checked_add(__payload_offset, __len)
+								.map_err(|error| pinapod::Diagnostic::new(#fname_literal, error))?;
+							let __payload = data
+								.get(__payload_offset..__payload_end)
+								.ok_or(pinapod::Diagnostic::new(
+									#fname_literal,
+									pinapod::PinaPodError::BufferTooSmall,
+								))?;
+
+							if core::str::from_utf8(__payload).is_err() {
+								return Err(pinapod::Diagnostic::new(
+									#fname_literal,
+									pinapod::PinaPodError::InvalidUtf8,
+								));
+							}
+
+							__tail_offset = __payload_end;
+						}
+						_ => {
+							return Err(pinapod::Diagnostic::new(
+								#fname_literal,
+								pinapod::PinaPodError::InvalidTag,
+							));
+						}
+					}
+				});
+			}
+			FieldKind::Tail(TailField::Segment {
+				presence: TailPresence::OptionTag,
+				payload: TailPayload::Vec { elem, max, pfx },
+			}) => {
+				let tag_name = format_ident!("__{}_tag", fname);
+				let mapped_elem = map_to_pod_type(elem);
+				tail_probes.push(quote! {
+					match __hdr.#tag_name[0] {
+						0 => {}
+						1 => {
+							let __count = __pinapod_read_prefix(data, __tail_offset, #pfx)
+								.map_err(|error| pinapod::Diagnostic::new(#fname_literal, error))?;
+
+							if __count > #max {
+								return Err(pinapod::Diagnostic::new(
+									#fname_literal,
+									pinapod::PinaPodError::InvalidLength,
+								));
+							}
+
+							let __elem_size = core::mem::size_of::<#mapped_elem>();
+
+							if __elem_size == 0 {
+								return Err(pinapod::Diagnostic::new(
+									#fname_literal,
+									pinapod::PinaPodError::InvalidLength,
+								));
+							}
+
+							let __payload_offset = __pinapod_checked_add(__tail_offset, #pfx)
+								.map_err(|error| pinapod::Diagnostic::new(#fname_literal, error))?;
+							let __byte_len = __pinapod_checked_mul(__count, __elem_size)
+								.map_err(|error| pinapod::Diagnostic::new(#fname_literal, error))?;
+							let __payload_end = __pinapod_checked_add(__payload_offset, __byte_len)
+								.map_err(|error| pinapod::Diagnostic::new(#fname_literal, error))?;
+							let __payload = data
+								.get(__payload_offset..__payload_end)
+								.ok_or(pinapod::Diagnostic::new(
+									#fname_literal,
+									pinapod::PinaPodError::BufferTooSmall,
+								))?;
+
+							// SAFETY: same bounds argument as the always-present
+							// vector tail above, on the checked end offset.
+							let __elems = unsafe {
+								core::slice::from_raw_parts(
+									__payload.as_ptr() as *const #mapped_elem,
+									__count,
+								)
+							};
+
+							<#mapped_elem as pinapod::ZcValidate>::validate_slice(__elems)
+								.map_err(|error| pinapod::Diagnostic::new(#fname_literal, error))?;
+							__tail_offset = __payload_end;
+						}
+						_ => {
+							return Err(pinapod::Diagnostic::new(
+								#fname_literal,
+								pinapod::PinaPodError::InvalidTag,
+							));
+						}
+					}
+				});
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	quote! {
+		impl #impl_generics #struct_name #ty_generics #where_clause_with_bounds {
+			/// Validate and attribute: names the first field a reader would
+			/// reject, over the same acceptance contract as
+			/// [`PinaPodCompact::validate`](pinapod::PinaPodCompact::validate).
+			///
+			/// The allocation checks are attributed to this schema's own name,
+			/// because no field owns them. This walk uses checked arithmetic
+			/// throughout — unlike the reader accessors, it deliberately runs
+			/// on bytes that may be invalid.
+			pub fn diagnose(data: &[u8]) -> Result<(), pinapod::Diagnostic> {
+				if let Err(error) =
+					<Self as pinapod::PinaPodCompact>::validate_storage_len(data.len())
+				{
+					return Err(pinapod::Diagnostic::new(#struct_name_literal, error));
+				}
+
+				// SAFETY: `validate_storage_len` proved the allocation holds at
+				// least the header, and `ZcElem` permits forming the reference
+				// before validation.
+				let __hdr: &#header_ty = unsafe { &*(data.as_ptr() as *const #header_ty) };
+
+				#( #inline_probes )*
+
+				let mut __tail_offset = core::mem::size_of::<#header_ty>();
+
+				#( #tail_probes )*
+
+				Ok(())
+			}
+		}
 	}
 }
 

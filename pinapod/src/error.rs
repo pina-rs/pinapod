@@ -65,6 +65,51 @@ impl core::fmt::Display for PinaPodError {
 
 impl core::error::Error for PinaPodError {}
 
+/// A [`PinaPodError`] attributed to the schema field it rejected.
+///
+/// A derived schema exposes this through `Type::diagnose`, the validating
+/// counterpart of its readers that answers the follow-up question a flat
+/// error cannot: *which field*? The allocation-level failures (a short or
+/// wrongly sized buffer, a compact allocation outside its size bounds) are
+/// attributed to the schema's own name, because no field owns them.
+///
+/// A diagnostic re-runs the validation walk with attribution, so call it
+/// where the error is investigated — an explorer, a simulator, a test
+/// failure — not in a hot loop that only needs the yes-or-no answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Diagnostic {
+	/// The name of the field the rejection was attributed to, or the schema's
+	/// own name when the allocation itself is the problem.
+	pub field: &'static str,
+	/// The underlying rejection.
+	pub error: PinaPodError,
+}
+
+impl Diagnostic {
+	/// Assembles a diagnostic from a field name and the underlying rejection.
+	pub const fn new(field: &'static str, error: PinaPodError) -> Self {
+		Self { field, error }
+	}
+}
+
+impl core::fmt::Display for Diagnostic {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		write!(f, "field `{}`: {}", self.field, self.error)
+	}
+}
+
+impl core::error::Error for Diagnostic {
+	fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+		Some(&self.error)
+	}
+}
+
+impl From<Diagnostic> for PinaPodError {
+	fn from(diagnostic: Diagnostic) -> Self {
+		diagnostic.error
+	}
+}
+
 #[cfg(feature = "solana-program-error")]
 impl From<PinaPodError> for solana_program_error::ProgramError {
 	fn from(e: PinaPodError) -> Self {
