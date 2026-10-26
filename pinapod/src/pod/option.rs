@@ -1,5 +1,6 @@
 use core::mem::MaybeUninit;
 
+use crate::error::PinaPodError;
 use crate::traits::ZcElem;
 
 /// An alignment-one optional value whose storage type satisfies [`ZcElem`].
@@ -165,6 +166,37 @@ impl<T: ZcElem, const PFX: usize> PodOption<T, PFX> {
 			Some(unsafe { self.value.assume_init_ref() })
 		} else {
 			None
+		}
+	}
+
+	/// Borrow the inner value if `Some`, checking the tag and payload first.
+	///
+	/// This is the validating counterpart of [`get_ref`](Self::get_ref):
+	/// [`get_ref`](Self::get_ref) treats every tag other than `1` as absent —
+	/// including a corrupt one — and never validates the payload, which is
+	/// sound only for a reference that reached it through a reader or a safe
+	/// constructor. This method instead rejects what the reader walk rejects,
+	/// so casting raw account bytes to a `PodOption` and calling it is always
+	/// sound.
+	///
+	/// # Errors
+	///
+	/// Returns [`PinaPodError::InvalidTag`](crate::PinaPodError::InvalidTag)
+	/// when the tag is neither `0` nor `1`, and the payload's own error when a
+	/// present payload is not a valid stored value.
+	pub fn try_get_ref(&self) -> Result<Option<&T>, PinaPodError> {
+		match self.raw_tag() {
+			0 => Ok(None),
+			1 => {
+				// SAFETY: the tag is proven to be exactly `1`, so the payload
+				// was initialized by a writer or holds account bytes whose bit
+				// patterns are valid references before validation runs.
+				let inner = unsafe { self.value.assume_init_ref() };
+
+				T::validate_ref(inner)?;
+				Ok(Some(inner))
+			}
+			_ => Err(PinaPodError::InvalidTag),
 		}
 	}
 

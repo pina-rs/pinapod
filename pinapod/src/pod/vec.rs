@@ -177,6 +177,36 @@ impl<T: ZcElem, const N: usize, const PFX: usize> PodVecRepr<T, N, PFX> {
 		unsafe { core::slice::from_raw_parts(self.data.as_ptr() as *const T, len) }
 	}
 
+	/// Borrows the active elements, checking the prefix and elements first.
+	///
+	/// This is the validating counterpart of [`as_slice`](Self::as_slice) for a
+	/// reference that did not come from a reader: it rejects the same states
+	/// the reader walk rejects instead of trusting them.
+	///
+	/// # Errors
+	///
+	/// Returns [`PinaPodError::InvalidLength`](crate::PinaPodError::InvalidLength)
+	/// when the decoded prefix exceeds the capacity `N`, and the element's own
+	/// error when an active element is not a valid stored value (for example
+	/// [`PinaPodError::InvalidBool`](crate::PinaPodError::InvalidBool) for a
+	/// `PodBool` byte above `1`).
+	pub fn try_as_slice(&self) -> Result<&[T], PinaPodError> {
+		let raw_len = self.try_decode_len()?;
+
+		if raw_len > N {
+			return Err(PinaPodError::InvalidLength);
+		}
+
+		// SAFETY: raw_len <= N, and data is a [MaybeUninit<T>; N] array of
+		// initialized memory; `ZcElem` guarantees forming `&T` from any bit
+		// pattern is sound before validation runs.
+		let slice = unsafe { core::slice::from_raw_parts(self.data.as_ptr() as *const T, raw_len) };
+
+		T::validate_slice(slice)?;
+
+		Ok(slice)
+	}
+
 	/// Mutably borrows the active elements.
 	///
 	/// Only the active range is exposed; inactive capacity stays out of reach.

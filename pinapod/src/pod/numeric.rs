@@ -48,6 +48,58 @@ macro_rules! define_pod_integer {
                 self.0 == [0u8; $size]
             }
 
+            /// Decodes the stored value with a volatile read.
+            ///
+            /// A CPI callee can write the account this value lives in, and a
+            /// plain [`get`](Self::get) lets the compiler reuse a load from before
+            /// the call, because nothing in the caller's source proves the bytes
+            /// changed. A volatile read forces the bytes to be re-read from
+            /// memory, so a balance or counter updated by a callee is observed
+            /// after the call returns.
+            ///
+            /// This is the account-data analogue of reading an `AtomicU64` with
+            /// `Relaxed` ordering: it prevents compiler caching, and on the
+            /// single-threaded BPF target that is the whole hazard. It is not an
+            /// atomic operation and provides no synchronization.
+            ///
+            /// The read makes no claim about reference validity: a pod
+            /// reference formed before the CPI is not made sound by reading it
+            /// volatile afterwards. Release the account borrow before the call,
+            /// then form a fresh view over the returned bytes — this accessor
+            /// answers whether the compiler re-loads those bytes, not whether
+            /// an older reference may still be used.
+            #[inline(always)]
+            pub fn get_volatile(&self) -> $native {
+                // SAFETY: `self.0` is an initialized `[u8; $size]` with
+                // alignment one, and reading it by value through a volatile
+                // load cannot create aliasing or validity violations.
+                let bytes =
+                    unsafe { core::ptr::read_volatile(self.0.as_ptr() as *const [u8; $size]) };
+
+                <$native>::from_le_bytes(bytes)
+            }
+
+            /// Replaces the stored value with a volatile write.
+            ///
+            /// The store cannot be sunk below a later call or hoisted above an
+            /// earlier one, so a value written before a CPI is in memory when
+            /// the call executes. Volatile carries no atomicity guarantee: a
+            /// pod wider than the target's store width may lower to several
+            /// stores, so an observer must not rely on the write being
+            /// indivisible.
+            #[inline(always)]
+            pub fn set_volatile(&mut self, value: $native) {
+                // SAFETY: `self.0` is a uniquely borrowed `[u8; $size]` with
+                // alignment one; a volatile store of a fully initialized byte
+                // array leaves every bit pattern valid.
+                unsafe {
+                    core::ptr::write_volatile(
+                        self.0.as_mut_ptr() as *mut [u8; $size],
+                        value.to_le_bytes(),
+                    );
+                }
+            }
+
             /// Adds two values, returning `None` on overflow.
             #[must_use]
             #[inline(always)]
