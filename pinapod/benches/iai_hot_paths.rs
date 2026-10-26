@@ -97,6 +97,23 @@ static LARGE: LazyLock<Vec<u8>> = LazyLock::new(|| {
 static LARGE_VIEW: LazyLock<large_fixture::LargeRef<'static, LARGE_CAPACITY>> =
 	LazyLock::new(|| large_fixture::Large::<LARGE_CAPACITY>::read_prefix(&LARGE).unwrap());
 
+/// Forces every fixture static to finish initializing before measurement.
+///
+/// The statics are `LazyLock`s: their first dereference constructs the fixture
+/// and, for the prebuilt views, parses it. Group setup runs outside the
+/// measured call, so warming here keeps construction and parsing out of the
+/// instruction counts — without it, `large_access` would measure a full
+/// `large_parse` inside the first `LazyLock` initialization.
+fn warm_instruction_fixtures() {
+	black_box(&*FIXED);
+	black_box(&*SMALL);
+	black_box(&*MAX);
+	black_box(&*WIDE);
+	black_box(&*WIDE_VIEW);
+	black_box(&*LARGE);
+	black_box(&*LARGE_VIEW);
+}
+
 #[library_benchmark]
 fn fixed_parse() -> (u8, u64, u32, bool) {
 	let view = current::parse_fixed(black_box(&*FIXED));
@@ -224,28 +241,33 @@ fn large_grow_to_full_update() -> usize {
 
 library_benchmark_group!(
 	name = fixed;
+setup = warm_instruction_fixtures;
 	benchmarks = fixed_parse, fixed_validate, fixed_read, fixed_write, fixed_initialize
 );
 
 library_benchmark_group!(
 	name = compact_small;
+setup = warm_instruction_fixtures;
 	benchmarks = compact_small_parse, compact_small_validate, compact_small_access,
 	compact_small_update
 );
 
 library_benchmark_group!(
 	name = compact_max;
+setup = warm_instruction_fixtures;
 	benchmarks = compact_max_parse, compact_max_validate, compact_max_access,
 	compact_grow_to_max_update
 );
 
 library_benchmark_group!(
 	name = many_tail;
+setup = warm_instruction_fixtures;
 	benchmarks = many_tail_parse, many_tail_access_all, many_tail_access_last
 );
 
 library_benchmark_group!(
 	name = large;
+setup = warm_instruction_fixtures;
 	benchmarks = large_parse, large_validate, large_access, large_grow_to_full_update
 );
 

@@ -26,20 +26,21 @@ const DEFAULT_BASELINE = "pinapod/benches/iai-baseline.json";
 
 type Baseline = Record<string, number>;
 
+/** The summary schema version iai-callgrind 0.16.1 writes; pinned, not probed. */
+const SUMMARY_SCHEMA_VERSION = "6";
+
 /** One benchmark summary as iai-callgrind writes it under `--save-summary=json`. */
 type BenchmarkSummary = {
+  version?: string;
   module_path?: string;
   id?: string | null;
   profiles?: Array<{
     summaries?: {
-      parts?: Array<{
-        metrics_summary?: {
-          Callgrind?: Record<
-            string,
-            { metrics?: { Left?: { Int?: number } } }
-          >;
+      total?: {
+        summary?: {
+          Callgrind?: Record<string, { metrics?: { Left?: { Int?: number } } }>;
         };
-      }>;
+      };
     };
   }>;
 };
@@ -95,7 +96,7 @@ function parseSummary(text: string): BenchmarkSummary[] {
 
       return Array.isArray(parsed) ? parsed : [parsed];
     } catch {
-      return [];
+      throw new Error(`a summary line is not valid JSON: ${line.slice(0, 120)}`);
     }
   });
 }
@@ -114,21 +115,19 @@ function benchmarkId(summary: BenchmarkSummary): string | null {
 }
 
 function instructionCount(summary: BenchmarkSummary): number | null {
-  let total = 0;
-  let found = false;
-
-  for (const profile of summary.profiles ?? []) {
-    for (const part of profile.summaries?.parts ?? []) {
-      const count = part.metrics_summary?.Callgrind?.Ir?.metrics?.Left?.Int;
-
-      if (typeof count === "number") {
-        total += count;
-        found = true;
-      }
-    }
+  if (summary.version !== undefined && summary.version !== SUMMARY_SCHEMA_VERSION) {
+    throw new Error(
+      `summary schema version ${summary.version} is not the pinned ${SUMMARY_SCHEMA_VERSION}; update the parser alongside the iai-callgrind pin`,
+    );
   }
 
-  return found ? total : null;
+  // The runner aggregates every measured part into `summaries.total`, so one
+  // benchmark contributes exactly one count; a summary without it is a
+  // malformed measurement, not a benchmark to skip silently.
+  const count = summary.profiles?.[0]?.summaries?.total?.summary?.Callgrind?.Ir
+    ?.metrics?.Left?.Int;
+
+  return typeof count === "number" ? count : null;
 }
 
 async function measure(summaryDir: string): Promise<Map<string, number>> {
@@ -136,16 +135,16 @@ async function measure(summaryDir: string): Promise<Map<string, number>> {
 
   for (const file of await collectSummaryFiles(summaryDir)) {
     for (const summary of parseSummary(await Deno.readTextFile(file))) {
-      const instructions = instructionCount(summary);
-
-      if (instructions === null) {
-        continue;
-      }
-
       const id = benchmarkId(summary);
 
       if (id === null) {
         continue;
+      }
+
+      const instructions = instructionCount(summary);
+
+      if (instructions === null) {
+        throw new Error(`summary for ${id} carries no Callgrind Ir total`);
       }
 
       measured.set(id, instructions);

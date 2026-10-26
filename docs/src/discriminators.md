@@ -1,6 +1,6 @@
 # Discriminators and versioning
 
-PinaPod schemas describe one value, and a real account usually stores more than a value: Solana programs prefix account data with an 8-byte account discriminator, and long-lived accounts eventually need a version tag. Neither concept belongs in the wire format itself, so PinaPod does not generate one — the discriminator is an ordinary prefix that the program owns, and the schema reads the bytes after it.
+PinaPod schemas describe one value, and a real account usually stores more than a value: Solana programs prefix account data with an 8-byte account discriminator, and long-lived accounts eventually need a version tag. Neither concept belongs in the wire format itself, so PinaPod never generates or validates one automatically. The examples below all place these prefixes inside the account's bytes — at offset zero, ahead of the schema, or as the schema's first stored field — because they are part of the enclosing account representation. What stays with the program is the check: PinaPod hands back the value, and the program owns the prefix bytes and the comparison.
 
 ## Read a schema after a discriminator
 
