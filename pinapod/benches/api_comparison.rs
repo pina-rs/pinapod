@@ -50,117 +50,18 @@ struct Fixtures {
 	upstream: FixtureSet,
 }
 
-// PinaPod's current derive emits a private generated module that imports the
-// schema name. Suppress that expansion-only lint until the derive itself owns
-// the suppression; benchmark source imports remain linted normally.
-#[allow(unused_imports)]
-mod current {
-	use std::mem::size_of;
+// The current fixture module and the shared large-tail, many-tail, and
+// unchecked-cast fixtures live in `benches/common`, so the instruction-count
+// gate measures exactly these workloads over exactly these bytes.
+#[allow(
+	dead_code,
+	reason = "each harness uses a different subset of the shared fixtures"
+)]
+#[path = "common/mod.rs"]
+mod common;
 
-	#[allow(dead_code)]
-	#[derive(pinapod::PinaPod)]
-	pub struct Fixed {
-		pub authority: [u8; 32],
-		pub amount: u64,
-		pub revision: u32,
-		pub active: bool,
-	}
-
-	#[allow(dead_code)]
-	#[derive(pinapod::PinaPod)]
-	#[pinapod(compact)]
-	pub struct Compact {
-		pub sequence: u64,
-		pub revision: u32,
-		pub label: pinapod::String<64>,
-		pub values: pinapod::Vec<u64, 16>,
-	}
-
-	pub struct FixedView<'data>(&'data FixedZc);
-
-	pub struct CompactView<'data>(CompactRef<'data>);
-
-	pub fn fixed_size() -> usize {
-		Fixed::SIZE
-	}
-
-	pub fn compact_header_size() -> usize {
-		<Compact as pinapod::PinaPodCompact>::HEADER_SIZE
-	}
-
-	pub fn view_sizes() -> (usize, usize) {
-		(size_of::<CompactRef<'_>>(), size_of::<CompactPatch<'_>>())
-	}
-
-	pub fn write_fixed(data: &mut [u8]) {
-		let record = Fixed::read_exact_mut(data).unwrap();
-
-		record.authority = [0xA5; 32];
-		record.amount = 1_000_000u64.into();
-		record.revision = 42u32.into();
-		record.active = true.into();
-	}
-
-	pub fn initialize_fixed(data: &mut [u8]) {
-		Fixed::initialize(data, |record| {
-			record.authority = [0xA5; 32];
-			record.amount = 1_000_000u64.into();
-			record.revision = 42u32.into();
-			record.active = true.into();
-
-			Ok(())
-		})
-		.unwrap();
-	}
-
-	pub fn parse_fixed(data: &[u8]) -> FixedView<'_> {
-		FixedView(Fixed::read_exact(data).unwrap())
-	}
-
-	pub fn validate_fixed(data: &[u8]) {
-		Fixed::validate_exact(data).unwrap();
-	}
-
-	impl FixedView<'_> {
-		pub fn read(&self) -> (u8, u64, u32, bool) {
-			(
-				self.0.authority[0],
-				self.0.amount.get(),
-				self.0.revision.get(),
-				self.0.active.get(),
-			)
-		}
-	}
-
-	pub fn write_compact(data: &mut [u8], label: &str, value_count: usize, base: u64) -> usize {
-		let values: [pinapod::pod::PodU64; 16] =
-			core::array::from_fn(|index| (base + index as u64).into());
-		let patch = CompactPatch::new()
-			.sequence(42u64)
-			.revision(7u32)
-			.label(label)
-			.replace_values(&values[..value_count]);
-
-		Compact::update(data, &patch).unwrap()
-	}
-
-	pub fn parse_compact(data: &[u8]) -> CompactView<'_> {
-		CompactView(Compact::read_prefix(data).unwrap())
-	}
-
-	pub fn validate_compact(data: &[u8]) {
-		<Compact as pinapod::PinaPodCompact>::validate(data).unwrap();
-	}
-
-	impl CompactView<'_> {
-		pub fn access(&self, last: usize) -> (usize, u64, u64) {
-			let label = self.0.label();
-			let values = self.0.values();
-
-			(label.len(), values[0].get(), values[last].get())
-		}
-	}
-}
+use common::current;
+use common::many_tail;
 
 mod previous {
 	use std::mem::size_of;
@@ -571,6 +472,13 @@ fn bench_fixed(c: &mut Criterion, fixtures: &Fixtures) {
 	parse.bench_function("zeropod-upstream-78e6e5f", |bench| {
 		bench.iter(|| black_box(upstream::parse_fixed(black_box(&fixtures.upstream.fixed))));
 	});
+	// The ecosystem's cast-without-validation floor over the same bytes: an
+	// alignment-one bytemuck cast plus the same four field decodes. The gap to
+	// `pinapod-current` is what validation costs, and the gap may only grow
+	// when a check is added, never because the cast path got slower.
+	parse.bench_function("bytemuck-unchecked-cast", |bench| {
+		bench.iter(|| black_box(common::unchecked::parse(black_box(&fixtures.current.fixed))));
+	});
 	parse.finish();
 
 	let mut validate = c.benchmark_group("fixed/validate");
@@ -814,91 +722,8 @@ fn bench_compact_tail_scaling(c: &mut Criterion) {
 	}
 }
 
-/// Measures how compact reader cost scales with the number of tail fields.
-///
-/// This schema carries six tails so the gap between re-decoding every prefix
-/// per accessor and reading one cached offset per accessor is visible. The
-/// comparison is current-only: it guards `PinaPod`'s own scaling, not upstream
-/// parity.
-mod many_tail {
-	use std::hint::black_box;
-
-	#[allow(dead_code)]
-	#[derive(pinapod::PinaPod)]
-	#[pinapod(compact)]
-	pub struct Wide {
-		pub sequence: u64,
-		pub label_a: pinapod::String<16>,
-		pub values_a: pinapod::Vec<u32, 8>,
-		pub label_b: pinapod::String<16>,
-		pub values_b: pinapod::Vec<u32, 8>,
-		pub label_c: pinapod::String<16>,
-		pub note: Option<pinapod::String<16>>,
-	}
-
-	const _: () = assert!(<Wide as pinapod::PinaPodCompact>::HEADER_SIZE == 16);
-	const _: () = assert!(<Wide as pinapod::PinaPodCompact>::MIN_SIZE == 16);
-	const _: () = assert!(<Wide as pinapod::PinaPodCompact>::MAX_SIZE == 145);
-	const _: () = assert!(<Wide as pinapod::PinaPodCompact>::TAIL_ALIGNMENT == 1);
-
-	const LABEL: &str = "aaaaaaaaaaaaaaaa";
-	const VALUES: [u32; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
-	const NOTE: &str = "nnnnnnnnnnnnnnnn";
-	pub const ENCODED_LEN: usize = 145;
-	pub const STORAGE_LEN: usize = 145;
-
-	pub fn write(data: &mut [u8]) -> usize {
-		let values: [pinapod::pod::PodU32; 8] = [
-			pinapod::pod::PodU32::from(VALUES[0]),
-			pinapod::pod::PodU32::from(VALUES[1]),
-			pinapod::pod::PodU32::from(VALUES[2]),
-			pinapod::pod::PodU32::from(VALUES[3]),
-			pinapod::pod::PodU32::from(VALUES[4]),
-			pinapod::pod::PodU32::from(VALUES[5]),
-			pinapod::pod::PodU32::from(VALUES[6]),
-			pinapod::pod::PodU32::from(VALUES[7]),
-		];
-		let patch = WidePatch::new()
-			.sequence(1)
-			.label_a(LABEL)
-			.replace_values_a(&values)
-			.label_b(LABEL)
-			.replace_values_b(&values)
-			.label_c(LABEL)
-			.note(Some(NOTE));
-		Wide::initialize(data, &patch)
-			.unwrap_or_else(|error| panic!("wide fixture must initialize: {error}"))
-	}
-
-	/// Parses the fixture once. Benchmarks receive the prebuilt view so they
-	/// measure accessor cost without validation or offset-walk work.
-	pub fn view(data: &[u8]) -> WideRef<'_> {
-		Wide::read_prefix(data).unwrap_or_else(|error| panic!("wide fixture must parse: {error}"))
-	}
-
-	pub fn parse(data: &[u8]) -> usize {
-		Wide::read_prefix(data)
-			.unwrap_or_else(|error| panic!("wide fixture must parse: {error}"))
-			.encoded_len()
-	}
-
-	pub fn access_all(view: &WideRef<'_>) -> usize {
-		black_box((
-			view.sequence,
-			view.label_a(),
-			view.values_a(),
-			view.label_b(),
-			view.values_b(),
-			view.label_c(),
-			view.note(),
-		));
-		view.encoded_len()
-	}
-
-	pub fn access_last<'a>(view: &'a WideRef<'a>) -> Option<&'a str> {
-		view.note()
-	}
-}
+// The many-tail fixture itself lives in `benches/common::many_tail` so the
+// instruction-count gate measures the same six-tail schema.
 
 fn bench_many_tail_fields(c: &mut Criterion) {
 	let mut data = [0u8; many_tail::STORAGE_LEN];
@@ -923,6 +748,74 @@ fn bench_many_tail_fields(c: &mut Criterion) {
 		bench.iter(|| black_box(many_tail::access_last(black_box(&view)).is_some()));
 	});
 	access.finish();
+}
+
+// Solana accounts may allocate up to 10 MiB, so compact tail validation and
+// relocation are also measured at 8 KiB, 64 KiB, and 256 KiB active tails —
+// sizes the 207-byte fixture cannot reach. Current-only, like the many-tail
+// fixture: this guards PinaPod's own scaling, not upstream parity.
+//
+// The capacities are const-generic parameters, so the loop is stated as a
+// macro rather than a `for` over runtime values.
+macro_rules! bench_large_tail_case {
+	($c:expr, $capacity:literal) => {{
+		let storage_len = common::large::storage_len($capacity);
+		let mut data = vec![0u8; storage_len];
+		let full_len = common::large::write::<$capacity>(&mut data, $capacity, 1);
+		assert_eq!(full_len, storage_len);
+
+		let view = common::large::Large::<$capacity>::read_prefix(&data)
+			.unwrap_or_else(|error| panic!("large fixture must parse: {error}"));
+		let bytes = full_len as u64;
+
+		let mut parse = $c.benchmark_group(format!("compact/large-{}/parse", $capacity));
+		parse.throughput(Throughput::Bytes(bytes));
+		parse.bench_function("pinapod-current", |bench| {
+			bench.iter(|| black_box(common::large::parse::<$capacity>(black_box(&data))));
+		});
+		parse.finish();
+
+		let mut validate = $c.benchmark_group(format!("compact/large-{}/validate", $capacity));
+		validate.throughput(Throughput::Bytes(bytes));
+		validate.bench_function("pinapod-current", |bench| {
+			bench.iter(|| common::large::validate::<$capacity>(black_box(&data)));
+		});
+		validate.finish();
+
+		let mut access = $c.benchmark_group(format!("compact/large-{}/access", $capacity));
+		access.throughput(Throughput::Bytes(bytes));
+		access.bench_function("pinapod-current", |bench| {
+			bench.iter(|| black_box(common::large::access(black_box(&view), $capacity - 1)));
+		});
+		access.finish();
+
+		// The update grows a half-full seed to full, so tail relocation at
+		// this scale is part of the measurement.
+		let mut update =
+			$c.benchmark_group(format!("compact/large-{}/update-grow-full", $capacity));
+		update.throughput(Throughput::Bytes(bytes));
+		update.bench_function("pinapod-current", |bench| {
+			bench.iter_batched_ref(
+				|| {
+					let mut seed = vec![0u8; storage_len];
+					common::large::write::<$capacity>(&mut seed, $capacity / 2, 1);
+					seed
+				},
+				|data| {
+					let used = common::large::write::<$capacity>(data, $capacity, 10_000);
+					black_box((data, used));
+				},
+				BatchSize::SmallInput,
+			);
+		});
+		update.finish();
+	}};
+}
+
+fn bench_large_tails(c: &mut Criterion) {
+	bench_large_tail_case!(c, 1024);
+	bench_large_tail_case!(c, 8192);
+	bench_large_tail_case!(c, 32768);
 }
 
 fn api_comparison(c: &mut Criterion) {
@@ -966,6 +859,7 @@ fn api_comparison(c: &mut Criterion) {
 	);
 	bench_compact_tail_scaling(c);
 	bench_many_tail_fields(c);
+	bench_large_tails(c);
 }
 
 criterion_group!(benches, api_comparison);

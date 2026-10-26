@@ -9,3 +9,7 @@ PinaPod is a Rust workspace for safe, allocation-free account wire formats.
 ## Changelogs
 
 - Do not edit `CHANGELOG.md` or any generated release notes. MonoChange owns the changelogs: it renders them from `.changeset/*.md` intent during `monochange run release`. Express release intent by adding or updating changeset files, never by editing the changelog directly.
+
+## Non-goals
+
+- No borsh interoperability, ever. PinaPod exists for Pina's wire formats; borsh/Anchor migration bridges are deliberately out of scope and have been explicitly rejected by the owner. Do not suggest them.

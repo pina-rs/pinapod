@@ -38,7 +38,11 @@ solana-program-error = { default-features = false, optional = true, workspace = 
 wincode = { default-features = false, features = ["derive"], optional = true, workspace = true }
 
 [dev-dependencies]
+bytemuck = { workspace = true, default-features = false, features = ["derive"] }
 criterion = { workspace = true, default-features = true }
+# The library compiles everywhere; only running the instruction-count gate
+# needs Linux, because Valgrind does not exist on any other host.
+iai-callgrind = { workspace = true }
 pinapod_previous = { package = "pinapod", version = "0.1.0", git = "https://github.com/pina-rs/pinapod.git", rev = "71ad8bee53e3e6939fe14760e539942d0f1bdd77" }
 stats_alloc = { workspace = true, default-features = true }
 trybuild = { workspace = true, default-features = true }
@@ -46,4 +50,8 @@ zeropod = { workspace = true, default-features = true }
 
 [[bench]]
 name = "api_comparison"
+harness = false
+
+[[bench]]
+name = "iai_hot_paths"
 harness = false
