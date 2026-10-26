@@ -19,3 +19,11 @@ The verification toolchain is part of the security boundary: CI executes it agai
 The devenv environment builds three tools from a personal nixpkgs fork pinned by branch in `devenv.yaml` (`github:ifiokjr/nixpkgs/main`): `kani` (formal verification), `mdt` (documentation synchronization), and `monochange` (release management). The flake lock pins the exact revision and hash, so a build is reproducible until someone runs a lock update. That update is a privileged operation: review the fork's new commits the same way a dependency bump is reviewed, because they replace the tools that gate every merge and cut every release. Prefer moving a tool to upstream `nixpkgs` or an in-repo overlay when it becomes available there, so the trust anchor narrows over time.
 
 Everything else in the environment comes from upstream `nixpkgs` (`nixpkgs-unstable`, lock-pinned), `oxalica/rust-overlay`, or crates.io via the committed lock files. Rust toolchains are pinned by date in `rust-toolchain.toml`.
+
+## Release provenance
+
+`release-pr.yml` dispatches `publish.yml` on `main` after creating the release tag and draft. To retry publication, dispatch `publish.yml` on `main` with the same tag; pushing a tag alone does not publish.
+
+Before the `publisher` environment or publication permissions are available, a read-only job resolves the exact `refs/tags/<name>` to a commit in the dispatched `main` history. MonoChange must find the release record in that exact commit, and the record must name the requested publishable tag. The publisher checks out the validated SHA, so a branch with the same name or a subsequent tag move cannot select different package code.
+
+Keep the `publisher` environment restricted to `main` with required reviewers, protect release tags against changes, and bind the crates.io trusted publisher to `publish.yml` and the `publisher` environment. These GitHub and registry settings are external controls; workflow checks do not enforce them.

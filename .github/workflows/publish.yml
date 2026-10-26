@@ -7,22 +7,66 @@ on:
         description: Release tag to publish, for example pinapod/v0.2.0
         required: true
         type: string
-  push:
-    tags: ["pinapod/v*"]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.tag || github.ref_name }}
+  group: ${{ github.workflow }}-${{ inputs.tag }}
   cancel-in-progress: false
 
 env:
-  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+  RELEASE_TAG: ${{ inputs.tag }}
 
 jobs:
+  validate:
+    # Run the validator and its tooling from the reviewed main commit only.
+    if: github.repository_owner == 'pina-rs' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      commit: ${{ steps.provenance.outputs.commit }}
+    steps:
+      - name: checkout trusted main commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: resolve release tag
+        id: tag
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" == pinapod/v* ]] || { echo "::error::Unexpected release tag." >&2; exit 1; }
+          git check-ref-format "refs/tags/$RELEASE_TAG"
+          commit="$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}")"
+          [[ "$commit" =~ ^[0-9a-f]{40}$ ]]
+          git merge-base --is-ancestor "$commit" HEAD
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+        shell: bash
+      - name: setup trusted validator
+        uses: $/.github/actions/devenv
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: verify release record
+        id: provenance
+        env:
+          RELEASE_COMMIT: ${{ steps.tag.outputs.commit }}
+        run: |
+          set -euo pipefail
+          release_record="$RUNNER_TEMP/release-record.json"
+          monochange step release-record --from "$RELEASE_COMMIT" --format json > "$release_record"
+          jq -e --arg commit "$RELEASE_COMMIT" --arg tag "$RELEASE_TAG" '
+            .resolved_commit == $commit and .record_commit == $commit and
+            any(.record.release_targets[]; .tag == true and .release == true and .tag_name == $tag)
+          ' "$release_record"
+          echo "commit=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
+        shell: devenv shell -- bash -e {0}
+
   publish:
-    if: github.repository_owner == 'pina-rs' && startsWith(inputs.tag || github.ref_name, 'pinapod/v')
+    needs: validate
     environment: publisher
     permissions:
       contents: write
@@ -30,14 +74,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - name: validate release tag
-        run: |
-          [[ "$RELEASE_TAG" == pinapod/v* ]] || { echo "::error::Unexpected release tag '$RELEASE_TAG'." >&2; exit 1; }
-        shell: bash
-      - name: checkout release tag
+      - name: checkout verified release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ needs.validate.outputs.commit }}
           fetch-depth: 0
           persist-credentials: false
       - name: setup
