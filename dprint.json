@@ -46,11 +46,11 @@
     ".local-cache/"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.95.15.wasm",
-    "https://plugins.dprint.dev/json-0.21.0.wasm",
-    "https://plugins.dprint.dev/markdown-0.20.0.wasm",
+    "https://plugins.dprint.dev/typescript-0.95.15.wasm@44730030935227dab70366454c5e9b55c5ea8c4fe4d126cc3e5119e94014c85c",
+    "https://plugins.dprint.dev/json-0.21.0.wasm@188a08916eeccf2414e06c8b51d8f44d3695f055a0d63cef39eace0a11e247bc",
+    "https://plugins.dprint.dev/markdown-0.20.0.wasm@5eb4e23248231ce0fc6b6379229b3bf7e0f649b337eacf47764ee8fe2c062257",
     "https://plugins.dprint.dev/exec-0.6.0.json@a054130d458f124f9b5c91484833828950723a5af3f8ff2bd1523bd47b83b364",
-    "https://plugins.dprint.dev/toml-0.7.0.wasm",
-    "https://plugins.dprint.dev/g-plane/pretty_yaml-v0.5.1.wasm"
+    "https://plugins.dprint.dev/toml-0.7.0.wasm@0126c8112691542d30b52a639076ecc83e07bace877638cee7c6915fd36b8629",
+    "https://plugins.dprint.dev/g-plane/pretty_yaml-v0.5.1.wasm@892879491ae3401d612682a492ea7b47e0eeadcbbe73178f6bb183563c277b15"
   ]
 }
