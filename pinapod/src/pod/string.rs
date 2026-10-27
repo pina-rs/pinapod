@@ -199,6 +199,34 @@ impl<const N: usize, const PFX: usize> PodString<N, PFX> {
 		unsafe { core::slice::from_raw_parts(self.data.as_ptr() as *const u8, len) }
 	}
 
+	/// Borrows the active bytes as a UTF-8 string slice, checking the bytes first.
+	///
+	/// This is the validating counterpart of [`as_str`](Self::as_str) for a
+	/// reference that did not come from a reader: it rejects the same states
+	/// the reader walk rejects instead of trusting them, so casting raw account
+	/// bytes to a `PodString` and calling this accessor is always sound.
+	///
+	/// # Errors
+	///
+	/// Returns [`PinaPodError::InvalidLength`](crate::PinaPodError::InvalidLength)
+	/// when the decoded prefix exceeds the capacity `N`, and
+	/// [`PinaPodError::InvalidUtf8`](crate::PinaPodError::InvalidUtf8) when the
+	/// active bytes are not UTF-8.
+	pub fn try_as_str(&self) -> Result<&str, PinaPodError> {
+		let raw_len = self.try_decode_len()?;
+
+		if raw_len > N {
+			return Err(PinaPodError::InvalidLength);
+		}
+
+		// SAFETY: raw_len <= N, and data is a [MaybeUninit<u8>; N] array of
+		// initialized memory, so the slice stays inside the field.
+		let bytes =
+			unsafe { core::slice::from_raw_parts(self.data.as_ptr() as *const u8, raw_len) };
+
+		core::str::from_utf8(bytes).map_err(|_| PinaPodError::InvalidUtf8)
+	}
+
 	/// Replaces the string contents.
 	///
 	/// # Errors
