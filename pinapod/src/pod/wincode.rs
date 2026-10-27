@@ -5,6 +5,8 @@
 //! existing account. Writers therefore emit only active values and canonical
 //! zero padding. This prevents stale-capacity disclosure and makes equivalent
 //! logical values encode identically.
+//! Readers decode active values through their nested codecs and reject nonzero
+//! inactive storage, including padding inside nested containers.
 //!
 //! Every writer also validates the value it is about to emit — prefix, tag,
 //! and content alike — through [`ZcValidate`](crate::ZcValidate), the same
@@ -124,6 +126,62 @@ where
 	}
 }
 
+/// Decode a raw little-endian prefix without applying Wincode's integer config.
+fn read_prefix<'de, const PFX: usize>(
+	mut reader: impl wincode::io::Reader<'de>,
+) -> wincode::error::ReadResult<u64> {
+	let mut bytes = [0; 8];
+
+	if !matches!(PFX, 1 | 2 | 4 | 8) {
+		return Err(wincode::error::ReadError::InvalidValue(
+			"invalid PinaPod prefix width",
+		));
+	}
+
+	reader.copy_into_slice(&mut bytes[..PFX])?;
+	Ok(u64::from_le_bytes(bytes))
+}
+
+/// Require the same fixed stride the container writer requires.
+fn require_fixed_read_size<'de, T, C>() -> wincode::error::ReadResult<usize>
+where
+	T: wincode::SchemaRead<'de, C, Dst = T>,
+	C: ConfigCore,
+{
+	match <T as wincode::SchemaRead<'de, C>>::TYPE_META {
+		TypeMeta::Static { size, .. } if size == core::mem::size_of::<T>() => Ok(size),
+		_ => {
+			Err(wincode::error::ReadError::InvalidValue(
+				"PinaPod container elements require a fixed wincode representation matching their \
+				 in-memory size",
+			))
+		}
+	}
+}
+
+/// Consume canonical padding without decoding inactive elements.
+fn read_zeroed_padding<'de>(
+	mut reader: impl wincode::io::Reader<'de>,
+	mut remaining: usize,
+) -> wincode::error::ReadResult<()> {
+	let mut bytes = [0; 64];
+
+	while remaining != 0 {
+		let count = remaining.min(bytes.len());
+		reader.copy_into_slice(&mut bytes[..count])?;
+
+		if bytes[..count].iter().any(|byte| *byte != 0) {
+			return Err(wincode::error::ReadError::InvalidValue(
+				"nonzero PinaPod inactive storage",
+			));
+		}
+
+		remaining -= count;
+	}
+
+	Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // PodString
 // ---------------------------------------------------------------------------
@@ -177,6 +235,13 @@ unsafe impl<'__de, const N: usize, const PFX: usize, C: ConfigCore> wincode::Sch
 		let __val = unsafe { core::ptr::read_unaligned(__bytes.as_ptr() as *const Self) };
 		<Self as crate::ZcValidate>::validate_ref(&__val)
 			.map_err(|_| wincode::error::ReadError::InvalidValue("PodString validation failed"))?;
+
+		if __bytes[PFX + __val.len()..].iter().any(|byte| *byte != 0) {
+			return Err(wincode::error::ReadError::InvalidValue(
+				"nonzero PinaPod inactive storage",
+			));
+		}
+
 		__dst.write(__val);
 		Ok(())
 	}
@@ -234,19 +299,38 @@ where
 	}
 }
 
-unsafe impl<'__de, T: ZcElem, const N: usize, const PFX: usize, C: ConfigCore>
-	wincode::SchemaRead<'__de, C> for PodVecRepr<T, N, PFX>
+unsafe impl<'__de, T, const N: usize, const PFX: usize, C> wincode::SchemaRead<'__de, C>
+	for PodVecRepr<T, N, PFX>
+where
+	T: ZcElem + wincode::SchemaRead<'__de, C, Dst = T>,
+	C: ConfigCore,
 {
 	type Dst = Self;
 
-	const TYPE_META: TypeMeta = static_encoded!(Self);
+	const TYPE_META: TypeMeta = match <T as wincode::SchemaRead<'__de, C>>::TYPE_META {
+		TypeMeta::Static { size, .. } if size == core::mem::size_of::<T>() => static_encoded!(Self),
+		_ => TypeMeta::Dynamic,
+	};
 
 	fn read(
 		mut __reader: impl wincode::io::Reader<'__de>,
 		__dst: &mut core::mem::MaybeUninit<Self>,
 	) -> wincode::error::ReadResult<()> {
-		let __bytes = __reader.take_scoped(core::mem::size_of::<Self>())?;
-		let __val = unsafe { core::ptr::read_unaligned(__bytes.as_ptr() as *const Self) };
+		let element_size = require_fixed_read_size::<T, C>()?;
+		let len = read_prefix::<PFX>(__reader.by_ref())?;
+		let len = usize::try_from(len).ok().filter(|len| *len <= N).ok_or(
+			wincode::error::ReadError::InvalidValue("PodVec length exceeds capacity"),
+		)?;
+		let mut __val = Self::default();
+
+		for _ in 0..len {
+			let value = <T as wincode::SchemaRead<'__de, C>>::get(__reader.by_ref())?;
+			__val.try_push(value).map_err(|_| {
+				wincode::error::ReadError::InvalidValue("PodVec length exceeds capacity")
+			})?;
+		}
+
+		read_zeroed_padding(__reader, (N - len) * element_size)?;
 		<Self as crate::ZcValidate>::validate_ref(&__val)
 			.map_err(|_| wincode::error::ReadError::InvalidValue("PodVec validation failed"))?;
 		__dst.write(__val);
@@ -307,19 +391,35 @@ where
 	}
 }
 
-unsafe impl<'__de, T: ZcElem, const PFX: usize, C: ConfigCore> wincode::SchemaRead<'__de, C>
-	for PodOption<T, PFX>
+unsafe impl<'__de, T, const PFX: usize, C> wincode::SchemaRead<'__de, C> for PodOption<T, PFX>
+where
+	T: ZcElem + wincode::SchemaRead<'__de, C, Dst = T>,
+	C: ConfigCore,
 {
 	type Dst = Self;
 
-	const TYPE_META: TypeMeta = static_encoded!(Self);
+	const TYPE_META: TypeMeta = match <T as wincode::SchemaRead<'__de, C>>::TYPE_META {
+		TypeMeta::Static { size, .. } if size == core::mem::size_of::<T>() => static_encoded!(Self),
+		_ => TypeMeta::Dynamic,
+	};
 
 	fn read(
 		mut __reader: impl wincode::io::Reader<'__de>,
 		__dst: &mut core::mem::MaybeUninit<Self>,
 	) -> wincode::error::ReadResult<()> {
-		let __bytes = __reader.take_scoped(core::mem::size_of::<Self>())?;
-		let __val = unsafe { core::ptr::read_unaligned(__bytes.as_ptr() as *const Self) };
+		let value_size = require_fixed_read_size::<T, C>()?;
+		let __val = match read_prefix::<PFX>(__reader.by_ref())? {
+			0 => {
+				read_zeroed_padding(__reader, value_size)?;
+				Self::none()
+			}
+			1 => Self::some(<T as wincode::SchemaRead<'__de, C>>::get(__reader)?),
+			_ => {
+				return Err(wincode::error::ReadError::InvalidValue(
+					"PodOption validation failed",
+				));
+			}
+		};
 		<Self as crate::ZcValidate>::validate_ref(&__val)
 			.map_err(|_| wincode::error::ReadError::InvalidValue("PodOption validation failed"))?;
 		__dst.write(__val);

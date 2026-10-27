@@ -28,15 +28,18 @@ fuzz_target!(|data: &[u8]| {
 		assert_eq!(value.get(), i64::from_le_bytes(expected));
 	}
 	if let Ok(value) = wincode::deserialize::<PodString<8>>(data) {
+		assert_canonical_wire(data, &value);
 		assert!(value.len() <= 8);
 		assert!(ZcValidate::validate_ref(&value).is_ok());
 		assert_eq!(value.as_bytes(), &data[1..1 + value.len()]);
 	}
 	if let Ok(value) = wincode::deserialize::<PodVec<PodU16, 4>>(data) {
+		assert_canonical_wire(data, &value);
 		assert!(value.len() <= 4);
 		assert!(ZcValidate::validate_ref(&value).is_ok());
 	}
 	if let Ok(value) = wincode::deserialize::<PodOption<PodBool>>(data) {
+		assert_canonical_wire(data, &value);
 		match value.get() {
 			Some(_) => assert_eq!(value.raw_tag(), 1),
 			None => assert!(value.raw_tag() != 1),
@@ -44,6 +47,7 @@ fuzz_target!(|data: &[u8]| {
 	}
 
 	if let Ok(value) = wincode::deserialize::<PodOption<PodString<4>>>(data) {
+		assert_canonical_wire(data, &value);
 		// A present payload is only reachable after its nested validation, so
 		// both the tag and the nested string's bytes must hold up.
 		assert!(ZcValidate::validate_ref(&value).is_ok());
@@ -59,6 +63,7 @@ fuzz_target!(|data: &[u8]| {
 		}
 	}
 	if let Ok(value) = wincode::deserialize::<PodVec<PodBool, 6>>(data) {
+		assert_canonical_wire(data, &value);
 		// Every accepted element must be in the bool domain, so the whole
 		// vector stays valid and in capacity.
 		assert!(value.len() <= 6);
@@ -69,10 +74,12 @@ fuzz_target!(|data: &[u8]| {
 	// decode and the four-byte count share the validate-before-expose
 	// boundary with the direct readers.
 	if let Ok(value) = wincode::deserialize::<PodString<192, 8>>(data) {
+		assert_canonical_wire(data, &value);
 		assert!(value.len() <= 192);
 		assert!(ZcValidate::validate_ref(&value).is_ok());
 	}
 	if let Ok(value) = wincode::deserialize::<PodVec<PodU16, 96, 4>>(data) {
+		assert_canonical_wire(data, &value);
 		assert!(value.len() <= 96);
 		assert!(ZcValidate::validate_ref(&value).is_ok());
 	}
@@ -99,3 +106,14 @@ fuzz_target!(|data: &[u8]| {
 		"hi"
 	);
 });
+
+/// An accepted container must already have the canonical bytes its writer emits.
+fn assert_canonical_wire<T>(data: &[u8], value: &T)
+where
+	T: wincode::SchemaWrite<wincode::config::DefaultConfig, Src = T>,
+{
+	let size = wincode::serialized_size(value).unwrap() as usize;
+	let mut bytes = vec![0; size];
+	wincode::serialize_into(bytes.as_mut_slice(), value).unwrap();
+	assert_eq!(bytes, &data[..size]);
+}
