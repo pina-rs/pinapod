@@ -65,6 +65,160 @@ unsafe impl<C: wincode::config::ConfigCore> wincode::SchemaWrite<C> for DynamicB
 	}
 }
 
+// SAFETY: Dynamic metadata permits this one-byte codec; dst is initialized on success.
+unsafe impl<'de, C: wincode::config::ConfigCore> wincode::SchemaRead<'de, C> for DynamicByte {
+	type Dst = Self;
+
+	fn read(
+		mut reader: impl wincode::io::Reader<'de>,
+		dst: &mut core::mem::MaybeUninit<Self>,
+	) -> wincode::ReadResult<()> {
+		let mut bytes = [0];
+		reader.copy_into_slice(&mut bytes)?;
+		dst.write(Self(bytes[0]));
+		Ok(())
+	}
+}
+
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SwappedBytes([u8; 2]);
+
+impl pinapod::ZcValidate for SwappedBytes {
+	fn validate_ref(value: &Self) -> Result<(), PinaPodError> {
+		if value.0[0] == 0xee {
+			return Err(PinaPodError::InvalidTag);
+		}
+
+		Ok(())
+	}
+}
+
+// SAFETY: Transparent over two bytes, with alignment one and no invalid bit patterns.
+unsafe impl pinapod::ZcElem for SwappedBytes {}
+
+// SAFETY: SwappedBytes is its own alignment-one pod representation.
+unsafe impl pinapod::ZcField for SwappedBytes {
+	type Pod = Self;
+}
+
+// SAFETY: Both codec directions consume exactly two bytes; the wire order differs
+// from memory, so zero_copy is false.
+unsafe impl<C: wincode::config::ConfigCore> wincode::SchemaWrite<C> for SwappedBytes {
+	type Src = Self;
+
+	const TYPE_META: wincode::TypeMeta = wincode::TypeMeta::Static {
+		size: 2,
+		zero_copy: false,
+	};
+
+	fn size_of(_src: &Self) -> wincode::WriteResult<usize> {
+		Ok(2)
+	}
+
+	fn write(mut writer: impl wincode::io::Writer, src: &Self) -> wincode::WriteResult<()> {
+		writer.write(&[src.0[1], src.0[0]])?;
+		Ok(())
+	}
+}
+
+// SAFETY: Reads exactly two bytes, and initializes dst only on success.
+unsafe impl<'de, C: wincode::config::ConfigCore> wincode::SchemaRead<'de, C> for SwappedBytes {
+	type Dst = Self;
+
+	const TYPE_META: wincode::TypeMeta = wincode::TypeMeta::Static {
+		size: 2,
+		zero_copy: false,
+	};
+
+	fn read(
+		mut reader: impl wincode::io::Reader<'de>,
+		dst: &mut core::mem::MaybeUninit<Self>,
+	) -> wincode::ReadResult<()> {
+		let mut bytes = [0; 2];
+		reader.copy_into_slice(&mut bytes)?;
+
+		if bytes[0] == 0xff {
+			return Err(wincode::ReadError::InvalidValue(
+				"nested codec rejected input",
+			));
+		}
+
+		dst.write(Self([bytes[1], bytes[0]]));
+		Ok(())
+	}
+}
+
+#[test]
+fn container_readers_delegate_to_nested_codecs() {
+	let value = SwappedBytes([0x12, 0x34]);
+	let mut vector = PodVec::<SwappedBytes, 2>::default();
+	vector.try_push(value).unwrap();
+	let bytes = serialize::<6, _>(&vector);
+	assert_eq!(bytes, [1, 0, 0x34, 0x12, 0, 0]);
+	let decoded = wincode::deserialize::<PodVec<SwappedBytes, 2>>(&bytes).unwrap();
+	assert_eq!(decoded.as_slice(), &[value]);
+
+	let option = PodOption::<SwappedBytes, 4>::some(value);
+	let bytes = serialize::<6, _>(&option);
+	assert_eq!(bytes, [1, 0, 0, 0, 0x34, 0x12]);
+	let decoded = wincode::deserialize::<PodOption<SwappedBytes, 4>>(&bytes).unwrap();
+	assert_eq!(decoded.get(), Some(value));
+
+	let nested = PodOption::<_, 1>::some(vector);
+	let bytes = serialize::<7, _>(&nested);
+	let decoded = wincode::deserialize::<PodOption<PodVec<SwappedBytes, 2>>>(&bytes).unwrap();
+	assert_eq!(decoded.get_ref().unwrap().as_slice(), &[value]);
+}
+
+#[test]
+fn container_readers_propagate_nested_codec_errors_and_validate_decoded_values() {
+	for payload in [[0xff, 0x12], [0x12, 0xee]] {
+		assert!(
+			wincode::deserialize::<PodVec<SwappedBytes, 1>>(&[1, 0, payload[0], payload[1]])
+				.is_err()
+		);
+		assert!(
+			wincode::deserialize::<PodOption<SwappedBytes>>(&[1, payload[0], payload[1]]).is_err()
+		);
+	}
+}
+
+#[test]
+fn container_readers_reject_nonzero_inactive_storage() {
+	assert!(wincode::deserialize::<PodString<3>>(&[1, b'a', 0, 7]).is_err());
+	assert!(wincode::deserialize::<PodVec<u8, 3>>(&[1, 0, 5, 0, 7]).is_err());
+	assert!(wincode::deserialize::<PodOption<u8>>(&[0, 7]).is_err());
+	assert!(wincode::deserialize::<PodOption<PodString<3>>>(&[1, 1, b'a', 0, 7]).is_err());
+}
+
+#[test]
+fn container_readers_reject_invalid_metadata_and_truncated_input() {
+	assert!(wincode::deserialize::<PodVec<SwappedBytes, 1>>(&[2, 0, 0, 0]).is_err());
+	assert!(wincode::deserialize::<PodOption<SwappedBytes, 2>>(&[0, 1, 0, 0]).is_err());
+	assert!(wincode::deserialize::<PodVec<SwappedBytes, 1>>(&[1, 0, 0]).is_err());
+	assert!(wincode::deserialize::<PodOption<SwappedBytes>>(&[1, 0]).is_err());
+	assert!(wincode::deserialize::<PodVec<SwappedBytes, 1>>(&[0, 0, 0]).is_err());
+	assert!(wincode::deserialize::<PodOption<SwappedBytes>>(&[0, 0]).is_err());
+}
+
+#[test]
+fn container_readers_require_fixed_element_codecs() {
+	assert!(wincode::deserialize::<PodVec<DynamicByte, 1>>(&[0, 0, 0]).is_err());
+	assert!(wincode::deserialize::<PodOption<DynamicByte>>(&[0, 0]).is_err());
+	assert!(wincode::deserialize::<PodOption<PodVec<DynamicByte, 1>>>(&[0; 4]).is_err());
+}
+
+#[test]
+fn container_readers_support_wide_prefixes_and_zero_sized_elements() {
+	let decoded = wincode::deserialize::<PodVec<[u8; 0], 3, 8>>(&[2, 0, 0, 0, 0, 0, 0, 0]).unwrap();
+	assert_eq!(decoded.len(), 2);
+	assert_eq!(serialize::<8, _>(&decoded), [2, 0, 0, 0, 0, 0, 0, 0]);
+	let decoded = wincode::deserialize::<PodOption<[u8; 0], 8>>(&[1, 0, 0, 0, 0, 0, 0, 0]).unwrap();
+	assert_eq!(decoded.get(), Some([]));
+	assert!(wincode::deserialize::<PodVec<u8, 1, 8>>(&[0xff; 9]).is_err());
+}
+
 fn serialize<const N: usize, T>(value: &T) -> [u8; N]
 where
 	T: wincode::SchemaWrite<wincode::config::DefaultConfig, Src = T>,
