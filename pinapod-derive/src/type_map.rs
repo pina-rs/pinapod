@@ -498,17 +498,12 @@ pub fn map_to_pod_type(ty: &Type) -> TokenStream {
 		return ts;
 	}
 
-	// 3. PodOption (must check before Option to avoid matching PodOption as generic)
-	if let Some(ts) = try_map_pod_option(ty) {
-		return ts;
-	}
-
-	// 4. Option
+	// 3. Option
 	if let Some(ts) = try_map_option(ty) {
 		return ts;
 	}
 
-	// 5. Array types map element-wise through the same representation
+	// 4. Array types map element-wise through the same representation
 	// contract, so `[u64; 4]` becomes `[PodU64; 4]` while `[u8; N]` maps to
 	// itself.
 	if let Type::Array(array) = ty {
@@ -518,7 +513,7 @@ pub fn map_to_pod_type(ty: &Type) -> TokenStream {
 		return quote! { [#element; #length] };
 	}
 
-	// 6. Delegate scalar and custom types through their representation
+	// 5. Delegate scalar and custom types through their representation
 	// contract. Never infer a primitive representation from an unqualified
 	// spelling: a caller-local `struct i8(bool)` must not become the builtin
 	// integer merely because its final token is named `i8`.
@@ -585,31 +580,6 @@ pub fn option_inner_type(ty: &Type) -> Option<&Type> {
 	}
 
 	Some(inner)
-}
-
-fn try_map_pod_option(ty: &Type) -> Option<TokenStream> {
-	let seg = last_path_segment(ty)?;
-
-	if seg.ident != "PodOption" {
-		return None;
-	}
-
-	let args = angle_args(&seg.arguments)?;
-	let mut iter = args.iter();
-
-	let inner = match iter.next()? {
-		GenericArgument::Type(t) => t,
-		_ => return None,
-	};
-
-	let mapped_inner = map_to_pod_type(inner);
-	// Pass through PFX if present.
-	let pfx = iter.next();
-
-	match pfx {
-		Some(pfx_arg) => Some(quote! { pinapod::pod::PodOption<#mapped_inner, #pfx_arg> }),
-		None => Some(quote! { pinapod::pod::PodOption<#mapped_inner> }),
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -738,15 +708,26 @@ mod tests {
 	}
 
 	#[test]
-	fn pod_option_mapping_uses_the_default_prefix_when_omitted() {
-		let ty: Type = syn::parse_quote!(PodOption<u64>);
-		let mapped = map_to_pod_type(&ty);
-		let inner = quote!(<u64 as pinapod::ZcField>::Pod);
-
+	fn unrelated_pod_option_uses_its_resolved_mapping() {
+		let ty: Type = syn::parse_quote!(unrelated::PodOption<u8>);
 		assert_eq!(
-			mapped.to_string(),
-			quote!(pinapod::pod::PodOption<#inner>).to_string()
+			map_to_pod_type(&ty).to_string(),
+			quote!(<unrelated::PodOption<u8> as pinapod::ZcField>::Pod).to_string()
 		);
+	}
+
+	#[test]
+	fn pod_option_mapping_preserves_the_resolved_type_and_arguments() {
+		for ty in [
+			syn::parse_quote!(PodOption<PodU16>),
+			syn::parse_quote!(pinapod::pod::PodOption<PodU16, 4>),
+			syn::parse_quote!(unrelated::PodOption<u8, u16, u32>),
+		] {
+			assert_eq!(
+				map_to_pod_type(&ty).to_string(),
+				quote!(<#ty as pinapod::ZcField>::Pod).to_string()
+			);
+		}
 	}
 
 	#[test]
