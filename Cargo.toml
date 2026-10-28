@@ -15,7 +15,7 @@ rust-version = "1.89.0"
 [workspace.dependencies]
 bytemuck = { default-features = false, version = "^1" }
 criterion = { default-features = false, version = "^0.8.2" }
-fixed = { version = "=1.30.0", default-features = false }
+fixed = { version = "^1.29.0", default-features = false }
 # Instruction-count gate harness: the library builds on every host, and only
 # running it requires Linux, because Valgrind does not exist elsewhere. The
 # benchmark API itself is gated behind iai-callgrind's `default` feature.
@@ -23,7 +23,7 @@ iai-callgrind = { version = "^0.16" }
 proc-macro-crate = { default-features = false, version = "^3" }
 proc-macro2 = { default-features = false, version = "^1" }
 quote = { default-features = false, version = "^1" }
-solana-address = { default-features = false, version = ">=2.2, <2.7" }
+solana-address = { default-features = false, version = ">=2.2, <3.0" }
 solana-program-error = { default-features = false, version = ">=3.0, <4.0" }
 stats_alloc = { default-features = false, version = "^0.1.10" }
 syn = { default-features = false, version = "3" }
