@@ -2,6 +2,86 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.8](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.8) (2026-10-28)
+
+Grouped release for `pinapod-workspace`.
+
+### Features
+
+#### value traits and owned materialization
+
+_Packages:_ 🟠 _pinapod_, 🟠 _pinapod-derive_
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #65](https://github.com/pina-rs/pinapod/pull/65)
+
+Generated representations were compare-blind: a fixed schema's `Zc` companion had `Copy` and `Clone` but no `PartialEq`, `Hash`, or `Debug`, so `assert_eq!` between two snapshots of the same account did not compile, a snapshot could not key a map, and a test failure printed nothing. Compact views had none of them either.
+
+Every fixed companion and compact view now implements `PartialEq`, `Eq`, `Hash`, and `Debug` over **active** content: two encodings of the same value are equal regardless of inactive capacity, hashing agrees with that equality, and `Debug` renders field names without disclosing vacated bytes. The impls are conditional on the mapped pods carrying the corresponding trait, so a custom `ZcField` mapping without `Hash` keeps compiling and simply has no `Hash` companion impl. The fixed-enum companions and `PodOption` gained the `Eq`/`Hash` pieces they were missing so enum-bearing and optional fields compose into all four.
+
+The second half is materialization: a new `FromZc` trait is the return path for `ZcField`'s outbound mapping, and every fixed companion and compact view exposes `to_native()`, which builds the fully owned declared struct — snapshots for logging and tests, off-chain decoding, cross-thread transfer; the shapes a borrowed view cannot serve. Materialization is fallible for exactly one reason: a stored enum discriminant naming no variant, which cannot occur for a value a validating reader accepted. Compact materialization copies active tail content into the declared containers, so the result never borrows the account bytes.
+
+One contract follows for custom representations: because the generated impls bound on the mapped pods, a schema field using a hand-written `ZcField` mapping now needs that mapping to implement the value vocabulary — `PartialEq`, `Eq`, `Hash`, and `Debug` for the companion traits, `FromZc` for materialization. Built-in and derived-schema mappings already do; `compact_ref_auto_traits.rs` extends its deliberate `!Sync`/`!Send` fixtures with the same impls, which leave their thread-safety semantics untouched.
+
+#### volatile access and checked accessors
+
+_Packages:_ 🟠 _pinapod_, ⚪ _pinapod-derive_
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #64](https://github.com/pina-rs/pinapod/pull/64)
+
+Two safe ways out of the two remaining sharp edges in the pod surface.
+
+First, every integer pod gains `get_volatile` and `set_volatile`. A CPI callee can write the account a program has already formed its view over, and a plain `get` lets the compiler reuse a load from before the call, because nothing in the caller's source proves the bytes changed — the classic stale-read-after-CPI hazard. A volatile read forces the bytes to be re-read from memory, so a balance or counter updated by a callee is observed after the call returns; a volatile write is emitted as one store that cannot be sunk past a later call. These are the account-data analogue of a `Relaxed` atomic load and store on the single-threaded BPF target, and the docs say exactly that: they prevent compiler caching and provide no synchronization.
+
+Second, `PodString::try_as_str`, `PodVec::try_as_slice`, and `PodOption::try_get_ref` validate before borrowing. `as_str` trusts that a reader validated the bytes before the reference was formed — sound, but it left a consumer holding an unchecked reference (cast from raw account bytes) with no safe exit: calling `as_str` on forged non-UTF-8 bytes is undefined behavior, and `get_ref` silently reports a corrupt option tag as absent. The checked counterparts reject exactly what the reader walk rejects — an over-capacity prefix, invalid UTF-8, an out-of-domain element, a corrupt tag, an invalid present payload — so casting raw bytes and calling them is always sound.
+
+Both are pinned by `pinapod/tests/safe_accessors.rs`: volatile round trips across all eight integer widths, a volatile read observing bytes written through a raw pointer, and the checked accessors' accept and reject paths over forged length prefixes, tags, and payloads.
+
+#### diagnose: attribute rejections to fields
+
+_Packages:_ 🟠 _pinapod_, 🟠 _pinapod-derive_
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #66](https://github.com/pina-rs/pinapod/pull/66)
+
+A flat `PinaPodError` answers whether a buffer holds a valid value; it cannot answer which field rejected it. Debugging a corrupt account — in an explorer, a simulator, a test failure — was guesswork over the byte layout.
+
+Every derived schema now exposes `Type::diagnose(data)`, which re-runs the validation walk with attribution and returns a `Diagnostic` carrying the rejecting field's name beside the underlying `PinaPodError`. Fixed schemas attribute each field's validation; compact schemas attribute the allocation checks to the schema's own name (no field owns them), the header's inline fields to their names, and every tail rejection — tag, capacity, bounds, UTF-8, element domain — to the tail's field. A nested schema field is attributed at its own name, and the nested `diagnose` can be called on the field's bytes for one level deeper.
+
+The acceptance contract is the readers': `diagnose` accepts and rejects exactly what the corresponding validation accepts and rejects, with the same error variant. That contract is not a claim but a test — `validation_diagnostics.rs` pins it across 2,000 pseudo-randomly corrupted buffers in addition to every attribution site — and the compact walk uses checked arithmetic throughout, because unlike the reader accessors it deliberately runs on bytes that may be invalid.
+
+`Diagnostic` implements `Display` (`field \`label\`: invalid UTF-8 in string field`),`core::error::Error`with the underlying error as its`source`, and`From<Diagnostic> for PinaPodError`, so it drops into existing error handling unchanged.
+
+### Fixes
+
+#### instruction-count performance gates on every pull request
+
+_Packages:_ 🟢 _pinapod_, ⚪ _pinapod-derive_
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #63](https://github.com/pina-rs/pinapod/pull/63)
+
+Every pull request now runs an instruction-count gate over PinaPod's hot paths, in addition to the wall-clock API comparison. The new `performance` workflow measures the `iai_hot_paths` bench through Valgrind's Callgrind and compares the retired-instruction counts against a committed baseline with a +3% tolerance. Instruction counts are a property of the binary rather than the machine, so the comparison is exact on any Linux runner and no timing noise can hide a regression; that determinism is why the gate can run on every PR instead of only on performance-motivated ones.
+
+The gate covers fixed parse, validate, read, write, and initialize; compact small and maximum parse, validate, access, and update; the six-tail accessors; and, new in this change, large-tail parse, validate, access, and grow-to-full update at a 64 KiB tail. The large-tail fixtures exist because accounts may allocate up to 10 MiB and the previous 207-byte fixture could not observe scaling at real account sizes. The fixtures are shared with the Criterion harness through `pinapod/benches/common`, so both harnesses measure the same workloads over the same bytes, and the Criterion harness also gained a `bytemuck-unchecked-cast` floor for the fixed parse, which prices the same read with validation removed.
+
+The baseline lives in `pinapod/benches/iai-baseline.json` and changes only through `devenv shell bench:iai:update`, whose diff must be justified in the pull request. A tolerance-exceeding regression without a baseline update fails the check by design. The book documents the gate, the update policy, and the new workloads in `docs/benchmarks.md`, and a new cookbook page covers discriminators and schema versioning built on `read_prefix`.
+
+#### widen the dependency bounds
+
+_Packages:_ 🟢 _pinapod_, ⚪ _pinapod-derive_
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #71](https://github.com/pina-rs/pinapod/pull/71)
+
+Two bounds stopped a Pinapod consumer from moving to the current Agave and Surfpool trains, even though the code compiles against both.
+
+`solana-address` was capped at `<2.7`. Agave 4.3, which Surfpool 1.7's embedded runtime ships, resolves `solana-address` 2.7 or newer, and Cargo cannot hold two `2.x` versions at once, so the workspace could not resolve. The bound is now `>=2.2, <3.0`.
+
+`fixed` was pinned to `=1.30.0`. `surfpool-core` 1.7 pulls `phoenix-rise-math`, which pins `fixed =1.29.0`, so the two exact pins conflict in a workspace that carries both Pinapod and Surfpool. The requirement is now `^1.29.0`, which admits the 1.29 line the current Agave/Surfpool SDK resolves, the newer 1.30 and 1.31 releases, and future 1.x patches.
+
+The workspace lockfile pins `fixed` 1.30.0 and `solana-address` 2.9.0, so the suite exercises the newest releases inside both ranges that still build on Pinapod's Rust 1.89 minimum; `fixed` 1.31.0 requires Rust 1.93 and stays available to consumers on newer toolchains. The lowest accepted `fixed` (1.29.0) is exercised by a downstream workspace that carries Pinapod and Surfpool 1.7 together.
+
+- **Decode Wincode containers through their nested codecs.** `PodVec` and `PodOption` now require a matching fixed-size `SchemaRead` implementation for their elements and decode active values through it, preserving custom wire transformations and codec errors. All container readers reject nonzero inactive storage, including nested padding, so accepted bytes already match the canonical representation emitted by their writers. _Packages:_ 🟢 _pinapod_ _Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #68](https://github.com/pina-rs/pinapod/pull/68)
+- **Preserve custom PodOption representation mappings.** Compact derives now resolve types named `PodOption` through their `ZcField` contract instead of substituting PinaPod's built-in option storage. Custom qualified types retain their declared validation and layout, including vector elements in compact enums. Genuine PinaPod options retain their existing payload and tag widths through their identity mapping. _Packages:_ 🟢 _pinapod-derive_ _Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #69](https://github.com/pina-rs/pinapod/pull/69)
+- **Preserve thread-safety bounds on compact views.** Generated compact `Ref` types now implement `Send` and `Sync` only when their header and vector element pods allow shared access across threads. This prevents views from bypassing a custom pod's `!Sync` restriction while preserving thread-safe representation mappings. _Packages:_ 🟢 _pinapod-derive_ _Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #61](https://github.com/pina-rs/pinapod/pull/61)
+
 ## [0.4.7](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.7) (2026-10-11)
 
 Grouped release for `pinapod-workspace`.
