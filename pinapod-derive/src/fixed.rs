@@ -279,6 +279,48 @@ pub fn generate(schema: &Schema) -> TokenStream {
 			}
 		}
 
+		// The diagnosing counterpart of the readers: the same walk as
+		// `validate_prefix`, with the first rejected field named.
+		impl #impl_generics #struct_name #ty_generics #where_clause_with_pod_bounds {
+			/// Validate and attribute: names the first field whose stored value
+			/// a reader would reject.
+			///
+			/// Accepts exactly what [`PinaPodFixed::validate_prefix`](pinapod::PinaPodFixed::validate_prefix)
+			/// accepts, so a diagnostic run after a rejected read answers
+			/// *which field*, never *whether*. A nested schema field is
+			/// attributed at its own name; call the nested `diagnose` on the
+			/// field's bytes for one level deeper.
+			#[inline]
+			pub fn diagnose(
+				data: &[::core::primitive::u8],
+			) -> ::core::result::Result<(), pinapod::Diagnostic> {
+				let size = ::core::mem::size_of::<#zc_name #ty_generics>();
+
+				if data.len() < size {
+					return ::core::result::Result::Err(pinapod::Diagnostic::new(
+						#struct_name_literal,
+						pinapod::PinaPodError::BufferTooSmall,
+					));
+				}
+
+				// SAFETY: the length check above proves a complete
+				// representation is present, and `ZcElem` permits forming a
+				// reference from initialized bytes before validation.
+				let value: &#zc_name #ty_generics =
+					unsafe { &*data.as_ptr().cast::<#zc_name #ty_generics>() };
+
+				#(
+					<#pod_field_types as pinapod::ZcValidate>::validate_ref(&value.#field_names)
+						.map_err(|error| pinapod::Diagnostic::new(
+							::core::stringify!(#field_names),
+							error,
+						))?;
+				)*
+
+				::core::result::Result::Ok(())
+			}
+		}
+
 		#align_assert
 
 		#accessors
@@ -929,6 +971,30 @@ pub fn generate_enum(input: &syn::DeriveInput) -> TokenStream {
 			#[inline]
 			fn from_zc(pod: &Self::Pod) -> ::core::result::Result<Self, pinapod::PinaPodError> {
 				pod.try_to_enum()
+			}
+		}
+
+		impl #enum_name {
+			/// Validate and attribute: a short buffer or an unknown
+			/// discriminant, named after this enum.
+			#[inline]
+			pub fn diagnose(
+				data: &[::core::primitive::u8],
+			) -> ::core::result::Result<(), pinapod::Diagnostic> {
+				if data.len() < #repr_size {
+					return ::core::result::Result::Err(pinapod::Diagnostic::new(
+						::core::stringify!(#enum_name),
+						pinapod::PinaPodError::BufferTooSmall,
+					));
+				}
+
+				// SAFETY: the length check above proves the discriminant is
+				// present, and the companion is a bare byte array.
+				let value: &#zc_name = unsafe { &*data.as_ptr().cast::<#zc_name>() };
+
+				<#zc_name as pinapod::ZcValidate>::validate_ref(value).map_err(|error| {
+					pinapod::Diagnostic::new(::core::stringify!(#enum_name), error)
+				})
 			}
 		}
 
