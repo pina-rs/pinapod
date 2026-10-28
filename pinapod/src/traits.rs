@@ -736,7 +736,7 @@ macro_rules! impl_from_zc_identity {
 }
 
 impl_from_zc_identity!(
-	u8, i8, PodU16, PodU32, PodU64, PodU128, PodI16, PodI32, PodI64, PodI128
+	u8, i8, PodU16, PodU32, PodU64, PodU128, PodI16, PodI32, PodI64, PodI128, PodBool
 );
 
 macro_rules! impl_from_zc_decode {

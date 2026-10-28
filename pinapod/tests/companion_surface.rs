@@ -66,6 +66,7 @@ struct Profile {
 	inner: Inner,
 	count: i128,
 	small: u8,
+	flag: pinapod::pod::PodBool,
 }
 
 #[allow(dead_code)]
@@ -113,6 +114,7 @@ fn encode_profile(amount: u64) -> Vec<u8> {
 		profile.inner.marker = 44_u32.into();
 		profile.count = (-5_i128).into();
 		profile.small = 3;
+		profile.flag = pinapod::pod::PodBool::from(true);
 		Ok(())
 	})
 	.unwrap_or_else(|error| panic!("profile fixture must initialize: {error}"));
@@ -142,6 +144,7 @@ fn fixed_to_native_materializes_every_field_kind() {
 	assert_eq!(native.inner.marker, 44);
 	assert_eq!(native.count, -5);
 	assert_eq!(native.small, 3);
+	assert_eq!(native.flag, pinapod::pod::PodBool::from(true));
 
 	// Materialization is pure: repeating it yields the same value.
 	let again = zc
