@@ -115,6 +115,14 @@ mod type_map;
 /// constants and its patch methods. The helpers forward to the trait, so a schema works
 /// with or without the trait in scope.
 ///
+/// Every representation also implements `PartialEq`, `Eq`, `Hash`, and `Debug`
+/// over active content — two encodings of the same value are equal regardless
+/// of inactive capacity — and a `to_native` method that materializes the fully
+/// owned declared struct from a view. Both are conditional on the mapped pods
+/// carrying the corresponding trait (and, for `to_native`, on `FromZc`), so a
+/// custom `ZcField` mapping without them keeps compiling and simply lacks that
+/// impl.
+///
 /// `no_inherent` removes the helpers while keeping the trait contract. Framework crates
 /// set it when they own the inherent surface for a schema.
 #[proc_macro_derive(PinaPod, attributes(pinapod))]

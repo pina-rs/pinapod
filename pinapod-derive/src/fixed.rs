@@ -70,6 +70,67 @@ pub fn generate(schema: &Schema) -> TokenStream {
 			(None, true) => quote! {},
 		}
 	};
+	// The companion trait impls (PartialEq, Eq, Hash, Debug) and materialization
+	// each add their own bounds on the mapped pods, so every one of them is
+	// conditional: a schema whose custom `ZcField` mapping lacks, say, `Hash`,
+	// simply has no `Hash` companion impl rather than a compile error.
+	let where_clause_with = |extra_bounds: Vec<TokenStream>| -> TokenStream {
+		let mut predicates = match where_clause {
+			Some(existing) => {
+				existing
+					.predicates
+					.iter()
+					.map(|predicate| quote! { #predicate })
+					.collect()
+			}
+			None => Vec::new(),
+		};
+
+		predicates.extend(field_types.iter().map(|field_ty| {
+			quote! {
+				#field_ty: pinapod::ZcField,
+				<#field_ty as pinapod::ZcField>::Pod: pinapod::ZcElem
+			}
+		}));
+		predicates.extend(extra_bounds);
+
+		if predicates.is_empty() {
+			return quote! {};
+		}
+
+		quote! { where #(#predicates,)* }
+	};
+	let partial_eq_where = where_clause_with(
+		field_types
+			.iter()
+			.map(|field_ty| quote! { <#field_ty as pinapod::ZcField>::Pod: ::core::cmp::PartialEq })
+			.collect(),
+	);
+	let eq_where = where_clause_with(
+		field_types
+			.iter()
+			.map(|field_ty| quote! { <#field_ty as pinapod::ZcField>::Pod: ::core::cmp::Eq })
+			.collect(),
+	);
+	let hash_where = where_clause_with(
+		field_types
+			.iter()
+			.map(|field_ty| quote! { <#field_ty as pinapod::ZcField>::Pod: ::core::hash::Hash })
+			.collect(),
+	);
+	let debug_where = where_clause_with(
+		field_types
+			.iter()
+			.map(|field_ty| quote! { <#field_ty as pinapod::ZcField>::Pod: ::core::fmt::Debug })
+			.collect(),
+	);
+	let from_zc_where = where_clause_with(
+		field_types
+			.iter()
+			.map(|field_ty| quote! { #field_ty: pinapod::FromZc })
+			.collect(),
+	);
+	let struct_name_literal = struct_name.to_string();
 	// Generate accessor methods on the Zc companion.
 	let accessors = generate_accessors(schema);
 
@@ -162,6 +223,59 @@ pub fn generate(schema: &Schema) -> TokenStream {
 		impl #impl_generics ::core::clone::Clone for #zc_name #ty_generics #where_clause_with_pod_bounds {
 			fn clone(&self) -> Self {
 				*self
+			}
+		}
+
+		// Equality, ordering-free hashing, and Debug compare and print the
+		// stored pods' *active* content (a PodString equals a PodString with
+		// the same active bytes), so two representations of the same value are
+		// equal regardless of inactive capacity.
+		impl #impl_generics ::core::cmp::PartialEq for #zc_name #ty_generics #partial_eq_where {
+			fn eq(&self, other: &Self) -> ::core::primitive::bool {
+				true
+				#(&& self.#field_names == other.#field_names)*
+			}
+		}
+
+		impl #impl_generics ::core::cmp::Eq for #zc_name #ty_generics #eq_where {}
+
+		impl #impl_generics ::core::hash::Hash for #zc_name #ty_generics #hash_where {
+			fn hash<__State: ::core::hash::Hasher>(&self, state: &mut __State) {
+				#(self.#field_names.hash(state);)*
+			}
+		}
+
+		impl #impl_generics ::core::fmt::Debug for #zc_name #ty_generics #debug_where {
+			fn fmt(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+				formatter
+					.debug_struct(#struct_name_literal)
+					#(.field(::core::stringify!(#field_names), &self.#field_names))*
+					.finish()
+			}
+		}
+
+		impl #impl_generics #zc_name #ty_generics #from_zc_where {
+			/// Materialize the declared schema type from this stored representation.
+			///
+			/// The result is a fully owned, self-contained value: snapshots,
+			/// logging, tests, and off-chain decoding all want a shape a
+			/// borrowed view cannot serve. For a value that reached the caller
+			/// through a validating reader this always succeeds; a stored enum
+			/// discriminant naming no variant is the only failure.
+			#[inline]
+			pub fn to_native(
+				&self,
+			) -> ::core::result::Result<#struct_name #ty_generics, pinapod::PinaPodError> {
+				::core::result::Result::Ok(#struct_name {
+					#(#field_names: <#field_types as pinapod::FromZc>::from_zc(&self.#field_names)?,)*
+				})
+			}
+		}
+
+		impl #impl_generics pinapod::FromZc for #struct_name #ty_generics #from_zc_where {
+			#[inline]
+			fn from_zc(pod: &Self::Pod) -> ::core::result::Result<Self, pinapod::PinaPodError> {
+				pod.to_native()
 			}
 		}
 
@@ -811,6 +925,13 @@ pub fn generate_enum(input: &syn::DeriveInput) -> TokenStream {
 			type Pod = #zc_name;
 		}
 
+		impl pinapod::FromZc for #enum_name {
+			#[inline]
+			fn from_zc(pod: &Self::Pod) -> ::core::result::Result<Self, pinapod::PinaPodError> {
+				pod.try_to_enum()
+			}
+		}
+
 		// --- Enum ergonomics ---
 		impl ::core::convert::From<#enum_name> for #zc_name {
 			fn from(v: #enum_name) -> Self {
@@ -888,6 +1009,14 @@ pub fn generate_enum(input: &syn::DeriveInput) -> TokenStream {
 		impl ::core::cmp::PartialEq for #zc_name {
 			fn eq(&self, other: &Self) -> ::core::primitive::bool {
 				self.0 == other.0
+			}
+		}
+
+		impl ::core::cmp::Eq for #zc_name {}
+
+		impl ::core::hash::Hash for #zc_name {
+			fn hash<__State: ::core::hash::Hasher>(&self, state: &mut __State) {
+				self.0.hash(state);
 			}
 		}
 

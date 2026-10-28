@@ -182,6 +182,20 @@ macro_rules! define_pod_float {
             type Pod = $name;
         }
 
+        impl crate::traits::FromZc for $name {
+            #[inline(always)]
+            fn from_zc(pod: &Self) -> Result<Self, PinaPodError> {
+                Ok(*pod)
+            }
+        }
+
+        impl crate::traits::FromZc for $native {
+            #[inline(always)]
+            fn from_zc(pod: &Self::Pod) -> Result<Self, PinaPodError> {
+                Ok(pod.get())
+            }
+        }
+
         const _: () = assert!(core::mem::align_of::<$name>() == 1);
         const _: () = assert!(core::mem::size_of::<$name>() == $size);
         const _: () = assert!(core::mem::size_of::<$name>() == core::mem::size_of::<$native>());

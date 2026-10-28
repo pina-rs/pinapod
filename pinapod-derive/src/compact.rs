@@ -572,6 +572,183 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
 	let current_encoded_len = compute_offset_tokens(header_ty, &tail_fields, tail_fields.len());
 	let mut accessors = Vec::new();
 
+	// Companion surface: materialization into the declared struct plus the
+	// value traits over active content. Materialization reads inline fields
+	// through the header and tail fields through the accessors, so a view
+	// materializes exactly what it exposes.
+	let mut to_native_inits: Vec<TokenStream> = schema
+		.inline_fields()
+		.map(|f| {
+			let name = &f.name;
+			let ty = &f.ty;
+			quote! { #name: <#ty as pinapod::FromZc>::from_zc(&self.header().#name)?, }
+		})
+		.collect();
+
+	let mut eq_checks: Vec<TokenStream> = schema
+		.inline_fields()
+		.map(|f| {
+			let name = &f.name;
+			quote! { self.header().#name == other.header().#name }
+		})
+		.collect();
+
+	let mut hash_stmts: Vec<TokenStream> = schema
+		.inline_fields()
+		.map(|f| {
+			let name = &f.name;
+			quote! { self.header().#name.hash(state); }
+		})
+		.collect();
+
+	let mut debug_fields: Vec<TokenStream> = schema
+		.inline_fields()
+		.map(|f| {
+			let name = &f.name;
+			quote! { .field(stringify!(#name), &self.header().#name) }
+		})
+		.collect();
+
+	for f in schema.tail_fields() {
+		let fname = &f.name;
+		let declared = &f.ty;
+
+		match &f.kind {
+			FieldKind::Tail(TailField::Segment {
+				presence: TailPresence::Always,
+				payload: TailPayload::String { .. },
+			}) => {
+				to_native_inits.push(quote! {
+					#fname: {
+						let mut value = <#declared as ::core::default::Default>::default();
+						value.try_set(self.#fname())?;
+						value
+					},
+				});
+			}
+			FieldKind::Tail(TailField::Segment {
+				presence: TailPresence::Always,
+				payload: TailPayload::Vec { .. },
+			}) => {
+				to_native_inits.push(quote! {
+					#fname: {
+						let mut value = <#declared as ::core::default::Default>::default();
+						value.try_set_from_slice(self.#fname())?;
+						value
+					},
+				});
+			}
+			FieldKind::Tail(TailField::Segment {
+				presence: TailPresence::OptionTag,
+				payload: TailPayload::String { .. },
+			}) => {
+				let inner = option_inner_type(declared);
+				to_native_inits.push(quote! {
+					#fname: match self.#fname() {
+						Some(value) => {
+							let mut field = <#inner as ::core::default::Default>::default();
+							field.try_set(value)?;
+							Some(field)
+						}
+						None => None,
+					},
+				});
+			}
+			FieldKind::Tail(TailField::Segment {
+				presence: TailPresence::OptionTag,
+				payload: TailPayload::Vec { .. },
+			}) => {
+				let inner = option_inner_type(declared);
+				to_native_inits.push(quote! {
+					#fname: match self.#fname() {
+						Some(value) => {
+							let mut field = <#inner as ::core::default::Default>::default();
+							field.try_set_from_slice(value)?;
+							Some(field)
+						}
+						None => None,
+					},
+				});
+			}
+			_ => unreachable!(),
+		}
+
+		eq_checks.push(quote! { self.#fname() == other.#fname() });
+		hash_stmts.push(quote! { self.#fname().hash(state); });
+		debug_fields.push(quote! { .field(stringify!(#fname), &self.#fname()) });
+	}
+
+	// Where clauses for the conditional impls: the layout bounds every impl
+	// needs, plus the trait bound each one adds on the stored pods. The
+	// module-level helper is shadowed by the local binding above, so the
+	// composition is stated here once.
+	let compose_where = |extra: Vec<TokenStream>| -> TokenStream {
+		let mut predicates = match where_clause {
+			Some(existing) => {
+				existing
+					.predicates
+					.iter()
+					.map(|predicate| quote! { #predicate })
+					.collect::<Vec<_>>()
+			}
+			None => Vec::new(),
+		};
+
+		predicates.extend(bounds.iter().cloned());
+		predicates.extend(extra);
+
+		if predicates.is_empty() {
+			return quote! {};
+		}
+
+		quote! { where #(#predicates,)* }
+	};
+
+	let inline_pods: Vec<TokenStream> = schema
+		.inline_fields()
+		.map(|f| map_to_pod_type(&f.ty))
+		.collect();
+
+	let tail_elem_pods: Vec<TokenStream> = schema
+		.tail_fields()
+		.filter_map(|f| {
+			match &f.kind {
+				FieldKind::Tail(TailField::Segment {
+					payload: TailPayload::Vec { elem, .. },
+					..
+				}) => Some(map_to_pod_type(elem)),
+				_ => None,
+			}
+		})
+		.collect();
+
+	let value_bound = |trait_path: TokenStream| -> Vec<TokenStream> {
+		inline_pods
+			.iter()
+			.chain(tail_elem_pods.iter())
+			.map(|pod| quote! { #pod: #trait_path })
+			.collect()
+	};
+
+	let ref_partial_eq_where = compose_where(value_bound(quote! { ::core::cmp::PartialEq }));
+	let ref_eq_where = compose_where(value_bound(quote! { ::core::cmp::Eq }));
+	let ref_hash_where = compose_where(value_bound(quote! { ::core::hash::Hash }));
+	let ref_debug_where = compose_where(value_bound(quote! { ::core::fmt::Debug }));
+	let ref_to_native_where = compose_where(
+		schema
+			.inline_fields()
+			.map(|f| {
+				let ty = &f.ty;
+				quote! { #ty: pinapod::FromZc }
+			})
+			.collect(),
+	);
+	let struct_name_literal = struct_name.to_string();
+	let to_native_inits = to_native_inits;
+	let eq_checks = eq_checks;
+	let hash_stmts = hash_stmts;
+	let debug_fields = debug_fields;
+
 	for (i, f) in tail_fields.iter().enumerate() {
 		let fname = &f.name;
 		let offset_computation = compute_offset_tokens(header_ty, &tail_fields, i);
@@ -743,6 +920,55 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
 			}
 
 			#( #accessors )*
+		}
+
+		// Materialization carries its own impl block because it adds the
+		// `FromZc` bounds on inline fields, which the layout impls above do
+		// not carry; a generic inline field without the bound keeps compiling
+		// and simply has no `to_native`.
+		impl #ref_impl_generics #ref_name #ref_ty_generics #ref_to_native_where {
+			/// Materialize the declared schema type from this view.
+			///
+			/// The result is a fully owned, self-contained value: snapshots,
+			/// logging, tests, and off-chain decoding all want a shape a
+			/// borrowed view cannot serve. The value copies the active tail
+			/// content into the declared containers, so it never borrows the
+			/// account bytes.
+			#[inline]
+			pub fn to_native(
+				&self,
+			) -> Result<#struct_name #struct_ty_generics, pinapod::PinaPodError> {
+				Ok(#struct_name {
+					#( #to_native_inits )*
+				})
+			}
+		}
+
+		// The value traits compare, hash, and print *active* content: two
+		// views over equal encodings are equal regardless of spare capacity,
+		// and a Debug render never discloses vacated bytes.
+		impl #ref_impl_generics ::core::cmp::PartialEq for #ref_name #ref_ty_generics #ref_partial_eq_where {
+			fn eq(&self, other: &Self) -> bool {
+				true
+				#(&& #eq_checks)*
+			}
+		}
+
+		impl #ref_impl_generics ::core::cmp::Eq for #ref_name #ref_ty_generics #ref_eq_where {}
+
+		impl #ref_impl_generics ::core::hash::Hash for #ref_name #ref_ty_generics #ref_hash_where {
+			fn hash<__State: ::core::hash::Hasher>(&self, state: &mut __State) {
+				#( #hash_stmts )*
+			}
+		}
+
+		impl #ref_impl_generics ::core::fmt::Debug for #ref_name #ref_ty_generics #ref_debug_where {
+			fn fmt(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+				formatter
+					.debug_struct(#struct_name_literal)
+					#( #debug_fields )*
+					.finish()
+			}
 		}
 	}
 }

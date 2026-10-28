@@ -331,6 +331,13 @@ mod solana_address_impls {
 	unsafe impl ZcField for solana_address::Address {
 		type Pod = solana_address::Address;
 	}
+
+	impl FromZc for solana_address::Address {
+		#[inline(always)]
+		fn from_zc(pod: &Self) -> Result<Self, PinaPodError> {
+			Ok(*pod)
+		}
+	}
 }
 
 /// Describes the byte layout generated for a schema type.
@@ -692,6 +699,140 @@ pub unsafe trait ZcField: Sized {
 	type Pod: ZcElem;
 }
 
+/// Materializes the native schema type back out of its stored pod.
+///
+/// [`ZcField`] is the outbound mapping a writer uses; this trait is the return
+/// path. A derived schema exposes it as `to_native`, which builds a fully
+/// owned, self-contained value — the shape snapshots, logging, tests, and
+/// off-chain decoding want, none of which a borrowed view can serve.
+///
+/// The conversion is fallible because a native type can carry a smaller domain
+/// than its pod: a stored enum discriminant can name no declared variant. For
+/// every other mapping the result is always `Ok`; only enum-bearing fields can
+/// produce `Err`, and a value that reached the caller through a validating
+/// reader materializes without error.
+pub trait FromZc: ZcField + Sized {
+	/// Builds the native value from its stored pod.
+	///
+	/// # Errors
+	///
+	/// Returns [`PinaPodError::InvalidDiscriminant`] when an enum field's stored
+	/// discriminant names no declared variant, which for a validating reader is
+	/// unreachable.
+	fn from_zc(pod: &Self::Pod) -> Result<Self, PinaPodError>;
+}
+
+macro_rules! impl_from_zc_identity {
+	($($native:ty),*) => {
+		$(
+			impl FromZc for $native {
+				#[inline(always)]
+				fn from_zc(pod: &Self) -> Result<Self, PinaPodError> {
+					Ok(*pod)
+				}
+			}
+		)*
+	};
+}
+
+impl_from_zc_identity!(
+	u8, i8, PodU16, PodU32, PodU64, PodU128, PodI16, PodI32, PodI64, PodI128
+);
+
+macro_rules! impl_from_zc_decode {
+	($($native:ty),*) => {
+		$(
+			impl FromZc for $native {
+				#[inline(always)]
+				fn from_zc(pod: &Self::Pod) -> Result<Self, PinaPodError> {
+					Ok(pod.get())
+				}
+			}
+		)*
+	};
+}
+
+impl_from_zc_decode!(u16, u32, u64, u128, i16, i32, i64, i128, bool);
+
+impl<const N: usize, const PFX: usize> FromZc for PodString<N, PFX> {
+	#[inline(always)]
+	fn from_zc(pod: &Self) -> Result<Self, PinaPodError> {
+		Ok(*pod)
+	}
+}
+
+impl<T: ZcElem, const N: usize, const PFX: usize> FromZc for PodVecRepr<T, N, PFX> {
+	#[inline(always)]
+	fn from_zc(pod: &Self) -> Result<Self, PinaPodError> {
+		Ok(*pod)
+	}
+}
+
+impl<T: ZcElem, const PFX: usize> FromZc for PodOption<T, PFX> {
+	#[inline(always)]
+	fn from_zc(pod: &Self) -> Result<Self, PinaPodError> {
+		Ok(*pod)
+	}
+}
+
+impl<T> FromZc for Option<T>
+where
+	T: FromZc,
+{
+	#[inline(always)]
+	fn from_zc(pod: &Self::Pod) -> Result<Self, PinaPodError> {
+		// A validated option holds either a canonical absent tag or a present
+		// payload; `get_ref` returns `None` for every other tag, which cannot
+		// occur for a value a reader accepted.
+		match pod.get_ref() {
+			Some(inner) => Ok(Some(<T as FromZc>::from_zc(inner)?)),
+			None => Ok(None),
+		}
+	}
+}
+
+impl<T: FromZc, const N: usize> FromZc for [T; N] {
+	#[inline(always)]
+	fn from_zc(pod: &Self::Pod) -> Result<Self, PinaPodError> {
+		from_zc_array::<T, N>(pod)
+	}
+}
+
+/// Element-wise materialization of a stored array.
+///
+/// The elements are written into an uninitialized array and dropped again when
+/// a later element fails, so a rejected conversion leaks nothing even for a
+/// native element type with a `Drop` implementation.
+fn from_zc_array<T: FromZc, const N: usize>(
+	pod: &[<T as ZcField>::Pod; N],
+) -> Result<[T; N], PinaPodError> {
+	// SAFETY: `[MaybeUninit<T>; N]` has no validity requirement, so an
+	// uninitialized one is a fully valid value to hold and mutate.
+	let mut native: [core::mem::MaybeUninit<T>; N] =
+		unsafe { core::mem::MaybeUninit::uninit().assume_init() };
+
+	for (index, slot) in native.iter_mut().enumerate() {
+		match <T as FromZc>::from_zc(&pod[index]) {
+			Ok(value) => {
+				slot.write(value);
+			}
+			Err(error) => {
+				// SAFETY: only the slots below `index` were written, and each
+				// exactly once, so dropping them touches no uninitialized memory.
+				for written in &mut native[..index] {
+					unsafe { written.assume_init_drop() };
+				}
+
+				return Err(error);
+			}
+		}
+	}
+
+	// SAFETY: every slot was written exactly once above, so the array holds
+	// initialized `T` values; reading it by value moves them out.
+	Ok(unsafe { (&raw const native as *const [T; N]).read() })
+}
+
 /// Converts a compact patch argument for a native [`Option<T>`] field into
 /// its stored representation.
 ///
@@ -777,6 +918,31 @@ mod fixed_impls {
 	impl_fixed_zc_field!(FixedU32, PodU32);
 	impl_fixed_zc_field!(FixedU64, PodU64);
 	impl_fixed_zc_field!(FixedU128, PodU128);
+
+	macro_rules! impl_fixed_from_zc {
+		($fixed:ident, $pod:ty) => {
+			impl<Frac> FromZc for fixed::$fixed<Frac> {
+				#[inline(always)]
+				fn from_zc(pod: &Self::Pod) -> Result<Self, PinaPodError> {
+					// `into` decodes the pod to its native integer for the
+					// `Pod*` spellings and is the reflexive conversion for
+					// `u8`/`i8`, whose pod is the native byte itself.
+					Ok(Self::from_bits((*pod).into()))
+				}
+			}
+		};
+	}
+
+	impl_fixed_from_zc!(FixedI8, i8);
+	impl_fixed_from_zc!(FixedI16, PodI16);
+	impl_fixed_from_zc!(FixedI32, PodI32);
+	impl_fixed_from_zc!(FixedI64, PodI64);
+	impl_fixed_from_zc!(FixedI128, PodI128);
+	impl_fixed_from_zc!(FixedU8, u8);
+	impl_fixed_from_zc!(FixedU16, PodU16);
+	impl_fixed_from_zc!(FixedU32, PodU32);
+	impl_fixed_from_zc!(FixedU64, PodU64);
+	impl_fixed_from_zc!(FixedU128, PodU128);
 }
 
 // SAFETY: The pod of an array is the array of its element pods. `[T::Pod; N]`
