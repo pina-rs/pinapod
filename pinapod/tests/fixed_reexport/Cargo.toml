@@ -3,10 +3,16 @@ name = "pinapod-fixed-reexport-test"
 version = "0.0.0"
 edition = "2021"
 publish = false
+# The MSRV CI lane builds this fixture with `cargo +1.89.0`, and Pinapod's
+# `fixed` range admits releases that need a newer compiler. Resolver v3 makes
+# the release refresh (`cargo update` in the lockfile commands) prefer a
+# `fixed` that builds on this rust-version instead of the newest release.
+rust-version = "1.89.0"
 
 # Standalone so the fixture resolves its own dependency graph: this crate must
 # depend on `pinapod` alone, with no `fixed` requirement of its own.
 [workspace]
+resolver = "3"
 
 [dependencies]
 pinapod = { path = "../..", features = ["fixed"] }
