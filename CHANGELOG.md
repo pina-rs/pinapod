@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.9](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.9) (2026-10-28)
+
+Grouped release for `pinapod-workspace`.
+
+### Fixes
+
+#### materialize a `PodBool` field
+
+_Packages:_ 🟢 _pinapod_, ⚪ _pinapod-derive_
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #73](https://github.com/pina-rs/pinapod/pull/73)
+
+`FromZc` landed as the return path for every `ZcField` mapping, but the identity list omitted `PodBool`. A schema that declares a `bool`'s pod directly (the closed-schema `PodBool` field the Pina macros accept) therefore failed to compile on the generated `FromZc` bound, even though `PodBool` is `Copy`, alignment one, and its reader accepts only the canonical `0` and `1` bytes that `ZcValidate` checks. It is now in the identity list alongside the integer pods, and `companion_surface` materializes a schema with a direct `PodBool` field.
+
+A native `bool` field is unaffected: `FromZc for bool` decodes from its pod, which already existed. This restores the direct-pod form.
+
 ## [0.4.8](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.8) (2026-10-28)
 
 Grouped release for `pinapod-workspace`.
