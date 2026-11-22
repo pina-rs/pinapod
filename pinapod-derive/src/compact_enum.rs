@@ -243,6 +243,7 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
 		}
 
 		impl pinapod::ZcValidate for #header_name {
+			#[inline(always)]
 			fn validate_ref(_value: &Self) -> Result<(), pinapod::PinaPodError> {
 				Ok(())
 			}
@@ -582,9 +583,6 @@ fn generate_patch_impl(
 
 						__pinapod_check_prefix(value.len(), #pfx)?;
 						let __elem_size = core::mem::size_of::<#mapped_elem>();
-						if __elem_size == 0 {
-							return Err(pinapod::PinaPodError::InvalidLength);
-						}
 
 						<#mapped_elem as pinapod::ZcValidate>::validate_slice(value)?;
 						let __byte_len = __pinapod_checked_mul(value.len(), __elem_size)?;
@@ -711,14 +709,19 @@ fn generate_patch_impl(
 				self.encoded_len()
 			}
 
-			/// Apply the patch in place and return the new encoded length.
-			pub fn update(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
+			/// Apply the patch in place when `data` is large enough, or return
+			/// `Ok(Err(required_len))` without mutating `data` when `data` must
+			/// grow first.
+			pub fn try_update_or_len(
+				&self,
+				data: &mut [u8],
+			) -> Result<Result<usize, usize>, pinapod::PinaPodError> {
 				<#enum_name as pinapod::PinaPodCompact>::validate(data)?;
 				let old_encoded_len = Self::current_encoded_len(data)?;
 				let encoded_len = self.encoded_len()?;
 
 				if encoded_len > data.len() {
-					return Err(pinapod::PinaPodError::BufferTooSmall);
+					return Ok(Err(encoded_len));
 				}
 
 				self.write(data);
@@ -727,7 +730,15 @@ fn generate_patch_impl(
 					data[encoded_len..old_encoded_len].fill(0);
 				}
 
-				Ok(encoded_len)
+				Ok(Ok(encoded_len))
+			}
+
+			/// Apply the patch in place and return the new encoded length.
+			pub fn update(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
+				match self.try_update_or_len(data)? {
+					Ok(encoded_len) => Ok(encoded_len),
+					Err(_) => Err(pinapod::PinaPodError::BufferTooSmall),
+				}
 			}
 
 			fn try_initialize(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
@@ -743,11 +754,13 @@ fn generate_patch_impl(
 				Ok(encoded_len)
 			}
 
-			/// Write the patch into a fresh or zeroed allocation and return the
+			/// Write the patch into an already-zeroed allocation and return the
 			/// encoded length. A failure leaves the destination zeroed rather
 			/// than partially patched.
-			pub fn initialize(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
-				data.fill(0);
+			pub fn initialize_zeroed(
+				&self,
+				data: &mut [u8],
+			) -> Result<usize, pinapod::PinaPodError> {
 				let result = self.try_initialize(data);
 
 				if result.is_err() {
@@ -755,6 +768,14 @@ fn generate_patch_impl(
 				}
 
 				result
+			}
+
+			/// Write the patch into a fresh or zeroed allocation and return the
+			/// encoded length. A failure leaves the destination zeroed rather
+			/// than partially patched.
+			pub fn initialize(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
+				data.fill(0);
+				self.initialize_zeroed(data)
 			}
 		}
 
@@ -771,6 +792,20 @@ fn generate_patch_impl(
 
 			fn initialize(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
 				<#patch_name #declaration_generics>::initialize(self, data)
+			}
+
+			fn try_update_or_len(
+				&self,
+				data: &mut [u8],
+			) -> Result<Result<usize, usize>, pinapod::PinaPodError> {
+				<#patch_name #declaration_generics>::try_update_or_len(self, data)
+			}
+
+			fn initialize_zeroed(
+				&self,
+				data: &mut [u8],
+			) -> Result<usize, pinapod::PinaPodError> {
+				<#patch_name #declaration_generics>::initialize_zeroed(self, data)
 			}
 		}
 

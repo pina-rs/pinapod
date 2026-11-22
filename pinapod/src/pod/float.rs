@@ -149,6 +149,8 @@ macro_rules! define_pod_float {
         // NaN and the sign of zero), so stored bytes never need a validity
         // check beyond their length.
         impl ZcValidate for $name {
+            const TRIVIALLY_VALID: bool = true;
+
             #[inline(always)]
             fn validate_ref(_: &Self) -> Result<(), PinaPodError> {
                 Ok(())
