@@ -510,7 +510,7 @@ fn generate_header(schema: &Schema, header_name: &syn::Ident) -> TokenStream {
 		}
 
 		impl #impl_generics pinapod::ZcValidate for #header_name #ty_generics #where_clause_with_bounds {
-			const TRIVIALLY_VALID: bool =
+			const TRIVIALLY_VALID: ::core::primitive::bool =
 				true #(&& <#inline_pod_types as pinapod::ZcValidate>::TRIVIALLY_VALID)*;
 
 			#[inline(always)]

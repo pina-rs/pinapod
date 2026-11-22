@@ -328,7 +328,7 @@ pub fn generate(schema: &Schema) -> TokenStream {
 		#inherent_helpers
 
 		impl #impl_generics pinapod::ZcValidate for #zc_name #ty_generics #where_clause_with_pod_bounds {
-			const TRIVIALLY_VALID: bool =
+			const TRIVIALLY_VALID: ::core::primitive::bool =
 				true #(&& <#pod_field_types as pinapod::ZcValidate>::TRIVIALLY_VALID)*;
 
 			#[inline(always)]

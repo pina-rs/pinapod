@@ -3,7 +3,7 @@ pinapod: feat
 pinapod-derive: feat
 ---
 
-# Add `ZcValidate::TRIVIALLY_VALID`, zeroed initialization, and single-pass `try_update_or_len`
+# add trivially-valid and zeroed-init fast paths
 
 Add compile-time trivial-validity detection, zero-buffer initialization fast paths, and single-pass compact update helpers so callers (such as Solana on-chain programs) avoid redundant validation, double zeroing, and duplicate update traversals:
 
