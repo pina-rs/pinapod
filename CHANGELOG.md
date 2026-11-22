@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.10](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.10) (2026-11-22)
+
+Grouped release for `pinapod-workspace`.
+
+### Features
+
+#### add trivially-valid and zeroed-init fast paths
+
+_Packages:_ 🟠 _pinapod_, 🟠 _pinapod-derive_
+
+_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #75](https://github.com/pina-rs/pinapod/pull/75)
+
+Add compile-time trivial-validity detection, zero-buffer initialization fast paths, and single-pass compact update helpers so callers (such as Solana on-chain programs) avoid redundant validation, double zeroing, and duplicate update traversals:
+
+- Add `ZcValidate::TRIVIALLY_VALID: bool` (defaulting to `false`) and set it to `true` for bit-unrestricted primitives, fixed-width pods, floats, arrays/wrappers of trivially valid elements, and derived fixed/compact headers whose fields are all trivially valid. Fixed and compact validation paths short-circuit when `TRIVIALLY_VALID` is true.
+- Add `PinaPodFixed::initialize_zeroed` and `PinaPodPatch::initialize_zeroed` (with `&P` blanket forwarding) for callers whose target buffer is already guaranteed zero-filled, skipping redundant `fill(0)` passes while preserving full validation.
+- Add `PinaPodPatch::try_update_or_len` (with `&P` blanket forwarding) so compact updates attempt in-place commits directly and return `Err(needed_len)` on insufficient capacity without a separate preflight measurement pass.
+- Remove unreachable `if __elem_size == 0` branches in `pinapod-derive` compact codegen.
+
 ## [0.4.9](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.9) (2026-10-28)
 
 Grouped release for `pinapod-workspace`.
