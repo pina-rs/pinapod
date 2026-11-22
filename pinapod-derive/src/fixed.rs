@@ -328,10 +328,17 @@ pub fn generate(schema: &Schema) -> TokenStream {
 		#inherent_helpers
 
 		impl #impl_generics pinapod::ZcValidate for #zc_name #ty_generics #where_clause_with_pod_bounds {
+			const TRIVIALLY_VALID: bool =
+				true #(&& <#pod_field_types as pinapod::ZcValidate>::TRIVIALLY_VALID)*;
+
+			#[inline(always)]
 			fn validate_ref(
 				value: &Self,
 			) -> ::core::result::Result<(), pinapod::PinaPodError> {
 				#(#capacity_checks)*
+				if Self::TRIVIALLY_VALID {
+					return ::core::result::Result::Ok(());
+				}
 				#(<#pod_field_types as pinapod::ZcValidate>::validate_ref(&value.#field_names)?;)*
 				::core::result::Result::Ok(())
 			}
@@ -872,6 +879,7 @@ pub fn generate_enum(input: &syn::DeriveInput) -> TokenStream {
 		}
 
 		impl pinapod::ZcValidate for #zc_name {
+			#[inline]
 			#[allow(clippy::manual_range_patterns)]
 			fn validate_ref(
 				value: &Self,

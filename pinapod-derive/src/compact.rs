@@ -167,14 +167,6 @@ fn generate_diagnose(schema: &Schema, header_ty: &TokenStream) -> TokenStream {
 					}
 
 					let __elem_size = core::mem::size_of::<#mapped_elem>();
-
-					if __elem_size == 0 {
-						return Err(pinapod::Diagnostic::new(
-							#fname_literal,
-							pinapod::PinaPodError::InvalidLength,
-						));
-					}
-
 					let __byte_len = __pinapod_checked_mul(__count, __elem_size)
 						.map_err(|error| pinapod::Diagnostic::new(#fname_literal, error))?;
 					let __end = __pinapod_checked_add(__tail_offset, __byte_len)
@@ -271,14 +263,6 @@ fn generate_diagnose(schema: &Schema, header_ty: &TokenStream) -> TokenStream {
 							}
 
 							let __elem_size = core::mem::size_of::<#mapped_elem>();
-
-							if __elem_size == 0 {
-								return Err(pinapod::Diagnostic::new(
-									#fname_literal,
-									pinapod::PinaPodError::InvalidLength,
-								));
-							}
-
 							let __payload_offset = __pinapod_checked_add(__tail_offset, #pfx)
 								.map_err(|error| pinapod::Diagnostic::new(#fname_literal, error))?;
 							let __byte_len = __pinapod_checked_mul(__count, __elem_size)
@@ -526,7 +510,14 @@ fn generate_header(schema: &Schema, header_name: &syn::Ident) -> TokenStream {
 		}
 
 		impl #impl_generics pinapod::ZcValidate for #header_name #ty_generics #where_clause_with_bounds {
+			const TRIVIALLY_VALID: bool =
+				true #(&& <#inline_pod_types as pinapod::ZcValidate>::TRIVIALLY_VALID)*;
+
+			#[inline(always)]
 			fn validate_ref(value: &Self) -> Result<(), pinapod::PinaPodError> {
+				if Self::TRIVIALLY_VALID {
+					return Ok(());
+				}
 				#(<#inline_pod_types as pinapod::ZcValidate>::validate_ref(&value.#inline_field_names)?;)*
 				Ok(())
 			}
@@ -621,11 +612,6 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 					}
 
 					let __elem_size = core::mem::size_of::<#mapped_elem>();
-
-					if __elem_size == 0 {
-						return Err(pinapod::PinaPodError::InvalidLength);
-					}
-
 					let __byte_len = #byte_len;
 					let __tail_end = #tail_end;
 					let __tail = data
@@ -719,11 +705,6 @@ fn generate_trait_impl(schema: &Schema, header_ty: &TokenStream) -> TokenStream 
 					}
 
 					let __elem_size = core::mem::size_of::<#mapped_elem>();
-
-					if __elem_size == 0 {
-						return Err(pinapod::PinaPodError::InvalidLength);
-					}
-
 					let __payload_offset = #payload_offset;
 					let __byte_len = #byte_len;
 					let __payload_end = #payload_end;
@@ -2036,12 +2017,17 @@ fn generate_patch(
 				Ok(initialized_len)
 			}
 
-			/// Apply the patch in place and return the new encoded length.
-			pub fn update(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
+			/// Apply the patch in place when `data` is large enough, or return
+			/// `Ok(Err(required_len))` without mutating `data` when `data` must
+			/// grow first.
+			pub fn try_update_or_len(
+				&self,
+				data: &mut [u8],
+			) -> Result<Result<usize, usize>, pinapod::PinaPodError> {
 				let expected_len = self.updated_len(data)?;
 
 				if expected_len > data.len() {
-					return Err(pinapod::PinaPodError::BufferTooSmall);
+					return Ok(Err(expected_len));
 				}
 
 				let mut writer = unsafe {
@@ -2060,11 +2046,18 @@ fn generate_patch(
 				// would otherwise trust and persist a length the bytes do not
 				// support, and the next validated read would reject the account.
 				if encoded_len != expected_len {
-
 					return Err(pinapod::PinaPodError::InvalidLength);
 				}
 
-				Ok(encoded_len)
+				Ok(Ok(encoded_len))
+			}
+
+			/// Apply the patch in place and return the new encoded length.
+			pub fn update(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
+				match self.try_update_or_len(data)? {
+					Ok(encoded_len) => Ok(encoded_len),
+					Err(_) => Err(pinapod::PinaPodError::BufferTooSmall),
+				}
 			}
 
 			fn try_initialize(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
@@ -2106,11 +2099,13 @@ fn generate_patch(
 				Ok(encoded_len)
 			}
 
-			/// Write the patch into a fresh or zeroed allocation and return the
+			/// Write the patch into an already-zeroed allocation and return the
 			/// encoded length. A failure leaves the destination zeroed rather
 			/// than partially patched.
-			pub fn initialize(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
-				data.fill(0);
+			pub fn initialize_zeroed(
+				&self,
+				data: &mut [u8],
+			) -> Result<usize, pinapod::PinaPodError> {
 				let result = self.try_initialize(data);
 
 				if result.is_err() {
@@ -2118,6 +2113,14 @@ fn generate_patch(
 				}
 
 				result
+			}
+
+			/// Write the patch into a fresh or zeroed allocation and return the
+			/// encoded length. A failure leaves the destination zeroed rather
+			/// than partially patched.
+			pub fn initialize(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
+				data.fill(0);
+				self.initialize_zeroed(data)
 			}
 		}
 
@@ -2136,6 +2139,20 @@ fn generate_patch(
 
 			fn initialize(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
 				<#patch_name #patch_ty_generics>::initialize(self, data)
+			}
+
+			fn try_update_or_len(
+				&self,
+				data: &mut [u8],
+			) -> Result<Result<usize, usize>, pinapod::PinaPodError> {
+				<#patch_name #patch_ty_generics>::try_update_or_len(self, data)
+			}
+
+			fn initialize_zeroed(
+				&self,
+				data: &mut [u8],
+			) -> Result<usize, pinapod::PinaPodError> {
+				<#patch_name #patch_ty_generics>::initialize_zeroed(self, data)
 			}
 		}
 

@@ -21,6 +21,14 @@ use crate::pod::*;
 /// Validation trait for stored (pod) types.
 /// Each pod type knows how to validate itself.
 pub trait ZcValidate: Copy {
+	/// Whether every initialized bit pattern of `Self` is semantically valid.
+	///
+	/// Defaults to `false` (fail-closed) so manual and restricted-domain
+	/// implementations never skip validation by accident. Only types whose
+	/// [`validate_ref`](Self::validate_ref) unconditionally returns `Ok(())`
+	/// for every initialized bit pattern may set this to `true`.
+	const TRIVIALLY_VALID: bool = false;
+
 	/// Validate that this value's bytes represent a valid state.
 	fn validate_ref(value: &Self) -> Result<(), PinaPodError>;
 
@@ -31,17 +39,16 @@ pub trait ZcValidate: Copy {
 	/// [`validate_ref`](Self::validate_ref) on each item. That walk is
 	/// load-bearing for any element with a restricted domain: it is what
 	/// rejects a non-canonical `PodBool` byte, an out-of-range container prefix,
-	/// or non-UTF-8 string bytes. An element type whose every initialized bit
-	/// pattern is valid overrides this with a no-op and loses no coverage.
-	///
-	/// The override exists because a `[T; N]` validation loop that merely
-	/// happens to be dead after inlining is not reliably removed at `-C
-	/// opt-level=3` on SBF. Stating the trivial case as a separate
-	/// implementation removes the loop from that instantiation outright, which
-	/// keeps byte arrays on the same per-element cost as a hand-written
-	/// `Ok(())`.
+	/// or non-UTF-8 string bytes. When [`Self::TRIVIALLY_VALID`] is `true`,
+	/// the compile-time constant guard returns `Ok(())` immediately without
+	/// emitting a loop, keeping all-POD structs and byte arrays on the same
+	/// zero-cost path even under SBF `-C opt-level=3`.
 	#[inline(always)]
 	fn validate_array<const N: usize>(value: &[Self; N]) -> Result<(), PinaPodError> {
+		if Self::TRIVIALLY_VALID {
+			return Ok(());
+		}
+
 		for item in value {
 			Self::validate_ref(item)?;
 		}
@@ -53,17 +60,18 @@ pub trait ZcValidate: Copy {
 	///
 	/// A slice's stored validity is exactly its elements' validity, so this
 	/// defaults to walking the slice and calling
-	/// [`validate_ref`](Self::validate_ref) on each item. The same rationale as
-	/// [`validate_array`](Self::validate_array) applies: the loop is
-	/// load-bearing for a restricted-domain element and dead for a
-	/// trivially-valid one, and SBF `-C opt-level=3` does not reliably remove
-	/// the dead case. Stating the trivial case as a separate implementation
-	/// removes the loop from that instantiation outright.
+	/// [`validate_ref`](Self::validate_ref) on each item. When
+	/// [`Self::TRIVIALLY_VALID`] is `true`, the compile-time constant guard
+	/// removes the loop outright before SBF codegen.
 	///
 	/// Generated code walks a stored tail through this method rather than
 	/// spelling the loop at every emission site.
 	#[inline(always)]
 	fn validate_slice(value: &[Self]) -> Result<(), PinaPodError> {
+		if Self::TRIVIALLY_VALID {
+			return Ok(());
+		}
+
 		for item in value {
 			Self::validate_ref(item)?;
 		}
@@ -74,6 +82,8 @@ pub trait ZcValidate: Copy {
 
 // --- ZcValidate: trivially valid types (all bit patterns valid) ---
 impl ZcValidate for u8 {
+	const TRIVIALLY_VALID: bool = true;
+
 	#[inline(always)]
 	fn validate_ref(_: &Self) -> Result<(), PinaPodError> {
 		Ok(())
@@ -91,6 +101,8 @@ impl ZcValidate for u8 {
 }
 
 impl ZcValidate for i8 {
+	const TRIVIALLY_VALID: bool = true;
+
 	#[inline(always)]
 	fn validate_ref(_: &Self) -> Result<(), PinaPodError> {
 		Ok(())
@@ -111,6 +123,8 @@ macro_rules! impl_zc_validate_trivial {
     ($($ty:ty),*) => {
         $(
             impl ZcValidate for $ty {
+                const TRIVIALLY_VALID: bool = true;
+
                 #[inline(always)]
                 fn validate_ref(_: &Self) -> Result<(), PinaPodError> { Ok(()) }
 
@@ -134,6 +148,8 @@ impl_zc_validate_trivial!(
 // element answers with a no-op that contains no loop, while a restricted-domain
 // element walks every item. See `ZcValidate::validate_array`.
 impl<T: ZcValidate, const N: usize> ZcValidate for [T; N] {
+	const TRIVIALLY_VALID: bool = T::TRIVIALLY_VALID;
+
 	#[inline(always)]
 	fn validate_ref(value: &Self) -> Result<(), PinaPodError> {
 		<T as ZcValidate>::validate_array(value)
@@ -243,11 +259,11 @@ impl<T: ZcElem, const PFX: usize> ZcValidate for PodOption<T, PFX> {
 ///    discriminants, length-prefix-bearing containers), `validate_ref` is
 ///    the sole gate and MUST NOT short-circuit.
 ///
-///    A type that overrides [`ZcValidate::validate_array`] takes on the same
-///    obligation for its array form. Overriding it with a no-op asserts that
-///    the element's whole domain is valid, exactly as a trivial
-///    `validate_ref` does, and an array of a restricted-domain type MUST
-///    keep the default per-element walk.
+///    A type that overrides [`ZcValidate::validate_array`] or sets
+///    [`ZcValidate::TRIVIALLY_VALID`] to `true` takes on the same obligation:
+///    it asserts that the element's whole domain is valid and `validate_ref`
+///    unconditionally returns `Ok(())`. Any restricted-domain type MUST leave
+///    `TRIVIALLY_VALID = false` and keep the default per-element walk.
 ///
 /// 5. **The all-zero representation is safe to inspect while initializing.**
 ///    It does not need to be semantically valid, but safe accessors called on
@@ -309,6 +325,8 @@ mod solana_address_impls {
 	// SAFETY: solana_address::Address is #[repr(transparent)] over [u8; 32],
 	// align 1, all bit patterns valid.
 	impl ZcValidate for solana_address::Address {
+		const TRIVIALLY_VALID: bool = true;
+
 		#[inline(always)]
 		fn validate_ref(_: &Self) -> Result<(), PinaPodError> {
 			Ok(())
@@ -378,6 +396,7 @@ pub unsafe trait PinaPodFixed: PinaPod {
 	type Zc: ZcElem;
 
 	/// Read one fixed value and reject both truncated and trailing bytes.
+	#[inline(always)]
 	fn read_exact(data: &[u8]) -> Result<&Self::Zc, PinaPodError> {
 		Self::validate_exact(data)?;
 
@@ -387,6 +406,7 @@ pub unsafe trait PinaPodFixed: PinaPod {
 	}
 
 	/// Mutably read one fixed value and reject truncated and trailing bytes.
+	#[inline(always)]
 	fn read_exact_mut(data: &mut [u8]) -> Result<&mut Self::Zc, PinaPodError> {
 		Self::validate_exact(data)?;
 
@@ -396,6 +416,7 @@ pub unsafe trait PinaPodFixed: PinaPod {
 	}
 
 	/// Read the first fixed value from a larger containing byte sequence.
+	#[inline(always)]
 	fn read_prefix(data: &[u8]) -> Result<&Self::Zc, PinaPodError> {
 		Self::validate_prefix(data)?;
 
@@ -405,6 +426,7 @@ pub unsafe trait PinaPodFixed: PinaPod {
 	}
 
 	/// Mutably read the first fixed value from a larger containing sequence.
+	#[inline(always)]
 	fn read_prefix_mut(data: &mut [u8]) -> Result<&mut Self::Zc, PinaPodError> {
 		Self::validate_prefix(data)?;
 
@@ -414,6 +436,7 @@ pub unsafe trait PinaPodFixed: PinaPod {
 	}
 
 	/// Validate one complete fixed value with no trailing bytes.
+	#[inline(always)]
 	fn validate_exact(data: &[u8]) -> Result<(), PinaPodError> {
 		let size = core::mem::size_of::<Self::Zc>();
 
@@ -433,6 +456,7 @@ pub unsafe trait PinaPodFixed: PinaPod {
 	}
 
 	/// Validate the first fixed value in a larger containing byte sequence.
+	#[inline(always)]
 	fn validate_prefix(data: &[u8]) -> Result<(), PinaPodError> {
 		let size = core::mem::size_of::<Self::Zc>();
 
@@ -456,27 +480,58 @@ pub unsafe trait PinaPodFixed: PinaPod {
 	/// If the closure or validation returns an error, the complete destination
 	/// is zeroed again. This deterministic failure state is fully initialized,
 	/// but it is not necessarily a semantically valid value for the schema.
+	#[inline]
 	fn initialize(
 		data: &mut [u8],
 		initialize: impl FnOnce(&mut Self::Zc) -> Result<(), PinaPodError>,
 	) -> Result<&mut Self::Zc, PinaPodError> {
 		let size = core::mem::size_of::<Self::Zc>();
 
-		if data.len() < size {
-			return Err(PinaPodError::BufferTooSmall);
-		}
-
 		if data.len() != size {
+			if data.len() < size {
+				return Err(PinaPodError::BufferTooSmall);
+			}
+
 			return Err(PinaPodError::InvalidLength);
 		}
 
 		data.fill(0);
 
+		Self::initialize_zeroed(data, initialize)
+	}
+
+	/// Initialize one fixed value into storage the caller has already zeroed,
+	/// and validate it after configuration.
+	///
+	/// Unlike [`initialize`](Self::initialize), this skips the upfront
+	/// `data.fill(0)` pass. Any field that `initialize` does not write retains
+	/// whatever bytes were already in `data`, so callers should use this only
+	/// on freshly zeroed buffers (such as a zero-initialized stack array or a
+	/// freshly allocated account).
+	///
+	/// Semantic validation still runs once after `initialize` returns `Ok(())`,
+	/// and if either the closure or validation returns an error, the complete
+	/// destination is zeroed before returning that error.
+	#[inline]
+	fn initialize_zeroed(
+		data: &mut [u8],
+		initialize: impl FnOnce(&mut Self::Zc) -> Result<(), PinaPodError>,
+	) -> Result<&mut Self::Zc, PinaPodError> {
+		let size = core::mem::size_of::<Self::Zc>();
+
+		if data.len() != size {
+			if data.len() < size {
+				return Err(PinaPodError::BufferTooSmall);
+			}
+
+			return Err(PinaPodError::InvalidLength);
+		}
+
 		let pointer = data.as_mut_ptr().cast::<Self::Zc>();
 		let result = {
-			// SAFETY: the exact length is checked above, ZcElem has alignment
-			// one, and its unsafe contract makes the all-zero initialization
-			// state safe to inspect and mutate before semantic validation.
+			// SAFETY: the exact length is checked above, `data` is initialized
+			// memory, `ZcElem` guarantees alignment one, and forming `&mut Zc`
+			// from any initialized bytes is sound before semantic validation.
 			let value = unsafe { &mut *pointer };
 
 			initialize(value).and_then(|()| <Self::Zc as ZcValidate>::validate_ref(value))
@@ -523,6 +578,7 @@ pub unsafe trait PinaPodCompact: PinaPod {
 	const HEADER_SIZE: usize;
 
 	/// Validate the physical allocation independently of its active contents.
+	#[inline(always)]
 	fn validate_storage_len(size: usize) -> Result<(), PinaPodError> {
 		if Self::TAIL_ALIGNMENT == 0
 			|| size < Self::MIN_SIZE
@@ -663,6 +719,36 @@ pub trait PinaPodPatch<T: PinaPodCompact> {
 	/// does not fit `data`, or a supplied value cannot be encoded. A failure leaves the
 	/// destination zeroed rather than partially patched.
 	fn initialize(&self, data: &mut [u8]) -> Result<usize, PinaPodError>;
+	/// Applies the patch in place when `data` is large enough, or returns
+	/// `Ok(Err(required_len))` without mutating `data` when `data` must grow first.
+	///
+	/// Derived patches validate inputs, existing bytes, and tail layout in a single
+	/// pass so shrink and same-size updates avoid running [`updated_len`](Self::updated_len)
+	/// twice.
+	///
+	/// # Errors
+	///
+	/// Returns [`PinaPodError`] when `data` is not a valid existing representation
+	/// or a supplied value cannot be encoded.
+	fn try_update_or_len(&self, data: &mut [u8]) -> Result<Result<usize, usize>, PinaPodError> {
+		let required_len = self.updated_len(data)?;
+
+		if required_len > data.len() {
+			return Ok(Err(required_len));
+		}
+
+		self.update(data).map(Ok)
+	}
+	/// Writes the patch into storage the caller has already zeroed, skipping the
+	/// upfront `data.fill(0)` pass while preserving failure zeroing and validation.
+	///
+	/// # Errors
+	///
+	/// Returns [`PinaPodError`] under the same conditions as [`initialize`](Self::initialize).
+	/// On error, the complete destination is zeroed before returning.
+	fn initialize_zeroed(&self, data: &mut [u8]) -> Result<usize, PinaPodError> {
+		self.initialize(data)
+	}
 }
 
 impl<T, P> PinaPodPatch<T> for &P
@@ -680,6 +766,14 @@ where
 
 	fn initialize(&self, data: &mut [u8]) -> Result<usize, PinaPodError> {
 		<P as PinaPodPatch<T>>::initialize(*self, data)
+	}
+
+	fn try_update_or_len(&self, data: &mut [u8]) -> Result<Result<usize, usize>, PinaPodError> {
+		<P as PinaPodPatch<T>>::try_update_or_len(*self, data)
+	}
+
+	fn initialize_zeroed(&self, data: &mut [u8]) -> Result<usize, PinaPodError> {
+		<P as PinaPodPatch<T>>::initialize_zeroed(*self, data)
 	}
 }
 
