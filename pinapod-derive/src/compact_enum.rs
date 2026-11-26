@@ -208,7 +208,7 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
 		.iter()
 		.map(|variant| {
 			let name = variant.name;
-			let construct = construct_ref_tokens(&variant.payload, name, tag_size);
+			let construct = validate_and_construct_ref_tokens(&variant.payload, name, tag_size);
 			quote! { x if x == (#tag_name::#name as #native_ty) => { #construct } }
 		})
 		.collect();
@@ -266,6 +266,7 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
 			const TAIL_ALIGNMENT: usize = 1;
 			const HEADER_SIZE: usize = #tag_size;
 
+			#[inline]
 			fn validate(data: &[u8]) -> Result<(), pinapod::PinaPodError> {
 				// `MIN_SIZE` is at least `HEADER_SIZE` (`enum_min_size` adds each
 				// variant's payload minimum to the tag size), so the storage
@@ -283,6 +284,7 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
 			// allocation, the tag, and the payload bounds. Emitted from the
 			// same per-variant fragment as `validate`, so the two walks cannot
 			// disagree about a bound.
+			#[inline]
 			fn validate_layout(data: &[u8]) -> Result<(), pinapod::PinaPodError> {
 				// Same storage check as `validate`; see the note there about
 				// why no separate tag-size guard is needed.
@@ -298,8 +300,9 @@ pub fn generate(input: &DeriveInput) -> TokenStream {
 
 		impl<'a> #ref_name<'a> {
 			/// Validate `data` and return the variant view it encodes.
+			#[inline]
 			pub fn new(data: &'a [u8]) -> Result<Self, pinapod::PinaPodError> {
-				<#enum_name as pinapod::PinaPodCompact>::validate(data)?;
+				<#enum_name as pinapod::PinaPodCompact>::validate_storage_len(data.len())?;
 				let __tag: #native_ty = #read_tag;
 
 				match __tag {
@@ -515,7 +518,7 @@ fn generate_patch_impl(
 	let mut patch_variants = Vec::new();
 	let mut length_arms = Vec::new();
 	let mut write_arms = Vec::new();
-	let mut current_size_arms = Vec::new();
+	let mut validate_and_len_arms = Vec::new();
 
 	for variant in variants {
 		let name = variant.name;
@@ -523,6 +526,10 @@ fn generate_patch_impl(
 			let __tag = (#tag_name::#name as #native_ty).to_le_bytes();
 			data[..#tag_size].copy_from_slice(&__tag[..#tag_size]);
 		};
+		let validate_and_len = validate_payload_with_len_tokens(&variant.payload, tag_size);
+		validate_and_len_arms.push(quote! {
+			x if x == (#tag_name::#name as #native_ty) => { #validate_and_len }
+		});
 
 		match &variant.payload {
 			VariantPayload::Unit => {
@@ -532,9 +539,6 @@ fn generate_patch_impl(
 					Self::#name => {
 						#write_tag
 					}
-				});
-				current_size_arms.push(quote! {
-					x if x == (#tag_name::#name as #native_ty) => Ok(#tag_size)
 				});
 			}
 			VariantPayload::String { max, pfx } => {
@@ -560,15 +564,6 @@ fn generate_patch_impl(
 							.copy_from_slice(&__prefix[..#pfx]);
 						data[#tag_size + #pfx..#tag_size + #pfx + value.len()]
 							.copy_from_slice(value.as_bytes());
-					}
-				});
-				current_size_arms.push(quote! {
-					x if x == (#tag_name::#name as #native_ty) => {
-						let __len = __pinapod_read_prefix(data, #tag_size, #pfx)?;
-						__pinapod_checked_add(
-							__pinapod_checked_add(#tag_size, #pfx)?,
-							__len,
-						)
 					}
 				});
 			}
@@ -611,19 +606,6 @@ fn generate_patch_impl(
 						}
 					}
 				});
-				current_size_arms.push(quote! {
-					x if x == (#tag_name::#name as #native_ty) => {
-						let __count = __pinapod_read_prefix(data, #tag_size, #pfx)?;
-						let __byte_len = __pinapod_checked_mul(
-							__count,
-							core::mem::size_of::<#mapped_elem>(),
-						)?;
-						__pinapod_checked_add(
-							__pinapod_checked_add(#tag_size, #pfx)?,
-							__byte_len,
-						)
-					}
-				});
 			}
 			VariantPayload::Fixed { ty } => {
 				patch_variants.push(quote! { #name(&'a <#ty as pinapod::PinaPodFixed>::Zc) });
@@ -656,14 +638,6 @@ fn generate_patch_impl(
 						}
 					}
 				});
-				current_size_arms.push(quote! {
-					x if x == (#tag_name::#name as #native_ty) => {
-						__pinapod_checked_add(
-							#tag_size,
-							core::mem::size_of::<<#ty as pinapod::PinaPodFixed>::Zc>(),
-						)
-					}
-				});
 			}
 		}
 	}
@@ -681,21 +655,25 @@ fn generate_patch_impl(
 		}
 
 		impl #declaration_generics #patch_name #declaration_generics {
+			#[inline]
 			fn encoded_len(&self) -> Result<usize, pinapod::PinaPodError> {
 				match self {
 					#( #length_arms, )*
 				}
 			}
 
-			fn current_encoded_len(data: &[u8]) -> Result<usize, pinapod::PinaPodError> {
+			#[inline]
+			fn validate_and_len(data: &[u8]) -> Result<usize, pinapod::PinaPodError> {
+				<#enum_name as pinapod::PinaPodCompact>::validate_storage_len(data.len())?;
 				let __tag: #native_ty = #read_tag;
 
 				match __tag {
-					#( #current_size_arms, )*
+					#( #validate_and_len_arms, )*
 					_ => Err(pinapod::PinaPodError::InvalidDiscriminant),
 				}
 			}
 
+			#[inline]
 			fn write(&self, data: &mut [u8]) {
 				match self {
 					#( #write_arms, )*
@@ -704,6 +682,7 @@ fn generate_patch_impl(
 
 			/// The allocation size applying this patch would produce, without
 			/// changing `data`.
+			#[inline]
 			pub fn updated_len(&self, data: &[u8]) -> Result<usize, pinapod::PinaPodError> {
 				<#enum_name as pinapod::PinaPodCompact>::validate(data)?;
 				self.encoded_len()
@@ -712,12 +691,12 @@ fn generate_patch_impl(
 			/// Apply the patch in place when `data` is large enough, or return
 			/// `Ok(Err(required_len))` without mutating `data` when `data` must
 			/// grow first.
+			#[inline]
 			pub fn try_update_or_len(
 				&self,
 				data: &mut [u8],
 			) -> Result<Result<usize, usize>, pinapod::PinaPodError> {
-				<#enum_name as pinapod::PinaPodCompact>::validate(data)?;
-				let old_encoded_len = Self::current_encoded_len(data)?;
+				let old_encoded_len = Self::validate_and_len(data)?;
 				let encoded_len = self.encoded_len()?;
 
 				if encoded_len > data.len() {
@@ -734,6 +713,7 @@ fn generate_patch_impl(
 			}
 
 			/// Apply the patch in place and return the new encoded length.
+			#[inline]
 			pub fn update(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
 				match self.try_update_or_len(data)? {
 					Ok(encoded_len) => Ok(encoded_len),
@@ -741,6 +721,7 @@ fn generate_patch_impl(
 				}
 			}
 
+			#[inline]
 			fn try_initialize(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
 				<#enum_name as pinapod::PinaPodCompact>::validate_storage_len(data.len())?;
 				let encoded_len = self.encoded_len()?;
@@ -757,6 +738,7 @@ fn generate_patch_impl(
 			/// Write the patch into an already-zeroed allocation and return the
 			/// encoded length. A failure leaves the destination zeroed rather
 			/// than partially patched.
+			#[inline]
 			pub fn initialize_zeroed(
 				&self,
 				data: &mut [u8],
@@ -773,6 +755,7 @@ fn generate_patch_impl(
 			/// Write the patch into a fresh or zeroed allocation and return the
 			/// encoded length. A failure leaves the destination zeroed rather
 			/// than partially patched.
+			#[inline]
 			pub fn initialize(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
 				data.fill(0);
 				self.initialize_zeroed(data)
@@ -782,18 +765,22 @@ fn generate_patch_impl(
 		impl #declaration_generics pinapod::PinaPodPatch<#enum_name>
 			for #patch_name #declaration_generics
 		{
+			#[inline]
 			fn updated_len(&self, data: &[u8]) -> Result<usize, pinapod::PinaPodError> {
 				<#patch_name #declaration_generics>::updated_len(self, data)
 			}
 
+			#[inline]
 			fn update(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
 				<#patch_name #declaration_generics>::update(self, data)
 			}
 
+			#[inline]
 			fn initialize(&self, data: &mut [u8]) -> Result<usize, pinapod::PinaPodError> {
 				<#patch_name #declaration_generics>::initialize(self, data)
 			}
 
+			#[inline]
 			fn try_update_or_len(
 				&self,
 				data: &mut [u8],
@@ -801,6 +788,7 @@ fn generate_patch_impl(
 				<#patch_name #declaration_generics>::try_update_or_len(self, data)
 			}
 
+			#[inline]
 			fn initialize_zeroed(
 				&self,
 				data: &mut [u8],
@@ -821,12 +809,14 @@ fn generate_patch_impl(
 				<Self as pinapod::PinaPodCompact>::TAIL_ALIGNMENT;
 
 			/// Validate `data` and return the variant view it encodes.
+			#[inline]
 			pub fn read_prefix(data: &[u8]) -> Result<#ref_name<'_>, pinapod::PinaPodError> {
 				#ref_name::new(data)
 			}
 
 			/// The allocation size applying `patch` would produce, without
 			/// changing `data`.
+			#[inline]
 			pub fn updated_len(
 				data: &[u8],
 				patch: &#patch_ty,
@@ -835,6 +825,7 @@ fn generate_patch_impl(
 			}
 
 			/// Apply `patch` in place and return the new encoded length.
+			#[inline]
 			pub fn update(
 				data: &mut [u8],
 				patch: &#patch_ty,
@@ -844,6 +835,7 @@ fn generate_patch_impl(
 
 			/// Write `patch` into a fresh or zeroed allocation and return the
 			/// encoded length.
+			#[inline]
 			pub fn initialize(
 				data: &mut [u8],
 				patch: &#patch_ty,
@@ -1056,35 +1048,101 @@ fn validate_payload_tokens(payload: &VariantPayload, tag_size: usize) -> TokenSt
 	}
 }
 
-fn construct_ref_tokens(
-	payload: &VariantPayload,
-	name: &syn::Ident,
-	tag_size: usize,
-) -> TokenStream {
+fn validate_payload_with_len_tokens(payload: &VariantPayload, tag_size: usize) -> TokenStream {
+	let bounds = payload_bounds_tokens(payload, tag_size);
+	let proofs = payload_schema_proofs(payload);
+
 	match payload {
-		VariantPayload::Unit => quote! { Ok(Self::#name) },
-		VariantPayload::String { pfx, .. } => {
-			let read_len = read_len_at_expr(quote! { data }, quote! { #tag_size }, *pfx);
+		VariantPayload::Unit => {
 			quote! {
-				let __byte_len = #read_len;
-				let __payload_offset = #tag_size + #pfx;
-				let __bytes = &data[__payload_offset..__payload_offset + __byte_len];
-				Ok(Self::#name(unsafe { core::str::from_utf8_unchecked(__bytes) }))
-			}
-		}
-		VariantPayload::Vec { elem, pfx, .. } => {
-			let mapped_elem = map_to_pod_type(elem);
-			let read_len = read_len_at_expr(quote! { data }, quote! { #tag_size }, *pfx);
-			quote! {
-				let __count = #read_len;
-				let __payload_offset = #tag_size + #pfx;
-				let __ptr = unsafe { data.as_ptr().add(__payload_offset) as *const #mapped_elem };
-				Ok(Self::#name(unsafe { core::slice::from_raw_parts(__ptr, __count) }))
+				#proofs
+				#bounds
+				Ok(#tag_size)
 			}
 		}
 		VariantPayload::Fixed { ty } => {
 			quote! {
-				Ok(Self::#name(<#ty as pinapod::PinaPodFixed>::read_prefix(&data[#tag_size..])?))
+				#proofs
+				#bounds
+				<#ty as pinapod::PinaPodFixed>::validate_prefix(__payload)?;
+				Ok(__payload_end)
+			}
+		}
+		VariantPayload::String { .. } => {
+			quote! {
+				#proofs
+				#bounds
+
+				if core::str::from_utf8(__payload).is_err() {
+					return Err(pinapod::PinaPodError::InvalidUtf8);
+				}
+
+				Ok(__payload_end)
+			}
+		}
+		VariantPayload::Vec { elem, .. } => {
+			let mapped_elem = map_to_pod_type(elem);
+			quote! {
+				#proofs
+				#bounds
+				let __elems = unsafe {
+					core::slice::from_raw_parts(
+						__payload.as_ptr() as *const #mapped_elem,
+						__count,
+					)
+				};
+				<#mapped_elem as pinapod::ZcValidate>::validate_slice(__elems)?;
+				Ok(__payload_end)
+			}
+		}
+	}
+}
+
+fn validate_and_construct_ref_tokens(
+	payload: &VariantPayload,
+	name: &syn::Ident,
+	tag_size: usize,
+) -> TokenStream {
+	let bounds = payload_bounds_tokens(payload, tag_size);
+	let proofs = payload_schema_proofs(payload);
+
+	match payload {
+		VariantPayload::Unit => {
+			quote! {
+				#proofs
+				#bounds
+				Ok(Self::#name)
+			}
+		}
+		VariantPayload::String { .. } => {
+			quote! {
+				#proofs
+				#bounds
+				let __value = core::str::from_utf8(__payload)
+					.map_err(|_| pinapod::PinaPodError::InvalidUtf8)?;
+				Ok(Self::#name(__value))
+			}
+		}
+		VariantPayload::Vec { elem, .. } => {
+			let mapped_elem = map_to_pod_type(elem);
+			quote! {
+				#proofs
+				#bounds
+				let __elems = unsafe {
+					core::slice::from_raw_parts(
+						__payload.as_ptr() as *const #mapped_elem,
+						__count,
+					)
+				};
+				<#mapped_elem as pinapod::ZcValidate>::validate_slice(__elems)?;
+				Ok(Self::#name(__elems))
+			}
+		}
+		VariantPayload::Fixed { ty } => {
+			quote! {
+				#proofs
+				#bounds
+				Ok(Self::#name(<#ty as pinapod::PinaPodFixed>::read_prefix(__payload)?))
 			}
 		}
 	}
@@ -1104,38 +1162,6 @@ fn read_tag_expr(tag_size: usize, data: TokenStream) -> TokenStream {
 			}
 		}
 		_ => unreachable!("invalid repr size"),
-	}
-}
-
-fn read_len_at_expr(data: TokenStream, offset: TokenStream, pfx: usize) -> TokenStream {
-	match pfx {
-		1 => quote! { #data[#offset] as usize },
-		2 => quote! { u16::from_le_bytes([#data[#offset], #data[#offset + 1]]) as usize },
-		4 => {
-			quote! {
-				u32::from_le_bytes([
-					#data[#offset],
-					#data[#offset + 1],
-					#data[#offset + 2],
-					#data[#offset + 3],
-				]) as usize
-			}
-		}
-		8 => {
-			quote! {
-				u64::from_le_bytes([
-					#data[#offset],
-					#data[#offset + 1],
-					#data[#offset + 2],
-					#data[#offset + 3],
-					#data[#offset + 4],
-					#data[#offset + 5],
-					#data[#offset + 6],
-					#data[#offset + 7],
-				]) as usize
-			}
-		}
-		_ => unreachable!("invalid prefix size"),
 	}
 }
 
@@ -1291,5 +1317,21 @@ mod tests {
 		// The full walk keeps both halves for every payload kind.
 		assert!(output.contains("validate_prefix"));
 		assert!(output.contains("from_utf8"));
+	}
+
+	#[test]
+	fn vec_compact_enum_uses_checked_prefix_writes() {
+		let input: DeriveInput = syn::parse_quote! {
+			#[repr(u8)]
+			enum VecEvent {
+				Empty = 0,
+				Items(pinapod::Vec<u32, 8>) = 1,
+			}
+		};
+
+		let output = generate(&input).to_string();
+
+		assert!(output.contains("validate_slice"));
+		assert!(output.contains("try_update_or_len"));
 	}
 }

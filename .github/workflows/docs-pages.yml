@@ -9,6 +9,7 @@ on:
       - "pinapod/README.md"
       - "pinapod-derive/README.md"
       - "devenv.nix"
+      - "scripts/optimize-docs.ts"
       - ".github/workflows/docs-pages.yml"
   release:
     types: [published]
