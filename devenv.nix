@@ -339,6 +339,7 @@ in
       exec = ''
         set -euo pipefail
         mdbook build "$DEVENV_ROOT/docs"
+        bun run "$DEVENV_ROOT/scripts/optimize-docs.ts" "$DEVENV_ROOT/docs/book"
       '';
       description = "Build the mdBook documentation for GitHub Pages.";
       binary = "bash";
@@ -374,6 +375,7 @@ in
         [ -f "$DEVENV_ROOT/docs/book.toml" ]
         [ -f "$DEVENV_ROOT/docs/src/SUMMARY.md" ]
         mdbook build "$DEVENV_ROOT/docs" -d "$DEVENV_ROOT/target/mdbook"
+        bun run "$DEVENV_ROOT/scripts/optimize-docs.ts" "$DEVENV_ROOT/target/mdbook"
         docs:api
       '';
       description = "Verify the mdBook structure, reusable blocks, and public API documentation.";

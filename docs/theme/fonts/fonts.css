@@ -1,0 +1,8 @@
+/* Native system typography: zero font downloads, instant first paint, zero FOUT. */
+:root {
+	--mono-font: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+html {
+	font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}

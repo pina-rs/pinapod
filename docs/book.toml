@@ -15,3 +15,6 @@ preferred-dark-theme = "navy"
 git-repository-url = "https://github.com/pina-rs/pinapod"
 edit-url-template = "https://github.com/pina-rs/pinapod/edit/main/docs/{path}"
 site-url = "/pinapod/"
+
+[output.html.playground]
+runnable = false
