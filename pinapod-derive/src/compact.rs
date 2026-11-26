@@ -1607,7 +1607,6 @@ fn generate_mut(
 
 	// commit()
 	let commit_body = generate_commit_body(schema, header_ty, &tail_fields);
-	let current_encoded_len = compute_offset_tokens(header_ty, &tail_fields, tail_fields.len());
 
 	quote! {
 		struct #mut_name #mut_generics #where_clause_with_bounds {
@@ -1655,22 +1654,6 @@ fn generate_mut(
 				}
 			}
 
-			/// # Safety
-			/// Caller must ensure `data` is at least `HEADER_SIZE` bytes and
-			/// contains a valid compact header. The tail region must be
-			/// consistent with the header length prefixes.
-			#[inline]
-			unsafe fn new_unchecked(data: &#data_lifetime mut [u8]) -> Self {
-				let mut value = Self {
-					data,
-					total_len: 0,
-					#( #edit_inits, )*
-					#marker_init
-				};
-				value.total_len = value.current_encoded_len();
-				value
-			}
-
 			#[inline(always)]
 			fn header(&self) -> &#header_ty {
 				unsafe { &*(self.data.as_ptr() as *const #header_ty) }
@@ -1684,13 +1667,6 @@ fn generate_mut(
 			#( #inline_mut_accessors )*
 
 			#( #setters )*
-
-			#[inline]
-			fn current_encoded_len(&self) -> usize {
-				let __hdr = self.header();
-				#current_encoded_len
-				__offset
-			}
 
 			#[inline]
 			fn try_projected_size(&self) -> Result<usize, pinapod::PinaPodError> {
@@ -2748,7 +2724,7 @@ fn generate_commit_body(
 		pub fn commit(&mut self) -> Result<usize, pinapod::PinaPodError> {
 			// Construction proves the buffer held a valid representation, but
 			// that proof is call-site discipline rather than a type invariant:
-			// `new_unchecked` exists for the patch paths, and a future
+			// `new_unchecked_with_len` exists for the patch paths, and a future
 			// construction site could skip validation. Revalidating here makes
 			// a stale or tampered writer fail closed before any pointer
 			// arithmetic runs.
@@ -3235,10 +3211,9 @@ fn tail_pfx(kind: &FieldKind) -> usize {
 ///
 /// The arithmetic is deliberately unchecked, and its license is the
 /// validate-before-use coupling stated once here: every context these
-/// statements are spliced into — read accessors, `current_encoded_len`, and
-/// the projected-size steps — only runs on bytes that a constructor
-/// (`Ref::new`, `Mut::new`, or a patch preflight) already passed through
-/// `validate`. `validate` proves, with the checked helpers and in the same
+/// statements are spliced into — read accessors and the projected-size
+/// steps — only runs on bytes that a constructor (`Ref::new`, `Mut::new`,
+/// or a patch preflight) already passed through `validate`. `validate` proves, with the checked helpers and in the same
 /// field order, that every tail's end offset is at most `data.len()`, which
 /// Rust bounds by `isize::MAX`. Because every summand here is non-negative and
 /// the accessor's total equals the total `validate` proved in bounds, no
@@ -3333,96 +3308,6 @@ fn compute_offset_tokens(
 	}
 }
 
-/// One validated walk that records every tail's start offset into
-/// `__tail_offsets` and leaves `__offset` at the encoded length.
-///
-/// The generated statements read `__hdr` (header prefixes) and `data` (tail
-/// prefixes for optional segments). Both are bounds-proven by the `validate`
-/// call that must precede this walk.
-/// One uncached preflight walk for the generated `updated_len`: emits, per
-/// tail in field order, the tail's old encoded size as a local
-/// `__old_encoded_<field>` and advances `__offset`. Reads `__hdr` and `data`,
-/// both bounds-proven by the `validate` call that must precede it.
-///
-/// This is the update-preflight shape: no `Ref` construction and no offset
-/// stores, so updating never pays for the read-path offset cache.
-#[cfg(test)]
-fn generate_preflight_walk(
-	header_ty: &TokenStream,
-	tail_fields: &[&crate::schema::SchemaField],
-) -> TokenStream {
-	let header_size = quote! { core::mem::size_of::<#header_ty>() };
-	let mut steps = Vec::new();
-
-	for f in tail_fields {
-		let FieldKind::Tail(TailField::Segment { presence, payload }) = &f.kind else {
-			continue;
-		};
-		let len_name = format_ident!("__{}_len", f.name);
-		let old_size = format_ident!("__old_encoded_{}", f.name);
-		let pfx = payload.pfx();
-
-		steps.push(quote! { let #old_size: usize = });
-
-		match (presence, payload) {
-			(TailPresence::Always, TailPayload::String { .. }) => {
-				let read_len = read_len_expr(&len_name, pfx);
-				steps.push(quote! {
-					#read_len;
-				});
-			}
-			(TailPresence::Always, TailPayload::Vec { elem, .. }) => {
-				let mapped_elem = map_to_pod_type(elem);
-				let read_len = read_len_expr(&len_name, pfx);
-				steps.push(quote! {
-					// Plain arithmetic: `validate` proved the byte length
-					// fits the slice, so the bounded product cannot overflow.
-					#read_len * core::mem::size_of::<#mapped_elem>();
-				});
-			}
-			(TailPresence::OptionTag, TailPayload::String { .. }) => {
-				let tag_name = format_ident!("__{}_tag", f.name);
-				let read_len = read_data_len_expr(quote! { data }, quote! { __offset }, pfx);
-				steps.push(quote! {
-					if __hdr.#tag_name[0] != 0 {
-						// Plain arithmetic: `validate` proved this prefix and
-						// payload fit the slice, so the sum cannot overflow.
-						#pfx + #read_len
-					} else {
-						0
-					};
-				});
-			}
-			(TailPresence::OptionTag, TailPayload::Vec { elem, .. }) => {
-				let tag_name = format_ident!("__{}_tag", f.name);
-				let mapped_elem = map_to_pod_type(elem);
-				let read_len = read_data_len_expr(quote! { data }, quote! { __offset }, pfx);
-				steps.push(quote! {
-					if __hdr.#tag_name[0] != 0 {
-						// Plain arithmetic: `validate` proved this prefix and
-						// payload fit the slice, so the product and sum
-						// cannot overflow.
-						#pfx + #read_len * core::mem::size_of::<#mapped_elem>()
-					} else {
-						0
-					};
-				});
-			}
-		}
-
-		steps.push(quote! {
-			// Plain add: each old size is a validated slice length, so the
-			// running offset cannot exceed the slice length.
-			__offset += #old_size;
-		});
-	}
-
-	quote! {
-		let mut __offset = #header_size;
-		#( #steps )*
-	}
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -3433,22 +3318,27 @@ mod tests {
 			#[pinapod(compact)]
 			struct Mixed {
 				revision: u64,
+				#[pinapod(skip_patch)]
+				fixed_meta: pinapod::String<4>,
 				label: pinapod::String<4>,
 				tags: Option<pinapod::Vec<u8, 4>>,
+				note: Option<pinapod::String<8>>,
 			}
 		};
 		let schema = Schema::parse(&input).unwrap();
-		let fields: Vec<&crate::schema::SchemaField> = schema.fields.iter().collect();
 
-		let walk = generate_preflight_walk(&quote! { MixedHeader }, &fields).to_string();
+		let (_, full) = build_tail_validation_fragments(&schema, true);
+		let walk = quote! { #( #full )* }.to_string();
 
-		// The inline field contributes no old-size local; every tail does.
+		// The inline field contributes no old-size local; every tail (including
+		// skip_patch and optional tails) emits exactly one `__old_encoded_*` binding.
 		assert!(!walk.contains("__old_encoded_revision"));
-		assert!(walk.contains("__old_encoded_label"));
-		assert!(walk.contains("__old_encoded_tags"));
-		// The walk advances the offset after each tail's old size, so the two
-		// updates cannot collapse into one duplicated reference.
-		assert_eq!(walk.matches("__offset +=").count(), 2);
+		assert_eq!(walk.matches("let __old_encoded_fixed_meta").count(), 1);
+		assert_eq!(walk.matches("let __old_encoded_label").count(), 1);
+		assert_eq!(walk.matches("let __old_encoded_tags").count(), 1);
+		assert_eq!(walk.matches("let __old_encoded_note").count(), 1);
+		// Optional tails capture their encoded delta from `__tail_offset - __prev_offset`.
+		assert!(walk.contains("__tail_offset - __prev_offset"));
 	}
 
 	#[test]

@@ -1087,7 +1087,7 @@ fn compact_empty_patch_preserves_unedited_fields() {
 fn compact_commit_fails_closed_on_a_corrupt_prefix_at_entry() {
 	// The commit-entry check exists because a writer can be built over bytes
 	// nothing validated: the generated `Mut` and `Patch` paths construct their
-	// writer through `new_unchecked`, so the buffer's layout is the caller's to
+	// writer through `new_unchecked_with_len`, so the buffer's layout is the caller's to
 	// establish. A prefix that decodes past the buffer must therefore fail
 	// before any relocation arithmetic runs, rather than relocating tails over
 	// bytes that were never checked.
