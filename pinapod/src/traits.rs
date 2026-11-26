@@ -580,10 +580,12 @@ pub unsafe trait PinaPodCompact: PinaPod {
 	/// Validate the physical allocation independently of its active contents.
 	#[inline(always)]
 	fn validate_storage_len(size: usize) -> Result<(), PinaPodError> {
+		let tail = size.wrapping_sub(Self::MIN_SIZE);
+
 		if Self::TAIL_ALIGNMENT == 0
-			|| size < Self::MIN_SIZE
-			|| size > Self::MAX_SIZE
-			|| !(size - Self::MIN_SIZE).is_multiple_of(Self::TAIL_ALIGNMENT)
+			|| Self::MAX_SIZE < Self::MIN_SIZE
+			|| tail > Self::MAX_SIZE - Self::MIN_SIZE
+			|| !tail.is_multiple_of(Self::TAIL_ALIGNMENT)
 		{
 			return Err(PinaPodError::InvalidLength);
 		}
@@ -634,6 +636,7 @@ pub unsafe trait PinaPodCompact: PinaPod {
 	/// capacity, or an unreadable prefix width; [`PinaPodError::BufferTooSmall`]
 	/// when a chained tail bound leaves the buffer; and
 	/// [`PinaPodError::Overflow`] when an offset sum overflows.
+	#[inline]
 	fn validate_layout(data: &[u8]) -> Result<(), PinaPodError> {
 		Self::validate(data)
 	}
@@ -730,6 +733,7 @@ pub trait PinaPodPatch<T: PinaPodCompact> {
 	///
 	/// Returns [`PinaPodError`] when `data` is not a valid existing representation
 	/// or a supplied value cannot be encoded.
+	#[inline]
 	fn try_update_or_len(&self, data: &mut [u8]) -> Result<Result<usize, usize>, PinaPodError> {
 		let required_len = self.updated_len(data)?;
 
@@ -746,6 +750,7 @@ pub trait PinaPodPatch<T: PinaPodCompact> {
 	///
 	/// Returns [`PinaPodError`] under the same conditions as [`initialize`](Self::initialize).
 	/// On error, the complete destination is zeroed before returning.
+	#[inline]
 	fn initialize_zeroed(&self, data: &mut [u8]) -> Result<usize, PinaPodError> {
 		self.initialize(data)
 	}
@@ -756,22 +761,27 @@ where
 	T: PinaPodCompact,
 	P: PinaPodPatch<T> + ?Sized,
 {
+	#[inline]
 	fn updated_len(&self, data: &[u8]) -> Result<usize, PinaPodError> {
 		<P as PinaPodPatch<T>>::updated_len(*self, data)
 	}
 
+	#[inline]
 	fn update(&self, data: &mut [u8]) -> Result<usize, PinaPodError> {
 		<P as PinaPodPatch<T>>::update(*self, data)
 	}
 
+	#[inline]
 	fn initialize(&self, data: &mut [u8]) -> Result<usize, PinaPodError> {
 		<P as PinaPodPatch<T>>::initialize(*self, data)
 	}
 
+	#[inline]
 	fn try_update_or_len(&self, data: &mut [u8]) -> Result<Result<usize, usize>, PinaPodError> {
 		<P as PinaPodPatch<T>>::try_update_or_len(*self, data)
 	}
 
+	#[inline]
 	fn initialize_zeroed(&self, data: &mut [u8]) -> Result<usize, PinaPodError> {
 		<P as PinaPodPatch<T>>::initialize_zeroed(*self, data)
 	}
