@@ -857,7 +857,7 @@ fn generate_trait_impl(
 			#[inline]
 			fn validate(data: &[u8]) -> Result<(), pinapod::PinaPodError> {
 				#( #schema_proofs )*
-				<#ref_elided_ty>::validate_with_len(data).map(|_| ())
+				<#ref_elided_ty as __PinaPodRefInternal>::validate_with_len(data).map(|_| ())
 			}
 
 			// Only the preconditions a tail relocation consumes: the
@@ -1217,7 +1217,11 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
 			}
 		}
 
-		impl #ref_impl_generics #ref_name #ref_ty_generics #where_clause_with_bounds {
+		trait __PinaPodRefInternal {
+			fn validate_with_len(data: &[u8]) -> Result<usize, pinapod::PinaPodError>;
+		}
+
+		impl #ref_impl_generics __PinaPodRefInternal for #ref_name #ref_ty_generics #where_clause_with_bounds {
 			#[inline]
 			fn validate_with_len(data: &[u8]) -> Result<usize, pinapod::PinaPodError> {
 				// `MIN_SIZE` equals `HEADER_SIZE`, so this also proves the
@@ -1231,11 +1235,13 @@ fn generate_ref(schema: &Schema, header_ty: &TokenStream, ref_name: &syn::Ident)
 				#( #tail_validations )*
 				Ok(__tail_offset)
 			}
+		}
 
+		impl #ref_impl_generics #ref_name #ref_ty_generics #where_clause_with_bounds {
 			/// Validate `data` and return a read-only view over it.
 			#[inline]
 			pub fn new(data: &#data_lifetime [u8]) -> Result<Self, pinapod::PinaPodError> {
-				let encoded_len = Self::validate_with_len(data)?;
+				let encoded_len = <Self as __PinaPodRefInternal>::validate_with_len(data)?;
 				Ok(Self {
 					data,
 					encoded_len,
@@ -1628,7 +1634,7 @@ fn generate_mut(
 			/// Validate `data` and return a staged writer over it.
 			#[inline]
 			pub fn new(data: &#data_lifetime mut [u8]) -> Result<Self, pinapod::PinaPodError> {
-				let total_len = <#ref_elided_ty>::validate_with_len(data)?;
+				let total_len = <#ref_elided_ty as __PinaPodRefInternal>::validate_with_len(data)?;
 				Ok(Self {
 					data,
 					total_len,
@@ -2061,6 +2067,28 @@ fn generate_patch(
 			#marker_field
 		}
 
+		trait __PinaPodPatchInternal {
+			fn preflight_lens(&self, data: &[u8]) -> Result<(usize, usize), pinapod::PinaPodError>;
+		}
+
+		impl #patch_impl_generics __PinaPodPatchInternal for #patch_name #patch_ty_generics #patch_where_clause_with_bounds {
+			/// Single-pass validation and preflight returning `(old_encoded_len, updated_len)`.
+			#[inline]
+			fn preflight_lens(&self, data: &[u8]) -> Result<(usize, usize), pinapod::PinaPodError> {
+				self.validate_inputs()?;
+				<#struct_name #ty_generics as pinapod::PinaPodCompact>::validate_storage_len(
+					data.len(),
+				)?;
+				let __hdr = unsafe { &*(data.as_ptr() as *const #header_ty) };
+				<#header_ty as pinapod::ZcValidate>::validate_ref(__hdr)?;
+				let mut __tail_offset = core::mem::size_of::<#header_ty>();
+				#( #preflight_tail_validations )*
+				let mut updated_len = core::mem::size_of::<#header_ty>();
+				#( #updated_steps )*
+				Ok((__tail_offset, updated_len))
+			}
+		}
+
 		impl #patch_impl_generics #patch_name #patch_ty_generics #patch_where_clause_with_bounds {
 			/// An empty patch; every field stays at its stored value.
 			#[inline(always)]
@@ -2080,27 +2108,12 @@ fn generate_patch(
 				Ok(())
 			}
 
-			/// Single-pass validation and preflight returning `(old_encoded_len, updated_len)`.
-			#[inline]
-			fn preflight_lens(&self, data: &[u8]) -> Result<(usize, usize), pinapod::PinaPodError> {
-				self.validate_inputs()?;
-				<#struct_name #ty_generics as pinapod::PinaPodCompact>::validate_storage_len(
-					data.len(),
-				)?;
-				let __hdr = unsafe { &*(data.as_ptr() as *const #header_ty) };
-				<#header_ty as pinapod::ZcValidate>::validate_ref(__hdr)?;
-				let mut __tail_offset = core::mem::size_of::<#header_ty>();
-				#( #preflight_tail_validations )*
-				let mut updated_len = core::mem::size_of::<#header_ty>();
-				#( #updated_steps )*
-				Ok((__tail_offset, updated_len))
-			}
-
 			/// The allocation size applying this patch would produce, without
 			/// changing `data`.
 			#[inline]
 			pub fn updated_len(&self, data: &[u8]) -> Result<usize, pinapod::PinaPodError> {
-				self.preflight_lens(data).map(|(_, updated_len)| updated_len)
+				<Self as __PinaPodPatchInternal>::preflight_lens(self, data)
+					.map(|(_, updated_len)| updated_len)
 			}
 
 			#[inline]
@@ -2119,7 +2132,8 @@ fn generate_patch(
 				&self,
 				data: &mut [u8],
 			) -> Result<Result<usize, usize>, pinapod::PinaPodError> {
-				let (old_total, expected_len) = self.preflight_lens(data)?;
+				let (old_total, expected_len) =
+					<Self as __PinaPodPatchInternal>::preflight_lens(self, data)?;
 
 				if expected_len > data.len() {
 					return Ok(Err(expected_len));

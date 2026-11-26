@@ -1149,3 +1149,37 @@ fn compact_patch_bio_shift_preserves_tags() {
 		assert_eq!(view.tags()[0], [0xCC; 32]);
 	}
 }
+
+#[allow(dead_code)]
+#[derive(pinapod::PinaPod)]
+#[pinapod(compact)]
+struct HelperNameCollision {
+	pub preflight_lens: u64,
+	pub validate_with_len: pinapod::String<16>,
+}
+
+#[test]
+fn compact_field_names_do_not_collide_with_internal_helpers() {
+	let mut buf = vec![0u8; HelperNameCollision::MAX_SIZE];
+	let len = HelperNameCollision::initialize(
+		&mut buf,
+		&HelperNameCollisionPatch::new()
+			.preflight_lens(42)
+			.validate_with_len("ok"),
+	)
+	.unwrap();
+	let view = HelperNameCollision::read_prefix(&buf[..len]).unwrap();
+	assert_eq!(view.preflight_lens.get(), 42);
+	assert_eq!(view.validate_with_len(), "ok");
+
+	let next_len = HelperNameCollision::update(
+		&mut buf,
+		&HelperNameCollisionPatch::new()
+			.preflight_lens(99)
+			.validate_with_len("updated"),
+	)
+	.unwrap();
+	let updated = HelperNameCollision::read_prefix(&buf[..next_len]).unwrap();
+	assert_eq!(updated.preflight_lens.get(), 99);
+	assert_eq!(updated.validate_with_len(), "updated");
+}
