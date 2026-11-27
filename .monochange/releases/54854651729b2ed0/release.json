@@ -1,0 +1,224 @@
+{
+  "schema_version": "0.10",
+  "kind": "monochange.releaseRecord",
+  "created_at": "2026-11-26T13:24:27Z",
+  "command": "release",
+  "version": "0.4.11",
+  "versions": {
+    "pinapod-workspace": "0.4.11"
+  },
+  "release_targets": [
+    {
+      "id": "pinapod-workspace",
+      "kind": "group",
+      "version": "0.4.11",
+      "version_format": "pinapod/v{{ version }}",
+      "tag": true,
+      "release": true,
+      "tag_name": "pinapod/v0.4.11",
+      "rendered_title": "v0.4.11 (2026-11-26)",
+      "rendered_changelog_title": "[0.4.11](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.11) (2026-11-26)",
+      "members": [
+        "pinapod",
+        "pinapod-derive"
+      ]
+    }
+  ],
+  "released_packages": [
+    "pinapod",
+    "pinapod-derive"
+  ],
+  "changed_files": [
+    "CHANGELOG.md",
+    "Cargo.lock",
+    "Cargo.toml",
+    "fuzz/Cargo.lock",
+    "pinapod/Cargo.toml",
+    "pinapod/tests/fixed_reexport/Cargo.lock",
+    "pinapod/tests/renamed_dependency/Cargo.lock",
+    "pinapod-derive/Cargo.toml"
+  ],
+  "package_publications": [
+    {
+      "package": "pinapod",
+      "ecosystem": "cargo",
+      "registry": "crates_io",
+      "version": "0.4.11",
+      "mode": "builtin",
+      "trusted_publishing": {
+        "enabled": true,
+        "mode": "required",
+        "repository": "pina-rs/pinapod",
+        "workflow": "publish.yml",
+        "environment": "publisher"
+      }
+    },
+    {
+      "package": "pinapod-derive",
+      "ecosystem": "cargo",
+      "registry": "crates_io",
+      "version": "0.4.11",
+      "mode": "builtin",
+      "trusted_publishing": {
+        "enabled": true,
+        "mode": "required",
+        "repository": "pina-rs/pinapod",
+        "workflow": "publish.yml",
+        "environment": "publisher"
+      }
+    }
+  ],
+  "updated_changelogs": [
+    "CHANGELOG.md"
+  ],
+  "deleted_changesets": [
+    ".changeset/optimize-compact-wire-paths.md"
+  ],
+  "changesets": [
+    {
+      "path": ".changeset/optimize-compact-wire-paths.md",
+      "summary": "Optimize compact layout validation and patch commits",
+      "details": "- Collapse triple-pass compact `Patch::try_update_or_len` (`validate` + `updated_len` + `Mut::new` re-walk) into single-pass `Patch::preflight_lens` + `Mut::new_unchecked_with_len`, and eliminate duplicate `current_encoded_len()` walks in `Ref::new` and `Mut::new` via `Ref::validate_with_len`.\n- Replace per-field commit range checks and slice copies with a single monotonic endpoint check, `core::ptr::copy_nonoverlapping`, direct LE prefix stores, and tail-0 shift skipping.\n- Skip redundant bounds/slice construction in `validate_layout` and for `TRIVIALLY_VALID` vec elements, simplify `validate_storage_len` to a single unsigned range check, make `compact_enum` `Ref::new` and `Patch::try_update_or_len` single-dispatch, and add strategic `#[inline]` hints across traits and generated views (`-21.6%` to `-54.94%` Callgrind `Ir`, `-18.4%` to `-35.1%` Criterion wall time, 0 regressions).\n- Add build-time mdBook optimization (`scripts/optimize-docs.ts`) with native system fonts, build-time syntax highlighting, single CSS/JS bundles, and compact on-demand search (`-93.2%` landing doc wire bytes).",
+      "targets": [
+        {
+          "id": "pinapod",
+          "kind": "package",
+          "bump": "patch",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "fix"
+        },
+        {
+          "id": "pinapod-derive",
+          "kind": "package",
+          "bump": "patch",
+          "origin": "direct-change",
+          "evidence_refs": [],
+          "change_type": "fix"
+        }
+      ],
+      "context": {
+        "provider": "github",
+        "host": "github.com",
+        "capabilities": {
+          "commit_web_urls": true,
+          "actor_profiles": true,
+          "review_request_lookup": true,
+          "related_issues": true,
+          "issue_comments": true
+        },
+        "introduced": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "549edd7851a8b9bdbda6f31f31347acc707bb91a",
+            "short_sha": "549edd7",
+            "url": "https://github.com/pina-rs/pinapod/commit/549edd7851a8b9bdbda6f31f31347acc707bb91a",
+            "authored_at": "2026-11-26T13:22:37Z",
+            "committed_at": "2026-11-26T13:22:37Z",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#77",
+            "title": "perf(pinapod): optimize compact layout validation, single-pass commits, and docs delivery",
+            "url": "https://github.com/pina-rs/pinapod/pull/77",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "last_updated": {
+          "actor": {
+            "provider": "github",
+            "host": "github.com",
+            "id": null,
+            "login": "ifiokjr",
+            "display_name": "ifiokjr",
+            "url": "https://github.com/ifiokjr",
+            "source": "review_request_author"
+          },
+          "commit": {
+            "provider": "github",
+            "host": "github.com",
+            "sha": "549edd7851a8b9bdbda6f31f31347acc707bb91a",
+            "short_sha": "549edd7",
+            "url": "https://github.com/pina-rs/pinapod/commit/549edd7851a8b9bdbda6f31f31347acc707bb91a",
+            "authored_at": "2026-11-26T13:22:37Z",
+            "committed_at": "2026-11-26T13:22:37Z",
+            "author_name": "Ifiok Jr.",
+            "author_email": "1160934+ifiokjr@users.noreply.github.com"
+          },
+          "review_request": {
+            "provider": "github",
+            "host": "github.com",
+            "kind": "pull_request",
+            "id": "#77",
+            "title": "perf(pinapod): optimize compact layout validation, single-pass commits, and docs delivery",
+            "url": "https://github.com/pina-rs/pinapod/pull/77",
+            "author": {
+              "provider": "github",
+              "host": "github.com",
+              "id": null,
+              "login": "ifiokjr",
+              "display_name": "ifiokjr",
+              "url": "https://github.com/ifiokjr",
+              "source": "review_request_author"
+            }
+          }
+        },
+        "related_issues": []
+      }
+    }
+  ],
+  "changelogs": [
+    {
+      "owner_id": "pinapod-workspace",
+      "owner_kind": "group",
+      "output": "default",
+      "stream": "default",
+      "path": "CHANGELOG.md",
+      "format": "keep_a_changelog",
+      "notes": {
+        "title": "[0.4.11](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.11) (2026-11-26)",
+        "summary": [
+          "Grouped release for `pinapod-workspace`."
+        ],
+        "sections": [
+          {
+            "title": "Fixes",
+            "collapsed": false,
+            "entries": [
+              "#### Optimize compact layout validation and patch commits\n\n_Packages:_ 🟢 _pinapod_, 🟢 _pinapod-derive_\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #77](https://github.com/pina-rs/pinapod/pull/77)\n\n- Collapse triple-pass compact `Patch::try_update_or_len` (`validate` + `updated_len` + `Mut::new` re-walk) into single-pass `Patch::preflight_lens` + `Mut::new_unchecked_with_len`, and eliminate duplicate `current_encoded_len()` walks in `Ref::new` and `Mut::new` via `Ref::validate_with_len`.\n- Replace per-field commit range checks and slice copies with a single monotonic endpoint check, `core::ptr::copy_nonoverlapping`, direct LE prefix stores, and tail-0 shift skipping.\n- Skip redundant bounds/slice construction in `validate_layout` and for `TRIVIALLY_VALID` vec elements, simplify `validate_storage_len` to a single unsigned range check, make `compact_enum` `Ref::new` and `Patch::try_update_or_len` single-dispatch, and add strategic `#[inline]` hints across traits and generated views (`-21.6%` to `-54.94%` Callgrind `Ir`, `-18.4%` to `-35.1%` Criterion wall time, 0 regressions).\n- Add build-time mdBook optimization (`scripts/optimize-docs.ts`) with native system fonts, build-time syntax highlighting, single CSS/JS bundles, and compact on-demand search (`-93.2%` landing doc wire bytes)."
+            ]
+          }
+        ]
+      },
+      "rendered": "## [0.4.11](https://github.com/pina-rs/pinapod/releases/tag/pinapod/v0.4.11) (2026-11-26)\n\nGrouped release for `pinapod-workspace`.\n\n### Fixes\n\n#### Optimize compact layout validation and patch commits\n\n_Packages:_ 🟢 _pinapod_, 🟢 _pinapod-derive_\n\n_Owner:_ [@ifiokjr](https://github.com/ifiokjr) · _Review:_ [PR #77](https://github.com/pina-rs/pinapod/pull/77)\n\n- Collapse triple-pass compact `Patch::try_update_or_len` (`validate` + `updated_len` + `Mut::new` re-walk) into single-pass `Patch::preflight_lens` + `Mut::new_unchecked_with_len`, and eliminate duplicate `current_encoded_len()` walks in `Ref::new` and `Mut::new` via `Ref::validate_with_len`.\n- Replace per-field commit range checks and slice copies with a single monotonic endpoint check, `core::ptr::copy_nonoverlapping`, direct LE prefix stores, and tail-0 shift skipping.\n- Skip redundant bounds/slice construction in `validate_layout` and for `TRIVIALLY_VALID` vec elements, simplify `validate_storage_len` to a single unsigned range check, make `compact_enum` `Ref::new` and `Patch::try_update_or_len` single-dispatch, and add strategic `#[inline]` hints across traits and generated views (`-21.6%` to `-54.94%` Callgrind `Ir`, `-18.4%` to `-35.1%` Criterion wall time, 0 regressions).\n- Add build-time mdBook optimization (`scripts/optimize-docs.ts`) with native system fonts, build-time syntax highlighting, single CSS/JS bundles, and compact on-demand search (`-93.2%` landing doc wire bytes)."
+    }
+  ],
+  "provider": {
+    "kind": "github",
+    "owner": "pina-rs",
+    "repo": "pinapod",
+    "host": null
+  }
+}
